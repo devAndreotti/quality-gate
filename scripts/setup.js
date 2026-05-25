@@ -7,7 +7,7 @@
  *   node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG --sonar-token=TOKEN
  *   node scripts/setup.js --repo=OWNER/REPO --skip-sonar
  *
- * Faz bootstrap local, configura Sonar, Copilot ruleset, branch protection e
+ * Faz bootstrap local, configura Sonar, PR ruleset, branch protection e
  * secret SONAR_TOKEN. CommonJS para rodar sem package.json type=module.
  */
 
@@ -23,6 +23,8 @@ const DEFAULT_REQUIRED_STATUS_CHECKS = [
   'SonarCloud',
   'Docker image gate',
 ];
+const PR_RULESET_NAME = 'quality-gate-pr-policy';
+const LEGACY_RULESET_NAMES = ['copilot-auto-review'];
 
 function parseArgs(argv) {
   const args = {
@@ -139,6 +141,14 @@ function configureSonarProperties({ projectRoot, owner, repo, sonarOrg, dryRun }
   return { status: dryRun ? 'planned' : 'updated', detail: 'sonar-project.properties configured' };
 }
 
+function formatGitHubApiError(statusCode, parsed, apiPath) {
+  const message = parsed?.message || parsed?.raw || 'request failed';
+  const errors = Array.isArray(parsed?.errors) && parsed.errors.length > 0
+    ? ` — ${parsed.errors.map((error) => (typeof error === 'string' ? error : JSON.stringify(error))).join('; ')}`
+    : '';
+  return `GitHub API ${statusCode} ${apiPath}: ${message}${errors}`;
+}
+
 function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN, verbose = false } = {}) {
   return new Promise((resolve, reject) => {
     if (!token) {
@@ -162,8 +172,19 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        const parsed = data ? JSON.parse(data) : {};
-        if (res.statusCode >= 400) reject(new Error(`GitHub API ${res.statusCode}: ${parsed.message || data}`));
+        let parsed = {};
+        try {
+          parsed = data ? JSON.parse(data) : {};
+        } catch {
+          parsed = { raw: data };
+        }
+        if (res.statusCode >= 400) {
+          const error = new Error(formatGitHubApiError(res.statusCode, parsed, apiPath));
+          error.statusCode = res.statusCode;
+          error.apiPath = apiPath;
+          error.response = parsed;
+          reject(error);
+        }
         else resolve({ status: res.statusCode, body: parsed });
       });
     });
@@ -225,7 +246,7 @@ function branchProtectionBody(requiredStatusChecks) {
 
 function copilotRulesetBody() {
   return {
-    name: 'copilot-auto-review',
+    name: PR_RULESET_NAME,
     target: 'branch',
     enforcement: 'active',
     conditions: {
@@ -238,9 +259,6 @@ function copilotRulesetBody() {
       {
         type: 'pull_request',
         parameters: {
-          automatic_copilot_code_review_enabled: true,
-          review_new_pushes: true,
-          review_draft_pull_requests: true,
           dismiss_stale_reviews_on_push: false,
           require_code_owner_review: false,
           require_last_push_approval: false,
@@ -266,7 +284,7 @@ function buildSetupPlan({ args, projectRoot, env = process.env, execFileSync = c
       { name: 'bootstrap', mode: args.skipBootstrap ? 'skip' : args.dryRun ? 'plan' : 'apply' },
       { name: 'sonar-properties', mode: args.skipSonar ? 'skip' : args.dryRun ? 'plan' : 'apply' },
       { name: 'sonar-secret', mode: args.skipSonar || !args.sonarToken ? 'skip' : args.dryRun ? 'plan' : 'apply' },
-      { name: 'copilot-ruleset', mode: args.dryRun ? 'plan' : 'apply' },
+      { name: 'pr-ruleset', mode: args.dryRun ? 'plan' : 'apply' },
       { name: 'branch-protection', mode: args.dryRun ? 'plan' : 'apply' },
     ],
   };
@@ -274,13 +292,13 @@ function buildSetupPlan({ args, projectRoot, env = process.env, execFileSync = c
 
 async function upsertCopilotRuleset({ owner, repo, ghApi }) {
   const existing = await ghApi('GET', `/repos/${owner}/${repo}/rulesets`);
-  const ruleset = existing.body.find?.((item) => item.name === 'copilot-auto-review');
+  const ruleset = existing.body.find?.((item) => item.name === PR_RULESET_NAME || LEGACY_RULESET_NAMES.includes(item.name));
   if (ruleset) {
     await ghApi('PUT', `/repos/${owner}/${repo}/rulesets/${ruleset.id}`, copilotRulesetBody());
-    return { status: 'updated', id: ruleset.id };
+    return { status: 'updated', id: ruleset.id, detail: 'pull request policy configured' };
   }
   const created = await ghApi('POST', `/repos/${owner}/${repo}/rulesets`, copilotRulesetBody());
-  return { status: 'created', id: created.body.id };
+  return { status: 'created', id: created.body.id, detail: 'pull request policy configured' };
 }
 
 async function runSetup(options = {}) {
@@ -340,7 +358,7 @@ async function runSetup(options = {}) {
     result.steps.push({ name: 'sonar-secret', status: 'skipped' });
   }
 
-  result.steps.push({ name: 'copilot-ruleset', ...(await upsertCopilotRuleset({
+  result.steps.push({ name: 'pr-ruleset', ...(await upsertCopilotRuleset({
     owner: plan.repo.owner,
     repo: plan.repo.repo,
     ghApi,
@@ -363,7 +381,8 @@ function printResult(result) {
   console.log(`Branch: ${result.defaultBranch || 'detect at apply time'}`);
   for (const step of result.steps) {
     const icon = step.status === 'skipped' ? '⚠️ ' : '✅';
-    console.log(` ${icon} ${step.name}: ${step.status}`);
+    const detail = step.detail ? ` — ${step.detail}` : '';
+    console.log(` ${icon} ${step.name}: ${step.status}${detail}`);
   }
 }
 
@@ -381,8 +400,10 @@ if (require.main === module) {
 
 module.exports = {
   buildSetupPlan,
+  copilotRulesetBody,
   configureSonarProperties,
   detectRepoFromRemote,
+  formatGitHubApiError,
   parseArgs,
   runSetup,
 };
