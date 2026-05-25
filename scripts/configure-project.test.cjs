@@ -88,6 +88,8 @@ test('configureProject writes python uv workflow, policy, and sonar paths', () =
   assert.equal(policy.profile, 'python-uv');
   assert.match(sonar, /sonar\.sources=pipeline\/src/);
   assert.match(sonar, /sonar\.python\.coverage\.reportPaths=coverage\/coverage\.xml/);
+  assert.match(sonar, /sonar\.exclusions=.*scripts\/\*\*/);
+  assert.match(sonar, /sonar\.exclusions=.*\.github\/\*\*/);
   assert.doesNotMatch(sonar, /sonar\.javascript\.lcov\.reportPaths/);
 });
 
