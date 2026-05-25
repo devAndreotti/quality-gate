@@ -209,7 +209,7 @@ function Get-ProjectProfile {
 
 function Test-ProjectProfileSupported {
     param([Parameter(Mandatory=$true)][string]$Profile)
-    return $Profile -eq 'node'
+    return $Profile -in @('node', 'python-uv')
 }
 
 # Resolve os caminhos importantes
@@ -239,8 +239,8 @@ if ($Init) {
         Write-Host ''
         Write-Host '  PERFIL INCOMPATIVEL' -ForegroundColor Yellow
         Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-        Write-Host '    Este pacote v1 instala um gate strict-node.' -ForegroundColor Yellow
-        Write-Host '    O projeto atual nao tem package.json na raiz; workflow npm quebraria o CI.' -ForegroundColor Yellow
+        Write-Host '    Este pacote v1 suporta node e python-uv.' -ForegroundColor Yellow
+        Write-Host '    O perfil atual nao foi reconhecido; workflow poderia quebrar o CI.' -ForegroundColor Yellow
         Write-Host '    Use -DryRun para inspecionar ou -Force se voce realmente quiser instalar mesmo assim.' -ForegroundColor Yellow
         Add-InitSummary -Step 'Perfil' -Status 'fail' -Detail ("{0} nao suportado sem -Force" -f $projectProfile.Name)
         Write-InitSummary
@@ -259,6 +259,11 @@ if ($Init) {
         if (-not $SkipCodex) {
             $folders += ".codex"
         }
+        $existingBaselinePath = Join-Path $ProjectRoot "scripts\baseline.json"
+        $existingBaseline = $null
+        if (-not $DryRun -and (Test-Path $existingBaselinePath)) {
+            $existingBaseline = Get-Content -Raw $existingBaselinePath
+        }
         
         foreach ($folder in $folders) {
             $src = Join-Path $TemplateRoot $folder
@@ -272,6 +277,26 @@ if ($Init) {
                         New-Item -ItemType Directory -Path $dst -Force | Out-Null
                     }
                     Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force
+                }
+            }
+        }
+
+        if ($null -ne $existingBaseline) {
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($existingBaselinePath, $existingBaseline, $utf8NoBom)
+            Write-InitItem "Baseline existente preservado."
+        }
+
+        $rootFiles = @("VERSION", "CHANGELOG.md")
+        foreach ($file in $rootFiles) {
+            $src = Join-Path $TemplateRoot $file
+            $dst = Join-Path $ProjectRoot $file
+            if (Test-Path $src) {
+                if ($DryRun) {
+                    Write-DryRunPlan "Copiaria $file para $dst"
+                } else {
+                    Write-InitItem "Copiando $file..."
+                    Copy-Item -Path $src -Destination $dst -Force
                 }
             }
         }
@@ -307,6 +332,27 @@ if ($Init) {
         } else {
             Write-Host '    ✓ Cópia de arquivos concluída.' -ForegroundColor Green
             Add-InitSummary -Step 'Arquivos' -Status 'ok' -Detail 'copiados'
+        }
+
+        $configJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\configure-project.cjs" } else { Join-Path $ProjectRoot "scripts\configure-project.cjs" }
+        if (Test-Path $configJs) {
+            Write-InitItem "Configurando perfil $($projectProfile.Name)..."
+            $configArgs = @("--project", $ProjectRoot, "--profile", $projectProfile.Name)
+            if (-not $Sonar) {
+                $configArgs += "--skip-sonar"
+            }
+            if ($DryRun) {
+                $configArgs += "--dry-run"
+            }
+            & node $configJs $configArgs
+            if ($LASTEXITCODE -ne 0) {
+                Add-InitSummary -Step 'Perfil' -Status 'fail' -Detail "configure-project retornou $LASTEXITCODE"
+                Write-InitSummary
+                Write-Error "Falha ao configurar perfil do projeto."
+            }
+            Add-InitSummary -Step 'Perfil' -Status 'ok' -Detail $projectProfile.Name
+        } else {
+            Add-InitSummary -Step 'Perfil' -Status 'warn' -Detail 'configure-project ausente'
         }
     } else {
         Write-InitItem 'Cópia pulada.' 'DarkGray'
@@ -362,15 +408,17 @@ if ($Init) {
                 Write-Host '    ✓ DryRun: .gitignore simulado.' -ForegroundColor Green
                 Add-InitSummary -Step 'Gitignore' -Status 'ok' -Detail 'simulado'
             } else {
-                # Garante que termine com newline
-                if ($lines.Count -gt 0 -and $lines[-1] -ne "") {
-                    Add-Content -Path $gitignore -Value ""
+                $nextLines = @($lines)
+                if ($nextLines.Count -gt 0 -and $nextLines[-1] -ne "") {
+                    $nextLines += ""
                 }
-                Add-Content -Path $gitignore -Value "# Quality Gate"
+                $nextLines += "# Quality Gate"
                 foreach ($entry in $toAdd) {
-                    Add-Content -Path $gitignore -Value $entry
+                    $nextLines += $entry
                     Write-InitItem "Adicionado: $entry"
                 }
+                $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+                [System.IO.File]::WriteAllText($gitignore, (($nextLines -join "`n") + "`n"), $utf8NoBom)
                 Write-Host '    ✓ .gitignore atualizado.' -ForegroundColor Green
                 Add-InitSummary -Step 'Gitignore' -Status 'ok' -Detail 'atualizado'
             }
@@ -461,7 +509,7 @@ if ($Init) {
     }
 
     # Passo 4: Capturar baseline inicial
-    Write-InitStep -Number 4 -Title 'Baseline' -Description 'Lê coverage/coverage-summary.json e grava scripts/baseline.json.'
+    Write-InitStep -Number 4 -Title 'Baseline' -Description 'Lê coverage do projeto (Jest ou pytest-cov) e grava scripts/baseline.json.'
     if ($SkipBaseline) {
         Write-InitItem 'Captura de baseline pulada por parâmetro.' 'DarkGray'
         Add-InitSummary -Step 'Baseline' -Status 'skip' -Detail 'pulado por flag'
@@ -482,7 +530,11 @@ if ($Init) {
                 & node $gateJs $gateArgs
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "Não foi possível gerar o baseline automático (relatório de coverage ausente?)."
-                    Write-Warning "Gere o coverage do seu projeto primeiro (npm run test:coverage:ci) e depois rode 'qg-upd'."
+                    if ($projectProfile.Name -eq 'python-uv') {
+                        Write-Warning "No TCC/Python: cd pipeline; uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing; cd ..; qg-upd"
+                    } else {
+                        Write-Warning "Em Node: npm run test:coverage:ci; qg-upd"
+                    }
                     Add-InitSummary -Step 'Baseline' -Status 'warn' -Detail 'coverage ausente'
                 } else {
                     Write-Host '    ✓ Baseline inicial gravado com sucesso.' -ForegroundColor Green

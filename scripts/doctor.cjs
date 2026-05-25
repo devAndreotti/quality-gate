@@ -40,6 +40,7 @@ const REQUIRED_FILES = [
   'scripts/babysit-loop.cjs',
   'scripts/bootstrap-repo.cjs',
   'scripts/ci-diagnose.cjs',
+  'scripts/configure-project.cjs',
   'scripts/doctor.cjs',
   'scripts/docker-gate.cjs',
   'scripts/pr-snapshot.cjs',
@@ -49,7 +50,9 @@ const REQUIRED_FILES = [
   'scripts/babysit-loop.test.cjs',
   'scripts/bootstrap-repo.test.cjs',
   'scripts/ci-diagnose.test.cjs',
+  'scripts/configure-project.test.cjs',
   'scripts/e2e-smoke.test.cjs',
+  'scripts/pr-comment.test.cjs',
   'scripts/quality-gate.test.cjs',
   'scripts/lib/docker-detect.cjs',
   'scripts/lib/policy.cjs',
@@ -132,6 +135,15 @@ function checkPolicyRequiredChecks(root, policy) {
 
 function checkPolicyBranchProtection(root, policy) {
   const setup = readText(root, 'scripts/setup.js');
+  const usesPolicyRequiredChecks = /loadRequiredStatusChecks\(projectRoot\)/.test(setup)
+    && /branchProtectionBody\(plan\.requiredStatusChecks\)/.test(setup);
+  if (usesPolicyRequiredChecks) {
+    return {
+      level: 'ok',
+      name: 'Policy vs setup branch protection',
+      detail: 'setup.js le requiredChecks da policy em tempo de execucao',
+    };
+  }
   const setupContexts = parseSetupRequiredContexts(setup);
   const missing = findMissingRequiredContexts(policy.ci.requiredChecks, setupContexts);
   const extra = findMissingRequiredContexts(setupContexts, policy.ci.requiredChecks);
@@ -155,7 +167,14 @@ function checkSkillSize(root) {
   };
 }
 
-function checkSonarConfigured(root) {
+function checkSonarConfigured(root, policy) {
+  if (!policy?.ci?.requiredChecks?.includes('SonarCloud')) {
+    return {
+      level: 'ok',
+      name: 'SonarCloud configurado',
+      detail: 'desativado na policy',
+    };
+  }
   const props = readText(root, 'sonar-project.properties');
   const placeholders = ['YOUR_ORG', 'YOUR_REPO'].filter((token) => props.includes(token));
   return {
@@ -253,7 +272,7 @@ function analyzeQualityGate(options = {}) {
       checks.push(checkPolicyBranchProtection(root, policy));
     }
     checks.push(checkSkillSize(root));
-    checks.push(checkSonarConfigured(root));
+    checks.push(checkSonarConfigured(root, policy));
     checks.push(checkBaseline(root));
     checks.push(checkModuleMode(root));
     checks.push(checkDryRunSupport(root));

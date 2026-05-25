@@ -18,8 +18,10 @@ function paths(root) {
   return {
     baseline: path.join(root, 'scripts', 'baseline.json'),
     coverageSummary: path.join(root, 'coverage', 'coverage-summary.json'),
+    coverageJson: path.join(root, 'coverage', 'coverage.json'),
     eslintReport: path.join(root, 'coverage', 'eslint-report.json'),
-    src: path.join(root, 'src'),
+    ruffReport: path.join(root, 'coverage', 'ruff.json'),
+    srcCandidates: [path.join(root, 'src'), path.join(root, 'pipeline', 'src')],
   };
 }
 
@@ -44,7 +46,8 @@ function delta(current, baseline, higherIsBetter = true) {
 }
 
 function collectCoverage(root) {
-  const summary = readJSON(paths(root).coverageSummary);
+  const projectPaths = paths(root);
+  const summary = readJSON(projectPaths.coverageSummary);
   if (!summary?.total) return null;
   const total = summary.total;
   return {
@@ -55,15 +58,38 @@ function collectCoverage(root) {
   };
 }
 
+function collectPythonCoverage(root) {
+  const coverage = readJSON(paths(root).coverageJson);
+  const totals = coverage?.totals;
+  if (!totals) return null;
+
+  const linePct = Number(totals.percent_covered);
+  if (!Number.isFinite(linePct)) return null;
+  const branchPct = Number(totals.num_branches) > 0
+    ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
+    : linePct;
+  return {
+    lines: linePct,
+    statements: linePct,
+    functions: linePct,
+    branches: Number(branchPct.toFixed(2)),
+  };
+}
+
 function collectLintViolations(root) {
-  const report = readJSON(paths(root).eslintReport);
-  if (!report) return null;
-  return report.reduce((sum, file) => sum + Number(file.errorCount || 0), 0);
+  const projectPaths = paths(root);
+  const eslintReport = readJSON(projectPaths.eslintReport);
+  if (eslintReport) {
+    return eslintReport.reduce((sum, file) => sum + Number(file.errorCount || 0), 0);
+  }
+  const ruffReport = readJSON(projectPaths.ruffReport);
+  if (Array.isArray(ruffReport)) return ruffReport.length;
+  return null;
 }
 
 function collectFileSizes(root) {
-  const srcDir = paths(root).src;
-  if (!fs.existsSync(srcDir)) return null;
+  const srcDirs = paths(root).srcCandidates.filter((candidate) => fs.existsSync(candidate));
+  if (srcDirs.length === 0) return null;
   let oversized = 0;
   function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -72,18 +98,18 @@ function collectFileSizes(root) {
         walk(full);
         continue;
       }
-      if (!/\.(ts|tsx|js|jsx)$/.test(entry.name)) continue;
+      if (!/\.(ts|tsx|js|jsx|py)$/.test(entry.name)) continue;
       if (fs.readFileSync(full, 'utf8').split(/\r?\n/).length > 300) oversized += 1;
     }
   }
-  walk(srcDir);
+  for (const srcDir of srcDirs) walk(srcDir);
   return oversized;
 }
 
 function collectAll(root) {
-  const coverage = collectCoverage(root);
+  const coverage = collectCoverage(root) || collectPythonCoverage(root);
   if (!coverage) {
-    throw new Error('coverage/coverage-summary.json não encontrado. Rode: npm run test:coverage:ci');
+    throw new Error('coverage nao encontrado. Rode npm run test:coverage:ci ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
   }
   return {
     coverage,
