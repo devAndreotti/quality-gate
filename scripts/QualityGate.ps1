@@ -27,32 +27,32 @@ $ErrorActionPreference = 'Stop'
 
 # Função para exibir ajuda amigável
 function Show-Help {
-    Write-Host "🔒 Quality Gate — Comandos disponíveis" -ForegroundColor Cyan
-    Write-Host "================══════════════════════" -ForegroundColor Cyan
-    Write-Host "Uso: qg [opção] [argumentos...]"
-    Write-Host ""
-    Write-Host "Opções principais:"
-    Write-Host "  -Init          Inicia o wizard interativo de instalação do Quality Gate no projeto atual."
-    Write-Host "  -Doctor        Executa o diagnóstico das ferramentas configuradas (--dry-run)."
-    Write-Host "  -Check         Verifica se as métricas do projeto atual regrediram contra o baseline."
-    Write-Host "  -Update        Atualiza o baseline com as métricas do projeto atual."
-    Write-Host "  -Report        Gera/exibe o relatório de qualidade local."
-    Write-Host "  -Help          Exibe esta tela de ajuda."
-    Write-Host ""
-    Write-Host "Flags adicionais para -Init:"
-    Write-Host "  -Sonar         Habilita perguntas sobre organização e token do SonarCloud no wizard."
-    Write-Host "  -SkipCodex     Pula a cópia da pasta .codex/ para o projeto alvo."
-    Write-Host "  -SkipBaseline  Pula a etapa de captura do baseline de métricas inicial."
-    Write-Host "  -SkipCommit    Pula a criação do commit automático dos arquivos instalados."
-    Write-Host "  -DryRun        Executa o setup em modo demonstração (sem realizar alterações reais no GitHub)."
-    Write-Host "  -Repo <owner/repo> Força um repositório específico no GitHub em vez de autodetectar."
-    Write-Host ""
-    Write-Host "Aliases curtos mapeados no Profile:"
-    Write-Host "  qg-init        -> qg -Init"
-    Write-Host "  qg-doc         -> qg -Doctor"
-    Write-Host "  qg-chk         -> qg -Check"
-    Write-Host "  qg-upd         -> qg -Update"
-    Write-Host "  qg-rpt         -> qg -Report"
+    Write-Host ''
+    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Blue
+    Write-Host '  │  Quality Gate                                          v1.0│' -ForegroundColor Blue
+    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Blue
+    Write-Host ''
+    Write-Host '   COMANDOS' -ForegroundColor Blue
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-Host '    qg                  -               exibe esta tela de ajuda' -ForegroundColor Gray
+    Write-Host '    qg-init             qg -Init        wizard interativo de instalacao' -ForegroundColor Gray
+    Write-Host '    qg-doc              qg -Doctor      diagnostico das ferramentas' -ForegroundColor Gray
+    Write-Host '    qg-chk              qg -Check       verifica regressao de metricas' -ForegroundColor Gray
+    Write-Host '    qg-upd              qg -Update      atualiza o baseline de metricas' -ForegroundColor Gray
+    Write-Host '    qg-rpt              qg -Report      exibe o relatorio de qualidade' -ForegroundColor Gray
+    Write-Host ''
+    Write-Host '   FLAGS DO WIZARD (-Init)' -ForegroundColor Blue
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-Host '    -Sonar              -               configura org/token do SonarCloud' -ForegroundColor Gray
+    Write-Host '    -SkipCodex          -               pula a copia da pasta .codex/' -ForegroundColor Gray
+    Write-Host '    -SkipBaseline       -               pula a captura do baseline inicial' -ForegroundColor Gray
+    Write-Host '    -SkipCommit         -               pula o commit automatico no git' -ForegroundColor Gray
+    Write-Host '    -DryRun             -               executa em modo demonstracao' -ForegroundColor Gray
+    Write-Host '    -Repo <owner/repo>  -               forca repositorio especifico' -ForegroundColor Gray
+    Write-Host ''
+    Write-Host '  uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt' -ForegroundColor DarkGray
+    Write-Host '  atalhos: qg-init [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-DryRun] [-Repo <slug>]' -ForegroundColor DarkGray
+    Write-Host ''
 }
 
 # Helper interativo para escolha de Sim/Pular/Cancelar
