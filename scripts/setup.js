@@ -24,7 +24,8 @@ const DEFAULT_REQUIRED_STATUS_CHECKS = [
   'Docker image gate',
 ];
 const PR_RULESET_NAME = 'quality-gate-pr-policy';
-const LEGACY_RULESET_NAMES = ['copilot-auto-review'];
+const LEGACY_RULESET_NAMES = new Set(['copilot-auto-review']);
+const REPO_SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 function parseArgs(argv) {
   const args = {
@@ -63,13 +64,48 @@ function parseArgs(argv) {
 function detectRepoFromRemote(remote) {
   const match = String(remote || '').trim().match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
   if (!match) return null;
-  return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
+  return parseRepoSlug(`${match[1]}/${match[2].replace(/\.git$/, '')}`);
 }
 
 function parseRepoSlug(slug) {
   const match = String(slug || '').match(/^([^/]+)\/([^/]+)$/);
   if (!match) return null;
+  if (!REPO_SEGMENT_PATTERN.test(match[1]) || !REPO_SEGMENT_PATTERN.test(match[2])) return null;
   return { owner: match[1], repo: match[2] };
+}
+
+function encodePathSegment(value) {
+  return encodeURIComponent(String(value));
+}
+
+function repoApiPath(repoInfo, suffix = '') {
+  return `/repos/${encodePathSegment(repoInfo.owner)}/${encodePathSegment(repoInfo.repo)}${suffix}`;
+}
+
+function rulesetApiPath(repoInfo, rulesetId = null) {
+  const suffix = rulesetId == null ? '/rulesets' : `/rulesets/${encodePathSegment(rulesetId)}`;
+  return repoApiPath(repoInfo, suffix);
+}
+
+function branchProtectionApiPath(repoInfo, branch) {
+  return repoApiPath(repoInfo, `/branches/${encodePathSegment(branch)}/protection`);
+}
+
+function sanitizeForLog(value) {
+  return String(value ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '?')
+    .slice(0, 500);
+}
+
+function sanitizeErrorValue(value) {
+  if (typeof value === 'string') return sanitizeForLog(value);
+  if (value && typeof value === 'object' && typeof value.message === 'string') {
+    return sanitizeForLog(value.message);
+  }
+  return sanitizeForLog(JSON.stringify(value, (_key, fieldValue) => (
+    typeof fieldValue === 'string' ? sanitizeForLog(fieldValue) : fieldValue
+  )));
 }
 
 function detectRepo(projectRoot, args, execFileSync = childProcess.execFileSync) {
@@ -142,11 +178,19 @@ function configureSonarProperties({ projectRoot, owner, repo, sonarOrg, dryRun }
 }
 
 function formatGitHubApiError(statusCode, parsed, apiPath) {
-  const message = parsed?.message || parsed?.raw || 'request failed';
+  const message = sanitizeForLog(parsed?.message || parsed?.raw || 'request failed');
   const errors = Array.isArray(parsed?.errors) && parsed.errors.length > 0
-    ? ` — ${parsed.errors.map((error) => (typeof error === 'string' ? error : JSON.stringify(error))).join('; ')}`
+    ? ` — ${parsed.errors.map(sanitizeErrorValue).join('; ')}`
     : '';
-  return `GitHub API ${statusCode} ${apiPath}: ${message}${errors}`;
+  return `GitHub API ${statusCode} ${sanitizeForLog(apiPath)}: ${message}${errors}`;
+}
+
+function normalizeGitHubApiPath(apiPath) {
+  const normalized = String(apiPath || '');
+  if (!normalized.startsWith('/') || normalized.startsWith('//') || /[\r\n]/.test(normalized)) {
+    throw new Error('Invalid GitHub API path');
+  }
+  return normalized;
 }
 
 function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN, verbose = false } = {}) {
@@ -157,9 +201,11 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
     }
 
     const payload = body ? JSON.stringify(body) : null;
+    const normalizedApiPath = normalizeGitHubApiPath(apiPath);
+    const timeoutMs = 30000;
     const req = https.request({
       hostname: 'api.github.com',
-      path: apiPath,
+      path: normalizedApiPath,
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -179,17 +225,20 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
           parsed = { raw: data };
         }
         if (res.statusCode >= 400) {
-          const error = new Error(formatGitHubApiError(res.statusCode, parsed, apiPath));
+          const error = new Error(formatGitHubApiError(res.statusCode, parsed, normalizedApiPath));
           error.statusCode = res.statusCode;
-          error.apiPath = apiPath;
+          error.apiPath = normalizedApiPath;
           error.response = parsed;
           reject(error);
         }
         else resolve({ status: res.statusCode, body: parsed });
       });
     });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`GitHub API request timed out after ${timeoutMs}ms`));
+    });
     req.on('error', reject);
-    if (verbose) console.log(` → ${method} https://api.github.com${apiPath}`);
+    if (verbose) console.log(` -> ${method} https://api.github.com${sanitizeForLog(normalizedApiPath)}`);
     if (payload) req.write(payload);
     req.end();
   });
@@ -291,14 +340,20 @@ function buildSetupPlan({ args, projectRoot, env = process.env, execFileSync = c
 }
 
 async function upsertCopilotRuleset({ owner, repo, ghApi }) {
-  const existing = await ghApi('GET', `/repos/${owner}/${repo}/rulesets`);
-  const ruleset = existing.body.find?.((item) => item.name === PR_RULESET_NAME || LEGACY_RULESET_NAMES.includes(item.name));
+  const repoInfo = { owner, repo };
+  const existing = await ghApi('GET', rulesetApiPath(repoInfo));
+  const ruleset = existing.body.find?.((item) => item.name === PR_RULESET_NAME || LEGACY_RULESET_NAMES.has(item.name));
   if (ruleset) {
-    await ghApi('PUT', `/repos/${owner}/${repo}/rulesets/${ruleset.id}`, copilotRulesetBody());
+    await ghApi('PUT', rulesetApiPath(repoInfo, ruleset.id), copilotRulesetBody());
     return { status: 'updated', id: ruleset.id, detail: 'pull request policy configured' };
   }
-  const created = await ghApi('POST', `/repos/${owner}/${repo}/rulesets`, copilotRulesetBody());
+  const created = await ghApi('POST', rulesetApiPath(repoInfo), copilotRulesetBody());
   return { status: 'created', id: created.body.id, detail: 'pull request policy configured' };
+}
+
+function plannedStepStatus(mode) {
+  if (mode === 'skip') return 'skipped';
+  return 'planned';
 }
 
 async function runSetup(options = {}) {
@@ -327,7 +382,7 @@ async function runSetup(options = {}) {
   };
 
   if (args.dryRun) {
-    result.steps = plan.steps.map((step) => ({ ...step, status: step.mode === 'skip' ? 'skipped' : 'planned' }));
+    result.steps = plan.steps.map((step) => ({ ...step, status: plannedStepStatus(step.mode) }));
     return result;
   }
 
@@ -348,7 +403,7 @@ async function runSetup(options = {}) {
   }
 
   await ghApi('GET', '/user');
-  const repoMeta = await ghApi('GET', `/repos/${plan.repo.owner}/${plan.repo.repo}`);
+  const repoMeta = await ghApi('GET', repoApiPath(plan.repo));
   result.defaultBranch = args.defaultBranch || repoMeta.body.default_branch || 'main';
 
   if (!args.skipSonar && args.sonarToken) {
@@ -366,7 +421,7 @@ async function runSetup(options = {}) {
 
   await ghApi(
     'PUT',
-    `/repos/${plan.repo.owner}/${plan.repo.repo}/branches/${result.defaultBranch}/protection`,
+    branchProtectionApiPath(plan.repo, result.defaultBranch),
     branchProtectionBody(plan.requiredStatusChecks),
   );
   result.steps.push({ name: 'branch-protection', status: 'updated', branch: result.defaultBranch });
@@ -393,7 +448,7 @@ async function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) {
   main().catch((error) => {
-    console.error(`❌ setup: ${error.message}`);
+    console.error(`❌ setup: ${sanitizeForLog(error.message)}`);
     process.exit(1);
   });
 }

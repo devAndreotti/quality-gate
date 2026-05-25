@@ -214,11 +214,14 @@ function checkModuleMode(root) {
   const moduleType = packageJson?.type === 'module';
   const esmScripts = ['scripts/quality-gate.js', 'scripts/pr-comment.js', 'scripts/setup.js']
     .filter((file) => exists(root, file) && hasEsmSyntax(readText(root, file)));
-  const detail = moduleType
-    ? 'package.json declara type=module'
-    : esmScripts.length === 0
-      ? 'scripts .js rodam sem package.json type=module'
-      : `${esmScripts.length} scripts usam ESM; repo alvo precisa de type=module ou extensao .mjs`;
+  let detail;
+  if (moduleType) {
+    detail = 'package.json declara type=module';
+  } else if (esmScripts.length === 0) {
+    detail = 'scripts .js rodam sem package.json type=module';
+  } else {
+    detail = `${esmScripts.length} scripts usam ESM; repo alvo precisa de type=module ou extensao .mjs`;
+  }
 
   return {
     level: moduleType || esmScripts.length === 0 ? 'ok' : 'warn',
@@ -271,11 +274,13 @@ function analyzeQualityGate(options = {}) {
       checks.push(checkPolicyRequiredChecks(root, policy));
       checks.push(checkPolicyBranchProtection(root, policy));
     }
-    checks.push(checkSkillSize(root));
-    checks.push(checkSonarConfigured(root, policy));
-    checks.push(checkBaseline(root));
-    checks.push(checkModuleMode(root));
-    checks.push(checkDryRunSupport(root));
+    checks.push(
+      checkSkillSize(root),
+      checkSonarConfigured(root, policy),
+      checkBaseline(root),
+      checkModuleMode(root),
+      checkDryRunSupport(root),
+    );
     if (options.release) {
       checks.push(checkReleaseReadiness(checks));
     }
@@ -291,7 +296,9 @@ function analyzeQualityGate(options = {}) {
 }
 
 function statusIcon(level) {
-  return level === 'ok' ? '✅' : level === 'warn' ? '⚠️ ' : '❌';
+  if (level === 'ok') return '✅';
+  if (level === 'warn') return '⚠️ ';
+  return '❌';
 }
 
 function printReport(result, options = {}) {

@@ -29,6 +29,12 @@ function readJSON(filePath) {
   return fs.existsSync(filePath) ? JSON.parse(fs.readFileSync(filePath, 'utf8')) : null;
 }
 
+function readMaxFileLines(root) {
+  const policy = readJSON(path.join(root, '.quality-gate', 'policy.json'));
+  const value = policy?.ci?.maxFileLines;
+  return Number.isInteger(value) && value > 0 ? value : 300;
+}
+
 function pct(value) {
   return typeof value === 'number' ? `${value.toFixed(1)}%` : 'n/a';
 }
@@ -87,7 +93,7 @@ function collectLintViolations(root) {
   return null;
 }
 
-function collectFileSizes(root) {
+function collectFileSizes(root, maxFileLines = 300) {
   const srcDirs = paths(root).srcCandidates.filter((candidate) => fs.existsSync(candidate));
   if (srcDirs.length === 0) return null;
   let oversized = 0;
@@ -99,7 +105,7 @@ function collectFileSizes(root) {
         continue;
       }
       if (!/\.(ts|tsx|js|jsx|py)$/.test(entry.name)) continue;
-      if (fs.readFileSync(full, 'utf8').split(/\r?\n/).length > 300) oversized += 1;
+      if (fs.readFileSync(full, 'utf8').split(/\r?\n/).length > maxFileLines) oversized += 1;
     }
   }
   for (const srcDir of srcDirs) walk(srcDir);
@@ -114,7 +120,7 @@ function collectAll(root) {
   return {
     coverage,
     lintErrors: collectLintViolations(root),
-    oversizedFiles: collectFileSizes(root),
+    oversizedFiles: collectFileSizes(root, readMaxFileLines(root)),
     collectedAt: new Date().toISOString(),
   };
 }

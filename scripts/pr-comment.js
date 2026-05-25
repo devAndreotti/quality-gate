@@ -69,7 +69,7 @@ function diff(current, baseline) {
 
 function displayPath(root, filePath) {
   const relative = path.isAbsolute(filePath) ? path.relative(root, filePath) : filePath;
-  return relative.replace(/\\/g, '/');
+  return relative.replaceAll('\\', '/');
 }
 
 function readIstanbulCoverage(root) {
@@ -157,17 +157,17 @@ function readCoverageSection(options = {}) {
   ];
 
   if (coverage.worst.length > 0) {
-    table.push('');
-    table.push('<details>');
-    table.push('<summary><b>📉 Menor coverage (top 3)</b></summary>');
-    table.push('');
-    table.push('| Arquivo | Lines % |');
-    table.push('|---------|---------|');
-    for (const item of coverage.worst) {
-      table.push(`| \`${item.file}\` | ${fmt(item.pct)} |`);
-    }
-    table.push('');
-    table.push('</details>');
+    table.push(
+      '',
+      '<details>',
+      '<summary><b>📉 Menor coverage (top 3)</b></summary>',
+      '',
+      '| Arquivo | Lines % |',
+      '|---------|---------|',
+      ...coverage.worst.map((item) => `| \`${item.file}\` | ${fmt(item.pct)} |`),
+      '',
+      '</details>',
+    );
   }
 
   return table.join('\n');
@@ -228,15 +228,17 @@ async function postStickyComment(options = {}) {
 
   const baseUrl = `https://api.github.com/repos/${repo}`;
   async function ghFetch(apiPath, request = {}) {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    };
+    if (request.headers) Object.assign(headers, request.headers);
+
     const response = await fetchImpl(`${baseUrl}${apiPath}`, {
       ...request,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json',
-        ...(request.headers ?? {}),
-      },
+      headers,
     });
     if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
     return response.json().catch(() => null);
@@ -263,14 +265,16 @@ async function postStickyComment(options = {}) {
 }
 
 async function main() {
-  await postStickyComment();
+  try {
+    await postStickyComment();
+  } catch (error) {
+    console.error('Erro no sticky comment:', error.message);
+    process.exit(0);
+  }
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error('Erro no sticky comment:', error.message);
-    process.exit(0);
-  });
+  main();
 }
 
 module.exports = {

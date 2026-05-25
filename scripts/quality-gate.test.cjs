@@ -108,3 +108,22 @@ test('init creates baseline from Python coverage JSON', () => {
   assert.equal(result.current.coverage.branches, 75);
   assert.equal(baseline.coverage.branches, 75);
 });
+
+test('file size gate uses maxFileLines from policy', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+  }, null, 2));
+  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), JSON.stringify({
+    ci: { maxFileLines: 2 },
+  }, null, 2));
+  fs.writeFileSync(path.join(project, 'src/large.js'), 'one\ntwo\nthree\n');
+  writeCoverage(project, 90);
+
+  const result = runQualityGate({ root: project, command: 'check' });
+
+  assert.equal(result.current.oversizedFiles, 1);
+});
