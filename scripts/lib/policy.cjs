@@ -51,8 +51,8 @@ function validatePolicy(policy) {
   if (typeof policy?.bootstrap?.funding?.enabled !== 'boolean') {
     errors.push('bootstrap.funding.enabled precisa ser boolean');
   }
-  if (policy?.bootstrap?.funding?.enabled && typeof policy.bootstrap.funding.buyMeACoffee !== 'string') {
-    errors.push('bootstrap.funding.buyMeACoffee precisa ser string');
+  if (!policy?.bootstrap?.funding?.buyMeACoffee || typeof policy.bootstrap.funding.buyMeACoffee !== 'string') {
+    errors.push('bootstrap.funding.buyMeACoffee precisa ser string nao vazia');
   }
   if (typeof policy?.bootstrap?.dependabot?.enabled !== 'boolean') {
     errors.push('bootstrap.dependabot.enabled precisa ser boolean');
@@ -86,6 +86,9 @@ function validatePolicy(policy) {
   }
   if (!Array.isArray(policy?.dockerImageDoctor?.warnOn)) {
     errors.push('dockerImageDoctor.warnOn precisa ser array');
+  }
+  if (!['static-advisory', 'skip', 'fail'].includes(policy?.dockerImageDoctor?.fallbackWhenUnavailable)) {
+    errors.push('dockerImageDoctor.fallbackWhenUnavailable precisa ser static-advisory, skip ou fail');
   }
 
   return errors;

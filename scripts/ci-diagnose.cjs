@@ -77,7 +77,11 @@ function queryGhOrApi({ ghJson, githubApi, args, apiPath }) {
   try {
     return ghJson(args);
   } catch (error) {
-    return githubApi(apiPath);
+    const fallback = githubApi(apiPath);
+    if (fallback == null) {
+      throw new Error(`gh query failed and API fallback returned no data: ${error.message}`);
+    }
+    return fallback;
   }
 }
 

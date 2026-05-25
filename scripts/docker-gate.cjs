@@ -72,7 +72,7 @@ function addFinding(findings, severity, category, message, file, recommendation)
 }
 
 function relativeFile(root, filePath) {
-  return path.relative(root, filePath).replace(/\\/g, '/');
+  return path.relative(root, filePath).replaceAll('\\', '/');
 }
 
 function analyzeDockerfile({ root, filePath, text, findings }) {
@@ -271,7 +271,9 @@ function runDockerGate(options = {}) {
 }
 
 function printHuman(result) {
-  const icon = result.status === 'failed' ? '❌' : result.status === 'warning' ? '⚠️ ' : '✅';
+  let icon = '✅';
+  if (result.status === 'failed') icon = '❌';
+  else if (result.status === 'warning') icon = '⚠️ ';
   console.log(`\n${icon} Docker Gate: ${result.status}`);
   if (result.reason) console.log(`  ${result.reason}`);
   if (result.detection) {

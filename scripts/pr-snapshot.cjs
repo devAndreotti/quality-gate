@@ -126,6 +126,9 @@ function deriveActions(snapshot) {
   if (Object.values(jobs).some((job) => !job.conclusion || ['queued', 'in_progress', 'pending'].includes(job.status))) {
     add('wait_ci');
   }
+  if (!Object.keys(jobs).length && ['queued', 'in_progress', 'pending'].includes(snapshot.latestRun?.status)) {
+    add('wait_ci');
+  }
   if ((snapshot.copilotBlockers || []).length > 0) add('process_copilot');
   if ((snapshot.humanBlockers || []).length > 0) add('process_human');
   if (actions.length === 0 && snapshot.ci?.overall === 'success') add('ready');
@@ -138,10 +141,18 @@ function formatInlineComment(comment) {
   return `${location}${location ? ' - ' : ''}${String(comment.body || '').split(/\r?\n/)[0]}`;
 }
 
+function isCopilotReviewer(login) {
+  return /^(copilot|copilot\[bot\]|copilot-pull-request-reviewer\[bot\])$/i.test(String(login || ''));
+}
+
+function isBlockingComment(body) {
+  return /bloqueador|blocker|changes?\s+required|required\s+changes?/i.test(String(body || ''));
+}
+
 function collectCopilotBlockers(inlineComments) {
   return (inlineComments || [])
-    .filter((comment) => comment?.user?.login === 'copilot[bot]')
-    .filter((comment) => /bloqueador|blocker|required/i.test(comment.body || ''))
+    .filter((comment) => isCopilotReviewer(comment?.user?.login))
+    .filter((comment) => isBlockingComment(comment.body))
     .map(formatInlineComment);
 }
 

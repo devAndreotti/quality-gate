@@ -84,6 +84,7 @@ test('configureProject writes python uv workflow, policy, and sonar paths', () =
   assert.match(workflow, /pytest --basetemp \.pytest-tmp-qg/);
   assert.match(workflow, /--cov=src --cov-report=json:\.\.\/coverage\/coverage\.json/);
   assert.match(workflow, /node scripts\/quality-gate\.js check/);
+  assert.match(workflow, /sonarsource\/sonarqube-quality-gate-action@v1\.2\.0/);
   assert.equal(policy.profile, 'python-uv');
   assert.match(sonar, /sonar\.sources=pipeline\/src/);
   assert.match(sonar, /sonar\.python\.coverage\.reportPaths=coverage\/coverage\.xml/);

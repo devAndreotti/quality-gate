@@ -12,6 +12,7 @@ const {
 const {
   buildState,
   loadPolicy,
+  validatePolicy,
 } = require('./lib/policy.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -81,6 +82,18 @@ test('policy declares deterministic repository bootstrap steps', () => {
   assert.equal(policy.bootstrap.dependabot.enabled, true);
   assert.equal(policy.bootstrap.readme.enabled, true);
   assert.equal(policy.bootstrap.readme.style, 'devandreotti');
+});
+
+test('policy validation stays aligned with schema-required fields', () => {
+  const policy = loadPolicy(root);
+  const missingFunding = structuredClone(policy);
+  delete missingFunding.bootstrap.funding.buyMeACoffee;
+  const missingFallback = structuredClone(policy);
+  delete missingFallback.dockerImageDoctor.fallbackWhenUnavailable;
+
+  assert.match(validatePolicy(missingFunding).join('\n'), /bootstrap\.funding\.buyMeACoffee/);
+  assert.match(validatePolicy(missingFallback).join('\n'), /dockerImageDoctor\.fallbackWhenUnavailable/);
+  assert.deepEqual(validatePolicy(policy), []);
 });
 
 test('packaged .js scripts do not require package type=module', () => {

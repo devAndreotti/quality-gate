@@ -139,3 +139,13 @@ test('diagnoseRun falls back to GitHub API job metadata when gh is unavailable',
   assert.deepEqual(result.actions, ['diagnose_sonar']);
   assert.equal(result.findings[0].category, 'sonar');
 });
+
+test('diagnoseRun does not silently pass when gh and API fallback both lack jobs', () => {
+  assert.throws(() => diagnoseRun({
+    run: 123,
+    repo: 'owner/repo',
+    ghJson: () => { throw new Error('gh unavailable'); },
+    ghText: () => '',
+    githubApi: () => null,
+  }), /gh unavailable/);
+});

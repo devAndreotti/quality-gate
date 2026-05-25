@@ -117,6 +117,17 @@ test('formatGitHubApiError includes validation details', () => {
   assert.match(message, /Unexpected parameter/);
 });
 
+test('formatGitHubApiError sanitizes response text for logs', () => {
+  const message = formatGitHubApiError(422, {
+    message: 'Validation Failed\nsecond line',
+    errors: [{ message: 'bad\r\nvalue', field: 'name' }],
+  }, '/repos/owner/repo/rulesets');
+
+  assert.doesNotMatch(message, /[\r\n]/);
+  assert.match(message, /Validation Failed second line/);
+  assert.match(message, /bad value/);
+});
+
 test('runSetup uses default branch from GitHub metadata and never shell-quotes secrets', async () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
@@ -154,4 +165,46 @@ test('runSetup uses default branch from GitHub metadata and never shell-quotes s
   assert.equal(result.defaultBranch, 'trunk');
   assert.equal(secretCalls[0].value, 'tok" with spaces');
   assert.ok(apiCalls.some((call) => call.apiPath === '/repos/owner/repo/branches/trunk/protection'));
+});
+
+test('runSetup URL-encodes default branch names in GitHub API paths', async () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, '.github', 'workflows'), { recursive: true });
+  fs.copyFileSync(path.resolve(__dirname, 'baseline.json'), path.join(project, 'scripts', 'baseline.json'));
+  fs.writeFileSync(path.join(project, 'sonar-project.properties'), 'sonar.projectKey=YOUR_ORG_YOUR_REPO\n');
+  fs.writeFileSync(path.join(project, '.github', 'workflows', 'quality-gate.yml'), 'name: Quality Gate\n');
+
+  const apiCalls = [];
+  const ghApi = async (method, apiPath, body) => {
+    apiCalls.push({ method, apiPath, body });
+    if (method === 'GET' && apiPath === '/user') return { body: { login: 'me' } };
+    if (method === 'GET' && apiPath === '/repos/owner/repo') return { body: { default_branch: 'release/2026.05' } };
+    if (method === 'GET' && apiPath === '/repos/owner/repo/rulesets') return { body: [] };
+    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets') return { body: { id: 1 }, status: 201 };
+    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection') return { body: {}, status: 200 };
+    throw new Error(`unexpected API ${method} ${apiPath}`);
+  };
+
+  const result = await runSetup({
+    args: {
+      repo: 'owner/repo',
+      skipSonar: true,
+      skipBootstrap: true,
+      dryRun: false,
+    },
+    projectRoot: project,
+    env: { GITHUB_TOKEN: 'token' },
+    ghApi,
+    setSecret: async () => {},
+  });
+
+  assert.equal(result.defaultBranch, 'release/2026.05');
+  assert.ok(apiCalls.some((call) => call.apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection'));
+});
+
+test('ghAPI configures an HTTPS request timeout', () => {
+  const setupText = fs.readFileSync(path.resolve(__dirname, 'setup.js'), 'utf8');
+
+  assert.match(setupText, /req\.setTimeout\(/);
 });

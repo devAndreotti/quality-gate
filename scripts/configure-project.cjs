@@ -88,7 +88,7 @@ function pythonWorkflow(projectDir, options = {}) {
           SONAR_TOKEN: \${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       - name: SonarCloud quality gate check
-        uses: sonarsource/sonarqube-quality-gate-action@master
+        uses: sonarsource/sonarqube-quality-gate-action@v1.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: \${{ secrets.SONAR_TOKEN }}
@@ -114,8 +114,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
-  checks: write
 
 jobs:
   security:
@@ -217,6 +215,9 @@ ${sonarJob}
     runs-on: ubuntu-latest
     needs: ${reportNeeds}
     if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -246,11 +247,13 @@ function pythonSonarProperties(current, projectDir) {
   const lines = current
     .split(/\r?\n/)
     .filter((line) => !/^sonar\.(sources|tests|test\.inclusions|exclusions|javascript\.lcov\.reportPaths|typescript\.tsconfigPath|python\.coverage\.reportPaths)=/.test(line));
-  lines.push(`sonar.sources=${prefix}src`);
-  lines.push(`sonar.tests=${prefix}tests`);
-  lines.push('sonar.test.inclusions=**/tests/**/*.py,**/test_*.py,**/*_test.py');
-  lines.push('sonar.exclusions=**/.venv/**,**/.pytest_cache/**,**/coverage/**,**/__pycache__/**');
-  lines.push('sonar.python.coverage.reportPaths=coverage/coverage.xml');
+  lines.push(
+    `sonar.sources=${prefix}src`,
+    `sonar.tests=${prefix}tests`,
+    'sonar.test.inclusions=**/tests/**/*.py,**/test_*.py,**/*_test.py',
+    'sonar.exclusions=**/.venv/**,**/.pytest_cache/**,**/coverage/**,**/__pycache__/**',
+    'sonar.python.coverage.reportPaths=coverage/coverage.xml',
+  );
   return `${lines.join('\n').replace(/\n+$/g, '')}\n`;
 }
 
@@ -295,7 +298,7 @@ function printResult(result) {
   console.log('══════════════════════════════════\n');
   console.log(`Profile: ${result.profile.name} (${result.profile.detail})`);
   for (const step of result.steps) {
-    const icon = step.status === 'ok' ? '✅' : step.status === 'skipped' ? '⚠️ ' : '✅';
+    const icon = step.status === 'skipped' ? '⚠️ ' : '✅';
     const file = step.file ? ` (${step.file})` : '';
     console.log(` ${icon} ${step.status}: ${step.detail}${file}`);
   }

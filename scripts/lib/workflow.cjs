@@ -23,7 +23,7 @@ function parseWorkflowJobNames(workflowText) {
       continue;
     }
 
-    const nameMatch = line.match(/^    name:\s*(.+?)\s*$/);
+    const nameMatch = line.match(/^ {4}name:\s*(.+?)\s*$/);
     if (current && nameMatch) {
       current.name = unquote(nameMatch[1].replace(/\s+#.*$/, ''));
     }
@@ -53,8 +53,10 @@ function parseSetupRequiredContexts(setupText) {
   }
 
   const variableName = variableMatch[1];
-  const arrayMatch = setupText.match(new RegExp(`const\\s+${variableName}\\s*=\\s*\\[([\\s\\S]*?)\\]`, 'm'))
-    || setupText.match(new RegExp(`const\\s+DEFAULT_${variableName}\\s*=\\s*\\[([\\s\\S]*?)\\]`, 'm'))
+  const directArrayPattern = String.raw`const\s+${variableName}\s*=\s*\[([\s\S]*?)\]`;
+  const defaultArrayPattern = String.raw`const\s+DEFAULT_${variableName}\s*=\s*\[([\s\S]*?)\]`;
+  const arrayMatch = setupText.match(new RegExp(directArrayPattern, 'm'))
+    || setupText.match(new RegExp(defaultArrayPattern, 'm'))
     || setupText.match(/const\s+DEFAULT_REQUIRED_STATUS_CHECKS\s*=\s*\[([\s\S]*?)\]/m);
   if (!arrayMatch) return [];
 
