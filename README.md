@@ -25,6 +25,7 @@ your-project/                        ← Root of YOUR repository
 │   ├── babysit-loop.cjs             ← Snapshot + diagnose deterministic cycle
 │   ├── bootstrap-repo.cjs           ← LICENSE/FUNDING/Dependabot/README scaffold
 │   ├── ci-diagnose.cjs              ← Deterministic CI failure classifier
+│   ├── configure-project.cjs        ← Stack adapter: node or python-uv
 │   ├── doctor.cjs                   ← Read-only package auditor
 │   ├── docker-gate.cjs              ← Docker gate + static fallback advisory
 │   ├── lib/                         ← Shared validation libraries
@@ -61,7 +62,12 @@ qg-upd
 qg-rpt
 ```
 
-`qg-init` detects the project stack before writing. Version `1.0.0` is a `strict-node` gate and expects `package.json` at the repository root. Python/uv repositories are blocked by default so the wizard does not install an npm-based workflow or branch protection accidentally. Use `-Force` only when you intentionally want that override.
+`qg-init` detects the project stack before writing. Version `1.0.0` supports:
+
+- `node`: `package.json` at the repository root.
+- `python-uv`: `pyproject.toml` at the root or `pipeline/pyproject.toml`.
+
+Python/uv projects get a workflow based on `uv`, `pytest`, `pytest-cov`, `ruff`, `pip-audit`, and the same Node-based Quality Gate helper scripts. Unknown stacks are blocked unless `-Force` is explicit.
 
 Useful flags:
 
@@ -69,7 +75,24 @@ Useful flags:
 qg-init -DryRun      # preview only
 qg-init -Yes         # accept safe default prompts
 qg-init -SkipGitHub  # copy local files without remote branch protection/ruleset
+qg-init -Sonar       # configure SonarCloud and require the SonarCloud check
 qg-init -Force       # allow non-Node stack override
+```
+
+For a Python/uv repo like `tcc-free-plaud`:
+
+```powershell
+cd D:\Dev\Repos\Own\tcc-free-plaud
+qg-init -DryRun -Repo devAndreotti/tcc-free-plaud
+qg-init -Yes -Repo devAndreotti/tcc-free-plaud -SkipBaseline -SkipCommit
+
+cd pipeline
+uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
+
+cd ..
+qg-upd
+qg-chk
+qg-doc
 ```
 
 ### Step 1 — Copy Files to Your Repository
@@ -126,11 +149,27 @@ The script automatically performs the following tasks:
 
 ### Step 3 — Capture the Project's Baseline
 
+Node/Jest project:
+
 ```bash
 # In the root of your project:
 npm run test:coverage:ci
 node scripts/quality-gate.js init
+```
 
+Python/uv project with `pipeline/pyproject.toml`:
+
+```powershell
+cd pipeline
+uvx ruff check src tests --output-format=json > ..\coverage\ruff.json
+uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
+cd ..
+node scripts/quality-gate.js init
+```
+
+Commit the captured ratchet:
+
+```bash
 git add scripts/baseline.json
 git commit -m "chore: set quality gate baseline"
 git push
@@ -165,10 +204,10 @@ You tell Codex:
 Codex writes code → runs tests locally → opens PR
           ↓
 GitHub Actions triggers automatically:
-  ├─ npm audit (blocks on critical vulnerabilities)
-  ├─ ESLint (blocks on errors)
-  ├─ Jest + ratchet (blocks if coverage regressed)
-  ├─ SonarCloud (blocks if quality gate fails)
+  ├─ npm audit or pip-audit (blocks on critical vulnerabilities)
+  ├─ ESLint or Ruff (blocks on lint errors)
+  ├─ Jest or pytest + ratchet (blocks if coverage regressed)
+  ├─ SonarCloud when enabled (blocks if quality gate fails)
   └─ Docker image gate (skips repos without Docker; runs advisory/fallback if Docker exists)
           ↓
 Codex/Copilot review can be requested on the PR
@@ -179,7 +218,7 @@ You tell Codex:
 babysit-pr enters a loop:
   ├─ CI failed? → reads logs → fixes code → push → waits for CI
   ├─ Copilot commented "Bloqueador:"? → implements → push
-  ├─ Ratchet failed? → reads coverage-summary.json → adds tests → push
+  ├─ Ratchet failed? → reads coverage-summary.json or coverage.json → adds tests → push
   ├─ Sonar failed? → reads sonarcloud[bot] comment → fixes → push
   └─ All green? → notifies you: "PR #42 is ready to merge"
           ↓

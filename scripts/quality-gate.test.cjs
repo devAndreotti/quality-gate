@@ -26,6 +26,20 @@ function writeCoverage(project, pct = 82) {
   }, null, 2));
 }
 
+function writePythonCoverage(project, pct = 83.7) {
+  fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'coverage/coverage.json'), JSON.stringify({
+    meta: { format: 3, version: '7.6.0' },
+    totals: {
+      covered_lines: 837,
+      num_statements: 1000,
+      percent_covered: pct,
+      num_branches: 200,
+      covered_branches: 150,
+    },
+  }, null, 2));
+}
+
 test('parseArgs supports command and dry-run', () => {
   const args = parseArgs(['update', '--dry-run']);
   assert.equal(args.command, 'update');
@@ -75,4 +89,22 @@ test('init creates baseline when coverage exists', () => {
   assert.equal(result.status, 'updated');
   assert.equal(baseline.coverage.lines, 77);
   assert.equal(baseline.updatedAt, '2026-05-24T00:00:00.000Z');
+});
+
+test('init creates baseline from Python coverage JSON', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'pipeline/src/free_plaud'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline/src/free_plaud/app.py'), 'print("ok")\n');
+  writePythonCoverage(project, 83.7);
+
+  const result = runQualityGate({ root: project, command: 'init', now: '2026-05-24T00:00:00.000Z' });
+  const baseline = JSON.parse(fs.readFileSync(path.join(project, 'scripts/baseline.json'), 'utf8'));
+
+  assert.equal(result.status, 'updated');
+  assert.equal(result.current.coverage.lines, 83.7);
+  assert.equal(result.current.coverage.statements, 83.7);
+  assert.equal(result.current.coverage.functions, 83.7);
+  assert.equal(result.current.coverage.branches, 75);
+  assert.equal(baseline.coverage.branches, 75);
 });
