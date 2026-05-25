@@ -19,7 +19,10 @@ param(
     [switch]$SkipCodex,
     [switch]$SkipBaseline,
     [switch]$SkipCommit,
+    [switch]$SkipGitHub,
     [switch]$DryRun,
+    [switch]$Yes,
+    [switch]$Force,
     [string]$Repo
 )
 
@@ -47,11 +50,14 @@ function Show-Help {
     Write-Host '    -SkipCodex          -               pula a copia da pasta .codex/' -ForegroundColor Gray
     Write-Host '    -SkipBaseline       -               pula a captura do baseline inicial' -ForegroundColor Gray
     Write-Host '    -SkipCommit         -               pula o commit automatico no git' -ForegroundColor Gray
+    Write-Host '    -SkipGitHub         -               pula branch protection e ruleset remoto' -ForegroundColor Gray
     Write-Host '    -DryRun             -               executa em modo demonstracao' -ForegroundColor Gray
+    Write-Host '    -Yes                -               confirma etapas com padrao seguro' -ForegroundColor Gray
+    Write-Host '    -Force              -               permite instalar em stack nao Node' -ForegroundColor Gray
     Write-Host '    -Repo <owner/repo>  -               forca repositorio especifico' -ForegroundColor Gray
     Write-Host ''
     Write-Host '  uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt' -ForegroundColor DarkGray
-    Write-Host '  atalhos: qg-init [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-DryRun] [-Repo <slug>]' -ForegroundColor DarkGray
+    Write-Host '  atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]' -ForegroundColor DarkGray
     Write-Host ''
 }
 
@@ -86,7 +92,7 @@ function Write-DryRunPlan {
         [Parameter(Mandatory=$true)]
         [string]$Message
     )
-    Write-Host "  [DryRun] $Message" -ForegroundColor DarkGray
+    Write-Host "    [DryRun] $Message" -ForegroundColor DarkGray
 }
 
 function Request-Step {
@@ -99,7 +105,111 @@ function Request-Step {
         Write-DryRunPlan "$Message -> simulado"
         return 's'
     }
+    if ($Yes) {
+        Write-InitItem "$Message -> sim" 'DarkGray'
+        return 's'
+    }
     return Confirm-Step -Message $Message -DefaultYes:$DefaultYes
+}
+
+$script:QgInitSummary = @()
+
+function Write-InitBanner {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ProjectRoot,
+        [Parameter(Mandatory=$true)]
+        [string]$TemplateRoot,
+        [Parameter(Mandatory=$true)]
+        [string]$Mode
+    )
+    Write-Host ''
+    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Cyan
+    Write-Host '  │  Quality Gate Init                                     v1.0│' -ForegroundColor Cyan
+    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '   CONTEXTO' -ForegroundColor Cyan
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-Host ("    Projeto   {0}" -f $ProjectRoot) -ForegroundColor Gray
+    Write-Host ("    Template  {0}" -f $TemplateRoot) -ForegroundColor Gray
+    Write-Host ("    Modo      {0}" -f $Mode) -ForegroundColor Gray
+    Write-Host ''
+}
+
+function Write-InitStep {
+    param(
+        [Parameter(Mandatory=$true)]
+        [int]$Number,
+        [Parameter(Mandatory=$true)]
+        [string]$Title,
+        [Parameter(Mandatory=$true)]
+        [string]$Description
+    )
+    Write-Host ''
+    Write-Host ("  [{0}/5] {1}" -f $Number, $Title) -ForegroundColor Yellow
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-Host ("    {0}" -f $Description) -ForegroundColor DarkGray
+}
+
+function Write-InitItem {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Message,
+        [string]$Color = 'Gray'
+    )
+    Write-Host ("    {0}" -f $Message) -ForegroundColor $Color
+}
+
+function Add-InitSummary {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Step,
+        [Parameter(Mandatory=$true)]
+        [string]$Status,
+        [Parameter(Mandatory=$true)]
+        [string]$Detail
+    )
+    $script:QgInitSummary += [pscustomobject]@{
+        Step = $Step
+        Status = $Status
+        Detail = $Detail
+    }
+}
+
+function Write-InitSummary {
+    Write-Host ''
+    Write-Host '   RESUMO' -ForegroundColor Cyan
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    foreach ($item in $script:QgInitSummary) {
+        $color = 'Gray'
+        $marker = '•'
+        if ($item.Status -eq 'ok') { $color = 'Green'; $marker = '✓' }
+        elseif ($item.Status -eq 'warn') { $color = 'Yellow'; $marker = '!' }
+        elseif ($item.Status -eq 'fail') { $color = 'Red'; $marker = 'x' }
+        elseif ($item.Status -eq 'skip') { $color = 'DarkGray'; $marker = '-' }
+        Write-Host ("    {0} {1,-12} {2}" -f $marker, $item.Step, $item.Detail) -ForegroundColor $color
+    }
+    Write-Host ''
+}
+
+function Get-ProjectProfile {
+    param([Parameter(Mandatory=$true)][string]$Root)
+
+    if (Test-Path (Join-Path $Root 'package.json')) {
+        return [pscustomobject]@{ Name = 'node'; Detail = 'package.json na raiz' }
+    }
+    if (Test-Path (Join-Path $Root 'pyproject.toml')) {
+        return [pscustomobject]@{ Name = 'python-uv'; Detail = 'pyproject.toml na raiz' }
+    }
+    if (Test-Path (Join-Path $Root 'pipeline\pyproject.toml')) {
+        return [pscustomobject]@{ Name = 'python-uv'; Detail = 'pipeline\pyproject.toml' }
+    }
+    return [pscustomobject]@{ Name = 'unknown'; Detail = 'stack nao detectada' }
+}
+
+function Test-ProjectProfileSupported {
+    param([Parameter(Mandatory=$true)][string]$Profile)
+    return $Profile -eq 'node'
 }
 
 # Resolve os caminhos importantes
@@ -119,14 +229,26 @@ if ($Help) {
 
 # ── Modo Init (Wizard) ────────────────────────────────────
 if ($Init) {
-    Write-Host "🏁 Iniciando setup interativo do Quality Gate em: $ProjectRoot" -ForegroundColor Cyan
-    Write-Host "Template base: $TemplateRoot" -ForegroundColor DarkGray
-    if ($DryRun) {
-        Write-Host "Modo DryRun ativo: nenhuma escrita, commit ou chamada mutável será feita." -ForegroundColor Yellow
+    $script:QgInitSummary = @()
+    $mode = if ($DryRun) { 'DryRun (sem escrita, commit ou chamada mutável)' } elseif ($Yes) { 'Execução real (-Yes)' } else { 'Execução real' }
+    $projectProfile = Get-ProjectProfile -Root $ProjectRoot
+    Write-InitBanner -ProjectRoot $ProjectRoot -TemplateRoot $TemplateRoot -Mode $mode
+    Write-Host ("    Perfil    {0} ({1})" -f $projectProfile.Name, $projectProfile.Detail) -ForegroundColor Gray
+
+    if (-not (Test-ProjectProfileSupported -Profile $projectProfile.Name) -and -not $DryRun -and -not $Force) {
+        Write-Host ''
+        Write-Host '  PERFIL INCOMPATIVEL' -ForegroundColor Yellow
+        Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+        Write-Host '    Este pacote v1 instala um gate strict-node.' -ForegroundColor Yellow
+        Write-Host '    O projeto atual nao tem package.json na raiz; workflow npm quebraria o CI.' -ForegroundColor Yellow
+        Write-Host '    Use -DryRun para inspecionar ou -Force se voce realmente quiser instalar mesmo assim.' -ForegroundColor Yellow
+        Add-InitSummary -Step 'Perfil' -Status 'fail' -Detail ("{0} nao suportado sem -Force" -f $projectProfile.Name)
+        Write-InitSummary
+        return
     }
 
     # Passo 1: Copiar arquivos
-    Write-Host "`n[Passo 1/5] Copiar arquivos do Quality Gate" -ForegroundColor Yellow
+    Write-InitStep -Number 1 -Title 'Arquivos do pacote' -Description 'Copia workflow, scripts, policy, skill local e sonar-project.properties.'
     $confirm = Request-Step -Message "Deseja copiar arquivos base (.github, scripts, etc.) para o projeto?" -DefaultYes
     if ($confirm -eq 'c') {
         Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
@@ -145,7 +267,7 @@ if ($Init) {
                 if ($DryRun) {
                     Write-DryRunPlan "Copiaria pasta $folder para $dst"
                 } else {
-                    Write-Host "  Copiando pasta $folder..." -ForegroundColor Gray
+                    Write-InitItem "Copiando pasta $folder..."
                     if (-not (Test-Path $dst)) {
                         New-Item -ItemType Directory -Path $dst -Force | Out-Null
                     }
@@ -161,7 +283,7 @@ if ($Init) {
             if ($DryRun) {
                 Write-DryRunPlan "Copiaria sonar-project.properties para $sonarDst"
             } else {
-                Write-Host "  Copiando sonar-project.properties..." -ForegroundColor Gray
+                Write-InitItem "Copiando sonar-project.properties..."
                 Copy-Item -Path $sonarSrc -Destination $sonarDst -Force
             }
         }
@@ -180,16 +302,19 @@ if ($Init) {
         }
         
         if ($DryRun) {
-            Write-Host "✓ DryRun: cópia de arquivos simulada." -ForegroundColor Green
+            Write-Host '    ✓ DryRun: cópia de arquivos simulada.' -ForegroundColor Green
+            Add-InitSummary -Step 'Arquivos' -Status 'ok' -Detail 'simulado'
         } else {
-            Write-Host "✓ Cópia de arquivos concluída." -ForegroundColor Green
+            Write-Host '    ✓ Cópia de arquivos concluída.' -ForegroundColor Green
+            Add-InitSummary -Step 'Arquivos' -Status 'ok' -Detail 'copiados'
         }
     } else {
-        Write-Host "Cópia pulada." -ForegroundColor DarkGray
+        Write-InitItem 'Cópia pulada.' 'DarkGray'
+        Add-InitSummary -Step 'Arquivos' -Status 'skip' -Detail 'pulado'
     }
 
     # Passo 2: Configurar .gitignore
-    Write-Host "`n[Passo 2/5] Atualizar .gitignore" -ForegroundColor Yellow
+    Write-InitStep -Number 2 -Title '.gitignore' -Description 'Ignora estado local e relatórios gerados em .quality-gate/.'
     $confirm = Request-Step -Message "Deseja adicionar os paths do Quality Gate no .gitignore?" -DefaultYes
     if ($confirm -eq 'c') {
         Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
@@ -234,7 +359,8 @@ if ($Init) {
                 foreach ($entry in $toAdd) {
                     Write-DryRunPlan "Adicionaria no .gitignore: $entry"
                 }
-                Write-Host "✓ DryRun: .gitignore simulado." -ForegroundColor Green
+                Write-Host '    ✓ DryRun: .gitignore simulado.' -ForegroundColor Green
+                Add-InitSummary -Step 'Gitignore' -Status 'ok' -Detail 'simulado'
             } else {
                 # Garante que termine com newline
                 if ($lines.Count -gt 0 -and $lines[-1] -ne "") {
@@ -243,19 +369,26 @@ if ($Init) {
                 Add-Content -Path $gitignore -Value "# Quality Gate"
                 foreach ($entry in $toAdd) {
                     Add-Content -Path $gitignore -Value $entry
-                    Write-Host "  Adicionado: $entry" -ForegroundColor Gray
+                    Write-InitItem "Adicionado: $entry"
                 }
-                Write-Host "✓ .gitignore atualizado." -ForegroundColor Green
+                Write-Host '    ✓ .gitignore atualizado.' -ForegroundColor Green
+                Add-InitSummary -Step 'Gitignore' -Status 'ok' -Detail 'atualizado'
             }
         } else {
-            Write-Host "✓ .gitignore já configurado." -ForegroundColor Green
+            Write-Host '    ✓ .gitignore já configurado.' -ForegroundColor Green
+            Add-InitSummary -Step 'Gitignore' -Status 'ok' -Detail 'já configurado'
         }
     } else {
-        Write-Host "Atualização de .gitignore pulada." -ForegroundColor DarkGray
+        Write-InitItem 'Atualização de .gitignore pulada.' 'DarkGray'
+        Add-InitSummary -Step 'Gitignore' -Status 'skip' -Detail 'pulado'
     }
 
     # Passo 3: Configurar GitHub via setup.js
-    Write-Host "`n[Passo 3/5] Configurar GitHub (Proteção de branch e Secrets)" -ForegroundColor Yellow
+    Write-InitStep -Number 3 -Title 'GitHub' -Description 'Configura bootstrap, branch protection, PR ruleset e secrets opcionais.'
+    if ($SkipGitHub) {
+        Write-InitItem 'Setup do GitHub pulado por parâmetro.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado por flag'
+    } else {
     $confirm = Request-Step -Message "Deseja rodar o script de setup do GitHub (setup.js)?" -DefaultYes
     if ($confirm -eq 'c') {
         Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
@@ -300,32 +433,38 @@ if ($Init) {
                 if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
             }
             
-            $setupJs = Join-Path $ProjectRoot "scripts\setup.js"
-            if ($DryRun -and -not (Test-Path $setupJs)) {
-                $setupJs = Join-Path $TemplateRoot "scripts\setup.js"
-            }
+            $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
             if (Test-Path $setupJs) {
-                Write-Host "  Executando setup.js..." -ForegroundColor Gray
+                Write-InitItem 'Executando setup.js...'
                 & node $setupJs $setupArgs
                 if ($LASTEXITCODE -ne 0) {
+                    Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
+                    Write-InitSummary
                     Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
                 } else {
-                    Write-Host "✓ GitHub configurado com sucesso." -ForegroundColor Green
+                    Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
+                    Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
                 }
             } else {
+                Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'
+                Write-InitSummary
                 Write-Error "setup.js não foi encontrado no projeto!"
             }
         } else {
             Write-Warning "Ignorando configuração do GitHub: GITHUB_TOKEN não fornecido."
+            Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'sem token'
         }
     } else {
-        Write-Host "Setup do GitHub pulado." -ForegroundColor DarkGray
+        Write-InitItem 'Setup do GitHub pulado.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado'
+    }
     }
 
     # Passo 4: Capturar baseline inicial
-    Write-Host "`n[Passo 4/5] Capturar baseline inicial das métricas" -ForegroundColor Yellow
+    Write-InitStep -Number 4 -Title 'Baseline' -Description 'Lê coverage/coverage-summary.json e grava scripts/baseline.json.'
     if ($SkipBaseline) {
-        Write-Host "Captura de baseline pulada por parâmetro." -ForegroundColor DarkGray
+        Write-InitItem 'Captura de baseline pulada por parâmetro.' 'DarkGray'
+        Add-InitSummary -Step 'Baseline' -Status 'skip' -Detail 'pulado por flag'
     } else {
         $confirm = Request-Step -Message "Deseja gerar o baseline de métricas inicial (quality-gate.js init)?" -DefaultYes
         if ($confirm -eq 'c') {
@@ -333,12 +472,9 @@ if ($Init) {
             return
         }
         if ($confirm -eq 's') {
-            $gateJs = Join-Path $ProjectRoot "scripts\quality-gate.js"
-            if ($DryRun -and -not (Test-Path $gateJs)) {
-                $gateJs = Join-Path $TemplateRoot "scripts\quality-gate.js"
-            }
+            $gateJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\quality-gate.js" } else { Join-Path $ProjectRoot "scripts\quality-gate.js" }
             if (Test-Path $gateJs) {
-                Write-Host "  Executando quality-gate.js init..." -ForegroundColor Gray
+                Write-InitItem 'Executando quality-gate.js init...'
                 $gateArgs = @("init")
                 if ($DryRun) {
                     $gateArgs += "--dry-run"
@@ -347,21 +483,27 @@ if ($Init) {
                 if ($LASTEXITCODE -ne 0) {
                     Write-Warning "Não foi possível gerar o baseline automático (relatório de coverage ausente?)."
                     Write-Warning "Gere o coverage do seu projeto primeiro (npm run test:coverage:ci) e depois rode 'qg-upd'."
+                    Add-InitSummary -Step 'Baseline' -Status 'warn' -Detail 'coverage ausente'
                 } else {
-                    Write-Host "✓ Baseline inicial gravado com sucesso." -ForegroundColor Green
+                    Write-Host '    ✓ Baseline inicial gravado com sucesso.' -ForegroundColor Green
+                    Add-InitSummary -Step 'Baseline' -Status 'ok' -Detail $(if ($DryRun) { 'simulado' } else { 'gravado' })
                 }
             } else {
+                Add-InitSummary -Step 'Baseline' -Status 'fail' -Detail 'quality-gate.js ausente'
+                Write-InitSummary
                 Write-Error "quality-gate.js não foi encontrado no projeto!"
             }
         } else {
-            Write-Host "Captura de baseline pulada." -ForegroundColor DarkGray
+            Write-InitItem 'Captura de baseline pulada.' 'DarkGray'
+            Add-InitSummary -Step 'Baseline' -Status 'skip' -Detail 'pulado'
         }
     }
 
     # Passo 5: Fazer commit inicial
-    Write-Host "`n[Passo 5/5] Realizar commit automático" -ForegroundColor Yellow
+    Write-InitStep -Number 5 -Title 'Commit' -Description 'Stagia arquivos do Quality Gate e cria commit inicial opcional.'
     if ($SkipCommit) {
-        Write-Host "Commit pulado por parâmetro." -ForegroundColor DarkGray
+        Write-InitItem 'Commit pulado por parâmetro.' 'DarkGray'
+        Add-InitSummary -Step 'Commit' -Status 'skip' -Detail 'pulado por flag'
     } else {
         $confirm = Request-Step -Message "Deseja commitar as alterações do Quality Gate na branch atual?" -DefaultYes
         if ($confirm -eq 'c') {
@@ -371,7 +513,8 @@ if ($Init) {
         if ($confirm -eq 's') {
             if ($DryRun) {
                 Write-DryRunPlan "Executaria git add dos arquivos do Quality Gate"
-                Write-DryRunPlan "Executaria git commit -m 'chore: setup Quality Gate'"
+                Write-DryRunPlan "Executaria git commit -m 'chore: configurar Quality Gate'"
+                Add-InitSummary -Step 'Commit' -Status 'ok' -Detail 'simulado'
             } elseif (Test-Path (Join-Path $ProjectRoot ".git")) {
                 git add .github/ scripts/ .quality-gate/
                 if (-not $SkipCodex -and (Test-Path (Join-Path $ProjectRoot ".codex"))) {
@@ -383,18 +526,33 @@ if ($Init) {
                 if (Test-Path (Join-Path $ProjectRoot ".gitignore")) {
                     git add .gitignore
                 }
-                
-                git commit -m "chore: setup Quality Gate"
-                Write-Host "✓ Commit efetuado." -ForegroundColor Green
+
+                git diff --cached --quiet
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Warning "Nada staged para commitar."
+                    Add-InitSummary -Step 'Commit' -Status 'warn' -Detail 'nada staged'
+                } else {
+                    git commit -m "chore: configurar Quality Gate"
+                    if ($LASTEXITCODE -ne 0) {
+                        Add-InitSummary -Step 'Commit' -Status 'fail' -Detail 'git commit falhou'
+                        Write-InitSummary
+                        Write-Error "Falha ao criar commit automático."
+                    }
+                    Write-Host '    ✓ Commit efetuado.' -ForegroundColor Green
+                    Add-InitSummary -Step 'Commit' -Status 'ok' -Detail 'commit criado'
+                }
             } else {
                 Write-Warning "Pasta .git não encontrada na raiz. Pulando commit automático."
+                Add-InitSummary -Step 'Commit' -Status 'skip' -Detail 'sem .git'
             }
         } else {
-            Write-Host "Commit automático pulado." -ForegroundColor DarkGray
+            Write-InitItem 'Commit automático pulado.' 'DarkGray'
+            Add-InitSummary -Step 'Commit' -Status 'skip' -Detail 'pulado'
         }
     }
 
-    Write-Host "`n🎉 Setup do Quality Gate finalizado com sucesso no projeto!" -ForegroundColor Green
+    Write-InitSummary
+    Write-Host '    ✓ Setup do Quality Gate finalizado.' -ForegroundColor Green
     return
 }
 

@@ -47,6 +47,31 @@ The evolution plan to reduce AI usage is documented in [`IMPLEMENTATION.md`](./I
 
 ## Setup in 3 Steps
 
+### PowerShell Alias Flow
+
+When the Scriply profile is installed, use the aliases from any repository:
+
+```powershell
+qg
+qg-init -DryRun -Repo OWNER/REPO
+qg-init -Yes -Repo OWNER/REPO -SkipBaseline -SkipCommit
+qg-doc
+qg-chk
+qg-upd
+qg-rpt
+```
+
+`qg-init` detects the project stack before writing. Version `1.0.0` is a `strict-node` gate and expects `package.json` at the repository root. Python/uv repositories are blocked by default so the wizard does not install an npm-based workflow or branch protection accidentally. Use `-Force` only when you intentionally want that override.
+
+Useful flags:
+
+```powershell
+qg-init -DryRun      # preview only
+qg-init -Yes         # accept safe default prompts
+qg-init -SkipGitHub  # copy local files without remote branch protection/ruleset
+qg-init -Force       # allow non-Node stack override
+```
+
 ### Step 1 — Copy Files to Your Repository
 
 Extract the zip and copy all files (except the `.codex/` directory) to the root of your project:
@@ -95,7 +120,7 @@ GITHUB_TOKEN=ghp_xxx node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG --s
 The script automatically performs the following tasks:
 - Creates/updates the local deterministic bootstrap: `LICENSE`, `.github/FUNDING.yml`, `.github/dependabot.yml`, and a managed README block.
 - Adds `SONAR_TOKEN` as a repository secret.
-- Creates the repository ruleset that triggers automated Copilot Review on every PR.
+- Creates the repository PR ruleset used by Quality Gate. Copilot Review can still be requested by the babysit-pr workflow or enabled separately in GitHub when available for the account.
 - Configures branch protection on the `main` branch using `.quality-gate/policy.json`.
 - Validates the overall setup at the end.
 
@@ -146,7 +171,7 @@ GitHub Actions triggers automatically:
   ├─ SonarCloud (blocks if quality gate fails)
   └─ Docker image gate (skips repos without Docker; runs advisory/fallback if Docker exists)
           ↓
-Copilot Review posts comments (automatic via ruleset)
+Codex/Copilot review can be requested on the PR
           ↓
 You tell Codex:
   "babysit PR #42"
@@ -210,8 +235,8 @@ node scripts/quality-gate.js report
 → Ensure that `YOUR_ORG` and `YOUR_REPO` in `sonar-project.properties` have been replaced.
 
 **Copilot Review does not appear automatically**
-→ Run `node scripts/setup.js` to recreate the ruleset.
-→ Confirm your Copilot Student or Enterprise plan is active in Settings → Copilot.
+→ The REST ruleset API currently rejects the automatic Copilot fields for some accounts/plans.
+→ Use babysit-pr to request or process review feedback, or enable automatic review in GitHub UI when the account supports it.
 
 **Ratchet fails on the first run**
 → The initial `baseline.json` starts with zeros. Run `node scripts/quality-gate.js init`.

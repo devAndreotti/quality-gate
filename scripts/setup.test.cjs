@@ -6,8 +6,10 @@ const test = require('node:test');
 
 const {
   buildSetupPlan,
+  copilotRulesetBody,
   configureSonarProperties,
   detectRepoFromRemote,
+  formatGitHubApiError,
   parseArgs,
   runSetup,
 } = require('./setup.js');
@@ -91,6 +93,28 @@ test('buildSetupPlan dry-run is offline and does not require GITHUB_TOKEN', () =
   assert.equal(plan.defaultBranch, 'trunk');
   assert.equal(plan.requiresGitHubToken, false);
   assert.ok(plan.steps.some((step) => step.name === 'branch-protection'));
+});
+
+test('copilot ruleset body uses only currently accepted pull request parameters', () => {
+  const body = copilotRulesetBody();
+  const parameters = body.rules[0].parameters;
+
+  assert.equal(body.name, 'quality-gate-pr-policy');
+  assert.equal(parameters.automatic_copilot_code_review_enabled, undefined);
+  assert.equal(parameters.review_new_pushes, undefined);
+  assert.equal(parameters.review_draft_pull_requests, undefined);
+  assert.equal(parameters.required_review_thread_resolution, false);
+});
+
+test('formatGitHubApiError includes validation details', () => {
+  const message = formatGitHubApiError(422, {
+    message: 'Validation Failed',
+    errors: ['Unexpected parameter `automatic_copilot_code_review_enabled`'],
+  }, '/repos/owner/repo/rulesets');
+
+  assert.match(message, /GitHub API 422/);
+  assert.match(message, /\/repos\/owner\/repo\/rulesets/);
+  assert.match(message, /Unexpected parameter/);
 });
 
 test('runSetup uses default branch from GitHub metadata and never shell-quotes secrets', async () => {
