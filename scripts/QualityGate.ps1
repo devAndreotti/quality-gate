@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Script auxiliar para o Quality Gate integrado com o perfil Scriply.
 .DESCRIPTION
@@ -90,6 +90,11 @@ if (-not (Test-Path (Join-Path $TemplateRoot "scripts\setup.js"))) {
 }
 
 $ProjectRoot = $pwd.Path
+
+if ($Help) {
+    Show-Help
+    return
+}
 
 # ── Modo Init (Wizard) ────────────────────────────────────
 if ($Init) {
