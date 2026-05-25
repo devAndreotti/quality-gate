@@ -251,7 +251,7 @@ function pythonSonarProperties(current, projectDir) {
     `sonar.sources=${prefix}src`,
     `sonar.tests=${prefix}tests`,
     'sonar.test.inclusions=**/tests/**/*.py,**/test_*.py,**/*_test.py',
-    'sonar.exclusions=**/.venv/**,**/.pytest_cache/**,**/coverage/**,**/__pycache__/**',
+    'sonar.exclusions=**/.venv/**,**/.pytest_cache/**,**/coverage/**,**/__pycache__/**,scripts/**,.github/**,.quality-gate/**,docs/**',
     'sonar.python.coverage.reportPaths=coverage/coverage.xml',
   );
   return `${lines.join('\n').replace(/\n+$/g, '')}\n`;
