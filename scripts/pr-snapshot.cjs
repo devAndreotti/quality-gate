@@ -216,41 +216,52 @@ function addUnique(actions, action) {
   if (!actions.includes(action)) actions.push(action);
 }
 
-function deriveActions(snapshot) {
-  if (snapshot.merge) {
-    if (snapshot.merge.ready) return [snapshot.merge.status === 'ready_with_advisory' ? 'ready_with_advisory' : 'ready'];
-    const actions = [];
-    for (const blocker of snapshot.merge.blockers || []) addUnique(actions, blocker.action || 'escalate_manual');
-    for (const advisory of snapshot.merge.advisories || []) {
-      if (advisory.action) addUnique(actions, advisory.action);
-    }
-    if (actions.length === 0) return ['escalate_manual'];
-    return actions;
+function deriveMergeActions(merge) {
+  if (merge.ready) return [merge.status === 'ready_with_advisory' ? 'ready_with_advisory' : 'ready'];
+  const actions = [];
+  for (const blocker of merge.blockers || []) addUnique(actions, blocker.action || 'escalate_manual');
+  for (const advisory of merge.advisories || []) {
+    if (advisory.action) addUnique(actions, advisory.action);
   }
+  return actions.length ? actions : ['escalate_manual'];
+}
 
+function hasPendingJob(jobs) {
+  return Object.values(jobs).some((job) => !job.conclusion || ['queued', 'in_progress', 'pending'].includes(job.status));
+}
+
+function addLegacyJobActions(actions, jobs) {
+  const jobActions = [
+    [jobs.security, 'fix_security'],
+    [jobs.lint, 'fix_lint'],
+    [jobs.test, 'fix_ratchet'],
+    [jobs.sonar, 'diagnose_sonar'],
+    [jobs.docker, 'diagnose_docker'],
+  ];
+  for (const [job, action] of jobActions) {
+    if (isFailed(job)) addUnique(actions, action);
+  }
+}
+
+function deriveLegacyActions(snapshot) {
   const actions = [];
   const jobs = snapshot.ci?.jobs || {};
-  const add = (action) => {
-    if (!actions.includes(action)) actions.push(action);
-  };
 
-  if (snapshot.pr?.mergeable === 'CONFLICTING') add('escalate');
-  if (isFailed(jobs.security)) add('fix_security');
-  if (isFailed(jobs.lint)) add('fix_lint');
-  if (isFailed(jobs.test)) add('fix_ratchet');
-  if (isFailed(jobs.sonar)) add('diagnose_sonar');
-  if (isFailed(jobs.docker)) add('diagnose_docker');
-  if (Object.values(jobs).some((job) => !job.conclusion || ['queued', 'in_progress', 'pending'].includes(job.status))) {
-    add('wait_ci');
-  }
+  if (snapshot.pr?.mergeable === 'CONFLICTING') addUnique(actions, 'escalate');
+  addLegacyJobActions(actions, jobs);
+  if (hasPendingJob(jobs)) addUnique(actions, 'wait_ci');
   if (!Object.keys(jobs).length && ['queued', 'in_progress', 'pending'].includes(snapshot.latestRun?.status)) {
-    add('wait_ci');
+    addUnique(actions, 'wait_ci');
   }
-  if ((snapshot.copilotBlockers || []).length > 0) add('process_copilot');
-  if ((snapshot.humanBlockers || []).length > 0) add('process_human');
-  if (actions.length === 0 && snapshot.ci?.overall === 'success') add('ready');
-  if (actions.length === 0) add('diagnose_ci');
+  if ((snapshot.copilotBlockers || []).length > 0) addUnique(actions, 'process_copilot');
+  if ((snapshot.humanBlockers || []).length > 0) addUnique(actions, 'process_human');
+  if (actions.length === 0 && snapshot.ci?.overall === 'success') addUnique(actions, 'ready');
+  if (actions.length === 0) addUnique(actions, 'diagnose_ci');
   return actions;
+}
+
+function deriveActions(snapshot) {
+  return snapshot.merge ? deriveMergeActions(snapshot.merge) : deriveLegacyActions(snapshot);
 }
 
 function fetchBranchProtection({ repo, baseRefName, ghJson, githubApi, allowApiFallback }) {
@@ -334,6 +345,55 @@ function fetchReviewThreads({ repo, prNumber, ghJson }) {
   }
 }
 
+function collectPrMergeBlockers({ pr, mergeable, block }) {
+  if (pr.isDraft) block('draft', 'PR ainda esta em draft', 'escalate_manual');
+  if (!['OPEN', ''].includes(String(pr.state || '').toUpperCase())) {
+    block('pr_not_open', `PR state=${pr.state}`, 'escalate_manual');
+  }
+  if (mergeable === 'CONFLICTING') block('merge_conflict', 'PR tem conflito de merge', 'escalate_manual');
+}
+
+function collectCheckFindings({ checks, block, advise }) {
+  for (const check of failedRequiredChecks(checks)) {
+    block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', { check });
+  }
+  for (const check of pendingRequiredChecks(checks)) {
+    block('required_check_pending', `check obrigatorio pendente/ausente: ${check.name}`, 'wait_ci', { check });
+  }
+  for (const check of failedAdvisoryChecks(checks)) {
+    advise('advisory_check_failed', `check opcional falhou: ${check.name}`, 'diagnose_optional_check', { check });
+  }
+}
+
+function collectReviewFindings({ reviewThreads, copilotBlockers, humanBlockers, block }) {
+  if (reviewThreads.status === 'unknown') {
+    block('review_threads_unknown', 'review threads nao puderam ser confirmadas via GraphQL', 'verify_review_threads_manual', {
+      error: reviewThreads.error || null,
+    });
+  } else if (reviewThreads.unresolved.length > 0) {
+    block('unresolved_review_threads', `${reviewThreads.unresolved.length} review thread(s) unresolved`, 'resolve_review_threads', {
+      unresolved: reviewThreads.unresolved,
+    });
+  }
+  for (const blocker of copilotBlockers) block('copilot_blocker', blocker, 'process_copilot');
+  for (const blocker of humanBlockers) block('human_review_blocker', blocker, 'process_human');
+}
+
+function collectMergeStateFindings({ mergeState, branchProtection, block, advise }) {
+  const stateBlockers = {
+    BLOCKED: ['blocked_by_policy', 'GitHub mergeStateStatus=BLOCKED', 'blocked_by_policy'],
+    BEHIND: ['branch_behind', 'branch atrasada em relacao a base', 'sync_branch'],
+    DIRTY: ['merge_conflict', 'GitHub mergeStateStatus=DIRTY', 'escalate_manual'],
+  };
+  if (stateBlockers[mergeState]) {
+    block(...stateBlockers[mergeState]);
+  } else if (mergeState === 'UNKNOWN' && branchProtection.status === 'unknown') {
+    block('merge_state_unknown', 'merge state e branch protection desconhecidos', 'escalate_manual');
+  } else if (mergeState === 'UNSTABLE') {
+    advise('merge_unstable', 'GitHub mergeStateStatus=UNSTABLE; confira checks opcionais', 'diagnose_optional_check');
+  }
+}
+
 function evaluateMerge({ pr, checks, reviewThreads, branchProtection, copilotBlockers = [], humanBlockers = [] }) {
   const blockers = [];
   const advisories = [];
@@ -347,49 +407,10 @@ function evaluateMerge({ pr, checks, reviewThreads, branchProtection, copilotBlo
     advisories.push({ type, message, action, ...data });
   };
 
-  if (pr.isDraft) block('draft', 'PR ainda esta em draft', 'escalate_manual');
-  if (!['OPEN', ''].includes(String(pr.state || '').toUpperCase())) {
-    block('pr_not_open', `PR state=${pr.state}`, 'escalate_manual');
-  }
-  if (mergeable === 'CONFLICTING') block('merge_conflict', 'PR tem conflito de merge', 'escalate_manual');
-
-  for (const check of failedRequiredChecks(checks)) {
-    block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', { check });
-  }
-  for (const check of pendingRequiredChecks(checks)) {
-    block('required_check_pending', `check obrigatorio pendente/ausente: ${check.name}`, 'wait_ci', { check });
-  }
-  for (const check of failedAdvisoryChecks(checks)) {
-    advise('advisory_check_failed', `check opcional falhou: ${check.name}`, 'diagnose_optional_check', { check });
-  }
-
-  if (reviewThreads.status === 'unknown') {
-    block('review_threads_unknown', 'review threads nao puderam ser confirmadas via GraphQL', 'verify_review_threads_manual', {
-      error: reviewThreads.error || null,
-    });
-  } else if (reviewThreads.unresolved.length > 0) {
-    block('unresolved_review_threads', `${reviewThreads.unresolved.length} review thread(s) unresolved`, 'resolve_review_threads', {
-      unresolved: reviewThreads.unresolved,
-    });
-  }
-  for (const blocker of copilotBlockers) {
-    block('copilot_blocker', blocker, 'process_copilot');
-  }
-  for (const blocker of humanBlockers) {
-    block('human_review_blocker', blocker, 'process_human');
-  }
-
-  if (mergeState === 'BLOCKED') {
-    block('blocked_by_policy', 'GitHub mergeStateStatus=BLOCKED', 'blocked_by_policy');
-  } else if (mergeState === 'BEHIND') {
-    block('branch_behind', 'branch atrasada em relacao a base', 'sync_branch');
-  } else if (mergeState === 'DIRTY') {
-    block('merge_conflict', 'GitHub mergeStateStatus=DIRTY', 'escalate_manual');
-  } else if (mergeState === 'UNKNOWN' && branchProtection.status === 'unknown') {
-    block('merge_state_unknown', 'merge state e branch protection desconhecidos', 'escalate_manual');
-  } else if (mergeState === 'UNSTABLE') {
-    advise('merge_unstable', 'GitHub mergeStateStatus=UNSTABLE; confira checks opcionais', 'diagnose_optional_check');
-  }
+  collectPrMergeBlockers({ pr, mergeable, block });
+  collectCheckFindings({ checks, block, advise });
+  collectReviewFindings({ reviewThreads, copilotBlockers, humanBlockers, block });
+  collectMergeStateFindings({ mergeState, branchProtection, block, advise });
 
   if (branchProtection.status === 'unknown' && mergeState !== 'CLEAN') {
     advise('branch_protection_unknown', 'branch protection nao pode ser lida', null, {

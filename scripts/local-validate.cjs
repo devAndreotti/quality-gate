@@ -163,10 +163,8 @@ function isCoverageFresh(coveragePath, startedAt) {
   return stat.mtimeMs >= Date.parse(startedAt);
 }
 
-function runLocalValidation(options = {}) {
-  const plan = buildValidationPlan(options);
-  const executor = options.executor || defaultExecutor;
-  const result = {
+function createValidationResult(plan, options) {
+  return {
     profile: plan.profile,
     project: plan.project,
     startedAt: plan.startedAt,
@@ -181,6 +179,48 @@ function runLocalValidation(options = {}) {
       durationMs: null,
     })),
   };
+}
+
+function findPytestStep(plan) {
+  return plan.commands.find((candidate) => candidate.name === 'pytest');
+}
+
+function shouldSkipStep({ step, output, plan, pytestSucceeded }) {
+  if (step.requiresFreshCoverage && !pytestSucceeded) {
+    output.skipped = true;
+    output.skipReason = 'pytest_failed_or_missing';
+    return { skip: true, error: null };
+  }
+  if (!step.requiresFreshCoverage) return { skip: false, error: null };
+
+  const pytestStep = findPytestStep(plan);
+  if (!pytestStep || isCoverageFresh(pytestStep.coverageJson, plan.startedAt)) return { skip: false, error: null };
+
+  output.skipped = true;
+  output.skipReason = 'coverage_stale';
+  return { skip: true, error: `coverage stale: ${pytestStep.coverageJson}` };
+}
+
+function executeValidationStep({ step, output, executor }) {
+  const started = Date.now();
+  const commandResult = executor(step);
+  output.durationMs = Date.now() - started;
+  output.exitCode = commandResult.exitCode;
+  writeLog(step, commandResult);
+  return commandResult;
+}
+
+function writeValidationReport(plan, result) {
+  const reportPath = path.join(plan.project, '.quality-gate', 'reports', 'local-validation.json');
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(reportPath, `${JSON.stringify(result, null, 2)}\n`);
+  result.reportPath = reportPath;
+}
+
+function runLocalValidation(options = {}) {
+  const plan = buildValidationPlan(options);
+  const executor = options.executor || defaultExecutor;
+  const result = createValidationResult(plan, options);
 
   if (options.dryRun) {
     result.finishedAt = options.now || new Date().toISOString();
@@ -193,38 +233,21 @@ function runLocalValidation(options = {}) {
   for (let index = 0; index < plan.commands.length; index += 1) {
     const step = plan.commands[index];
     const output = result.commands[index];
-    if (step.requiresFreshCoverage && !pytestSucceeded) {
-      output.skipped = true;
-      output.skipReason = 'pytest_failed_or_missing';
-      continue;
+    const skip = shouldSkipStep({ step, output, plan, pytestSucceeded });
+    if (skip.error) {
+      validationError = skip.error;
+      result.status = 'failure';
     }
-    if (step.requiresFreshCoverage) {
-      const pytestStep = plan.commands.find((candidate) => candidate.name === 'pytest');
-      if (pytestStep && !isCoverageFresh(pytestStep.coverageJson, plan.startedAt)) {
-        output.skipped = true;
-        output.skipReason = 'coverage_stale';
-        validationError = `coverage stale: ${pytestStep.coverageJson}`;
-        result.status = 'failure';
-        continue;
-      }
-    }
+    if (skip.skip) continue;
 
-    const started = Date.now();
-    const commandResult = executor(step);
-    output.durationMs = Date.now() - started;
-    output.exitCode = commandResult.exitCode;
-    writeLog(step, commandResult);
-
+    const commandResult = executeValidationStep({ step, output, executor });
     if (step.name === 'pytest') pytestSucceeded = commandResult.exitCode === 0;
     if (commandResult.exitCode !== 0 && step.required) result.status = 'failure';
   }
 
   if (validationError) result.error = validationError;
   result.finishedAt = new Date().toISOString();
-  const reportPath = path.join(plan.project, '.quality-gate', 'reports', 'local-validation.json');
-  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-  fs.writeFileSync(reportPath, `${JSON.stringify(result, null, 2)}\n`);
-  result.reportPath = reportPath;
+  writeValidationReport(plan, result);
   return result;
 }
 

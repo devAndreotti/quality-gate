@@ -138,7 +138,10 @@ test('doctor detects missing declared Node surface for project with UI package',
     project: { surfaces: [{ type: 'python-uv', root: 'pipeline', required: true }] },
   });
 
-  assert.deepEqual(detected.map((surface) => `${surface.type}:${surface.root}`).sort(), ['node:UI', 'python-uv:pipeline']);
+  assert.deepEqual(
+    detected.map((surface) => `${surface.type}:${surface.root}`).sort((left, right) => left.localeCompare(right)),
+    ['node:UI', 'python-uv:pipeline'],
+  );
   assert.equal(check.level, 'warn');
   assert.match(check.detail, /node:UI/);
 });
