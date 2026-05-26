@@ -68,6 +68,7 @@ function buildValidationPlan(options = {}) {
       command('ruff', pipelineRoot, 'uvx ruff check src tests --output-format=json > ..\\coverage\\ruff.json', {
         artifact: path.join(reportsRoot, 'ruff.log'),
         surface: 'python-uv',
+        ensureDirs: [path.join(projectRoot, 'coverage')],
       }),
       command(
         'pytest',
@@ -78,6 +79,7 @@ function buildValidationPlan(options = {}) {
           surface: 'python-uv',
           coverageJson: path.join(projectRoot, 'coverage', 'coverage.json'),
           basetemp,
+          ensureDirs: [path.join(projectRoot, 'coverage')],
         },
       ),
       command('pip-audit', pipelineRoot, 'uvx pip-audit --path .venv', {
@@ -157,6 +159,12 @@ function writeLog(step, result) {
   fs.writeFileSync(step.artifact, `${result.stdout || ''}${result.stderr || ''}`);
 }
 
+function ensureStepDirs(step) {
+  for (const dir of step.ensureDirs || []) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
 function isCoverageFresh(coveragePath, startedAt) {
   if (!exists(coveragePath)) return false;
   const stat = fs.statSync(coveragePath);
@@ -203,6 +211,7 @@ function shouldSkipStep({ step, output, plan, pytestSucceeded }) {
 
 function executeValidationStep({ step, output, executor }) {
   const started = Date.now();
+  ensureStepDirs(step);
   const commandResult = executor(step);
   output.durationMs = Date.now() - started;
   output.exitCode = commandResult.exitCode;

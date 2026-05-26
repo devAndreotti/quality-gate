@@ -69,6 +69,34 @@ function normalizeChecks(checks = []) {
   return { overall, jobs };
 }
 
+function conclusionFromGhState(state) {
+  const normalized = normalizeValue(state);
+  if (['success', 'pass', 'passed'].includes(normalized)) return 'success';
+  if (['failure', 'fail', 'failed', 'error'].includes(normalized)) return 'failure';
+  if (['cancelled', 'canceled'].includes(normalized)) return 'cancelled';
+  if (['skipped', 'skipping', 'neutral'].includes(normalized)) return 'skipped';
+  return null;
+}
+
+function statusFromGhState(state, conclusion) {
+  const normalized = normalizeValue(state);
+  if (conclusion) return 'completed';
+  if (['pending', 'queued', 'in_progress', 'waiting', 'requested'].includes(normalized)) return normalized;
+  return normalized || 'unknown';
+}
+
+function normalizePrCheck(check) {
+  const conclusion = normalizeValue(check.conclusion) || conclusionFromGhState(check.state || check.bucket);
+  return {
+    name: check.name,
+    status: normalizeValue(check.status) || statusFromGhState(check.state || check.bucket, conclusion),
+    conclusion,
+    detailsUrl: check.detailsUrl || check.link || null,
+    startedAt: check.startedAt || null,
+    completedAt: check.completedAt || null,
+  };
+}
+
 function isFailed(job) {
   return ['failure', 'cancelled', 'timed_out', 'action_required'].includes(job?.conclusion);
 }
@@ -145,6 +173,20 @@ function categorizeChecks(checks = [], branchProtection = {}) {
   }
 
   return { required, advisory, unknown };
+}
+
+function fetchPrChecks({ prNumber, repo, headSha, ghJson, githubApi }) {
+  try {
+    const items = queryGhOrApi({
+      ghJson,
+      githubApi,
+      args: ['pr', 'checks', String(prNumber), '--json', 'name,state,bucket,link,startedAt,completedAt,workflow'],
+      fallback: (api) => (headSha ? mapCheckRunsApi(api(`/repos/${repo}/commits/${headSha}/check-runs`)) : []),
+    }) || [];
+    return { status: 'known', items: items.map(normalizePrCheck) };
+  } catch (error) {
+    return { status: 'unknown', items: [], error: error.message };
+  }
 }
 
 function failedRequiredChecks(checks) {
@@ -301,6 +343,11 @@ function collectPrMergeBlockers({ pr, mergeable, block }) {
 }
 
 function collectCheckFindings({ checks, block, advise }) {
+  if (checks.status === 'unknown') {
+    block('checks_unknown', 'checks nao puderam ser confirmados', 'escalate_manual', {
+      error: checks.error || null,
+    });
+  }
   for (const check of failedRequiredChecks(checks)) {
     block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', { check });
   }
@@ -317,12 +364,12 @@ function collectReviewFindings({ reviewThreads, copilotBlockers, humanBlockers, 
     block('review_threads_unknown', 'review threads nao puderam ser confirmadas via GraphQL', 'verify_review_threads_manual', {
       error: reviewThreads.error || null,
     });
+    for (const blocker of copilotBlockers) block('copilot_blocker', blocker, 'process_copilot');
   } else if (reviewThreads.unresolved.length > 0) {
     block('unresolved_review_threads', `${reviewThreads.unresolved.length} review thread(s) unresolved`, 'resolve_review_threads', {
       unresolved: reviewThreads.unresolved,
     });
   }
-  for (const blocker of copilotBlockers) block('copilot_blocker', blocker, 'process_copilot');
   for (const blocker of humanBlockers) block('human_review_blocker', blocker, 'process_human');
 }
 
@@ -465,11 +512,12 @@ function buildSnapshot(options) {
     fallback: (api) => mapPullApi(api(`/repos/${repo}/pulls/${prNumber}`)),
   });
   const headSha = pr.headRefOid || pr.headSha || null;
-  const checks = queryGhOrApi({
+  const checkQuery = fetchPrChecks({
+    prNumber,
+    repo,
+    headSha,
     ghJson,
     githubApi,
-    args: ['pr', 'checks', String(prNumber), '--json', 'name,status,conclusion,detailsUrl,startedAt,completedAt'],
-    fallback: (api) => (headSha ? mapCheckRunsApi(api(`/repos/${repo}/commits/${headSha}/check-runs`)) : []),
   });
   const branchProtection = fetchBranchProtection({
     repo,
@@ -478,7 +526,11 @@ function buildSnapshot(options) {
     githubApi,
     allowApiFallback,
   });
-  const categorizedChecks = categorizeChecks(checks || [], branchProtection);
+  const categorizedChecks = {
+    ...categorizeChecks(checkQuery.items, branchProtection),
+    status: checkQuery.status,
+    error: checkQuery.error || null,
+  };
   const reviewThreads = fetchReviewThreads({ repo, prNumber, ghJson });
   const inlineComments = queryGhOrApi({
     ghJson,
@@ -510,13 +562,12 @@ function buildSnapshot(options) {
     : null;
   let artifacts = [];
   if (latestRun?.id) {
-    const artifactsResult = queryGhOrApi({
-      ghJson,
-      githubApi,
-      args: ['run', 'view', String(latestRun.id), '--json', 'artifacts'],
-      fallback: (api) => api(`/repos/${repo}/actions/runs/${latestRun.id}/artifacts`),
-    });
-    artifacts = artifactsResult?.artifacts || [];
+    try {
+      const artifactsResult = githubApi(`/repos/${repo}/actions/runs/${latestRun.id}/artifacts`);
+      artifacts = artifactsResult?.artifacts || [];
+    } catch {
+      artifacts = [];
+    }
   }
 
   const snapshot = {
@@ -535,7 +586,7 @@ function buildSnapshot(options) {
       url: pr.url,
       isDraft: Boolean(pr.isDraft),
     },
-    ci: normalizeChecks(checks || []),
+    ci: normalizeChecks(checkQuery.items),
     checks: categorizedChecks,
     branchProtection,
     reviewThreads,

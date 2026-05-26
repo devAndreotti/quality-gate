@@ -13,11 +13,13 @@ const path = require('node:path');
 
 const MARKER = '<!-- quality-gate-sticky-v2 -->';
 
-const JOB_ORDER = ['security', 'lint', 'test', 'sonar', 'docker'];
+const JOB_ORDER = ['security', 'lint', 'test', 'python', 'ui', 'sonar', 'docker'];
 const CHECK_TO_JOB = new Map([
   ['Security audit', 'security'],
   ['Lint', 'lint'],
   ['Tests & ratchet', 'test'],
+  ['Python validation', 'python'],
+  ['UI validation', 'ui'],
   ['SonarCloud', 'sonar'],
   ['Docker image gate', 'docker'],
 ]);
@@ -25,6 +27,8 @@ const JOB_LABELS = {
   security: 'Segurança',
   lint: 'Lint',
   test: 'Testes + Ratchet',
+  python: 'Python validation',
+  ui: 'UI validation',
   sonar: 'SonarCloud',
   docker: 'Docker image gate',
 };
@@ -47,6 +51,8 @@ function collectJobs(env = process.env) {
     security: env.SECURITY_RESULT ?? 'skipped',
     lint: env.LINT_RESULT ?? 'skipped',
     test: env.TEST_RESULT ?? 'skipped',
+    python: env.PYTHON_RESULT ?? 'skipped',
+    ui: env.UI_RESULT ?? 'skipped',
     sonar: env.SONAR_RESULT ?? 'skipped',
     docker: env.DOCKER_RESULT ?? 'skipped',
   };
