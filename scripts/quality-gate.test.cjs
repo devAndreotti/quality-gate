@@ -6,6 +6,8 @@ const test = require('node:test');
 
 const {
   buildUpdatedBaseline,
+  filterGitStatusEntries,
+  isPathAllowedByPattern,
   parseArgs,
   runQualityGate,
 } = require('./quality-gate.js');
@@ -126,4 +128,17 @@ test('file size gate uses maxFileLines from policy', () => {
   const result = runQualityGate({ root: project, command: 'check' });
 
   assert.equal(result.current.oversizedFiles, 1);
+});
+
+test('untracked allowlist ignores samples without hiding tracked modifications', () => {
+  assert.equal(isPathAllowedByPattern('samples/demo.json', 'samples/**'), true);
+  assert.equal(isPathAllowedByPattern('src/app.js', 'samples/**'), false);
+
+  const filtered = filterGitStatusEntries([
+    '?? samples/demo.json',
+    ' M samples/tracked.json',
+    '?? scratch.txt',
+  ], ['samples/**']);
+
+  assert.deepEqual(filtered, [' M samples/tracked.json', '?? scratch.txt']);
 });

@@ -41,8 +41,10 @@ const REQUIRED_FILES = [
   'scripts/bootstrap-repo.cjs',
   'scripts/ci-diagnose.cjs',
   'scripts/configure-project.cjs',
+  'scripts/dependabot-consolidate.cjs',
   'scripts/doctor.cjs',
   'scripts/docker-gate.cjs',
+  'scripts/local-validate.cjs',
   'scripts/pr-snapshot.cjs',
   'scripts/quality-gate.js',
   'scripts/pr-comment.js',
@@ -51,7 +53,9 @@ const REQUIRED_FILES = [
   'scripts/bootstrap-repo.test.cjs',
   'scripts/ci-diagnose.test.cjs',
   'scripts/configure-project.test.cjs',
+  'scripts/dependabot-consolidate.test.cjs',
   'scripts/e2e-smoke.test.cjs',
+  'scripts/local-validate.test.cjs',
   'scripts/pr-comment.test.cjs',
   'scripts/quality-gate.test.cjs',
   'scripts/lib/docker-detect.cjs',
@@ -118,6 +122,56 @@ function checkPolicy(root) {
       detail: error.message,
     };
   }
+}
+
+function detectProjectSurfaces(root) {
+  const surfaces = [];
+  if (exists(root, 'pipeline/pyproject.toml')) surfaces.push({ type: 'python-uv', root: 'pipeline' });
+  if (exists(root, 'package.json')) surfaces.push({ type: 'node', root: '.' });
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+    if (exists(root, `${entry.name}/package.json`)) surfaces.push({ type: 'node', root: entry.name });
+  }
+  return surfaces;
+}
+
+function checkProjectSurfaces(root, policy) {
+  const detected = detectProjectSurfaces(root);
+  const declared = policy?.project?.surfaces || [];
+  const declaredKeys = new Set(declared.map((surface) => `${surface.type}:${surface.root.replace(/\\/g, '/')}`));
+  const missing = detected
+    .map((surface) => `${surface.type}:${surface.root}`)
+    .filter((key) => !declaredKeys.has(key));
+
+  return {
+    level: missing.length ? 'warn' : 'ok',
+    name: 'Project surfaces',
+    detail: missing.length
+      ? `surfaces detectadas sem declaracao na policy: ${missing.join(', ')}`
+      : detected.length
+        ? 'surfaces detectadas estao declaradas'
+        : 'nenhuma surface Python/Node detectada',
+    data: { detected, declared },
+  };
+}
+
+function checkWorkflowSurfaces(workflowText, policy) {
+  const names = parseWorkflowJobNames(workflowText);
+  const surfaces = policy?.project?.surfaces || [];
+  const missing = [];
+  if (surfaces.some((surface) => surface.type === 'python-uv' && surface.required) && !names.includes('Python validation')) {
+    missing.push('Python validation');
+  }
+  if (surfaces.some((surface) => surface.type === 'node' && surface.required) && !names.includes('UI validation')) {
+    missing.push('UI validation');
+  }
+  return {
+    level: missing.length ? 'fail' : 'ok',
+    name: 'Workflow surfaces',
+    detail: missing.length
+      ? `workflow sem job requerido: ${missing.join(', ')}`
+      : 'workflow cobre surfaces requeridas',
+  };
 }
 
 function checkPolicyRequiredChecks(root, policy) {
@@ -273,6 +327,8 @@ function analyzeQualityGate(options = {}) {
     if (policy) {
       checks.push(checkPolicyRequiredChecks(root, policy));
       checks.push(checkPolicyBranchProtection(root, policy));
+      checks.push(checkProjectSurfaces(root, policy));
+      checks.push(checkWorkflowSurfaces(readText(root, '.github/workflows/quality-gate.yml'), policy));
     }
     checks.push(
       checkSkillSize(root),
@@ -347,6 +403,9 @@ if (require.main === module) {
 
 module.exports = {
   analyzeQualityGate,
+  checkProjectSurfaces,
+  checkWorkflowSurfaces,
+  detectProjectSurfaces,
   findMissingRequiredContexts,
   parseSetupRequiredContexts,
   parseWorkflowJobNames,

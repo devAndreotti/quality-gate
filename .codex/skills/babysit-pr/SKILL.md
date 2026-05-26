@@ -22,8 +22,9 @@ Loop contínuo até um desfecho terminal: PR mergeado, fechado, ou bloqueador hu
 2. Se não foi especificado, use `gh pr list` para mostrar os PRs abertos.
 3. Rode `node scripts/babysit-loop.cjs --pr N --once --json`.
 4. Se precisar de detalhe bruto, rode `pr-snapshot.cjs` e `ci-diagnose.cjs`.
-5. Leia `references/fix-playbook.md` apenas para a action retornada.
-6. **Entre no loop imediatamente** — não peça confirmação.
+5. Confie em `snapshot.merge.ready`; nunca declare PR pronto quando esse campo for `false`.
+6. Leia `references/fix-playbook.md` apenas para a action retornada.
+7. **Entre no loop imediatamente** — não peça confirmação.
 
 ## O loop
 
@@ -75,6 +76,23 @@ Use os comandos manuais de `references/pr-watcher.md` só quando o script falhar
       "report": "success"
     }
   },
+  "merge": {
+    "state": "BLOCKED",
+    "ready": false,
+    "blockers": [
+      { "type": "blocked_by_policy", "action": "blocked_by_policy", "message": "GitHub mergeStateStatus=BLOCKED" }
+    ],
+    "advisories": []
+  },
+  "checks": {
+    "required": [],
+    "advisory": [{ "name": "SonarCloud Code Analysis", "conclusion": "failure" }],
+    "unknown": []
+  },
+  "reviewThreads": {
+    "status": "known",
+    "unresolved": []
+  },
   "copilotBlockers": ["src/auth.ts:42 - sem tratamento de erro"],
   "humanBlockers": [],
   "latestRun": { "id": 123456789 },
@@ -97,9 +115,16 @@ O campo `actions` dita as correções deste ciclo.
 | `process_human` | revisor pediu mudança | implementar, manter o reviewer informado |
 | `diagnose_sonar` | SonarCloud falhou | ler comentário do sonarcloud[bot] no PR, corrigir issues |
 | `diagnose_docker` | Docker image gate falhou | ler `.quality-gate/reports/docker-image-doctor.json` ou logs do job |
+| `fix_required_check` | Check obrigatorio falhou | rodar `ci-diagnose`, identificar job e corrigir causa |
+| `diagnose_optional_check` | Check advisory falhou | registrar risco; corrigir se barato, mas nao tratar como blocker automatico |
+| `resolve_review_threads` | GraphQL encontrou review thread unresolved | resolver comentario ou escalar decisao humana |
+| `verify_review_threads_manual` | GraphQL nao confirmou threads | parar e pedir verificacao/permissao; nao declarar pronto |
+| `blocked_by_policy` | GitHub merge state/policy bloqueia merge | inspecionar branch protection, required checks e permissao |
+| `sync_branch` | Branch atrasada | atualizar branch do PR ou pedir acao se policy exigir |
 | `rerun_flaky` | falha de infra/timeout | `gh run rerun $RUN_ID --failed` (máx 3x) |
 | `wait_ci` | CI rodando | aguardar com polling a cada 30s |
 | `ready` | tudo verde e sem blockers | reportar PR pronto |
+| `ready_with_advisory` | required verde e merge liberado, mas advisory falhou | reportar pronto com risco explicito |
 | `escalate` | bloqueador ambíguo | reportar ao usuário com contexto completo |
 
 ## Regras de commit/push
@@ -137,7 +162,9 @@ gh run download $(gh run list --branch $(gh pr view $PR --json headRefName -q .h
 | Condição | O que fazer |
 |----------|-------------|
 | PR mergeado ou fechado | Encerrar, reportar resumo ao usuário |
-| CI verde + Sonar ok + sem blockers | Reportar "PR pronto" e parar o loop |
+| `snapshot.merge.ready == true` e action `ready` | Reportar "PR pronto" e parar o loop |
+| `snapshot.merge.ready == true` e action `ready_with_advisory` | Reportar pronto com advisory e parar o loop |
+| `verify_review_threads_manual` | Parar; pedir verificacao/permissao. Nao dizer pronto |
 | Conflito de merge complexo | Escalate — decisão humana de arquitetura |
 | 3 re-runs sem sucesso no mesmo job | Escalate — provavelmente infra |
 | 10 ciclos sem progresso | Escalate com histórico de tentativas |

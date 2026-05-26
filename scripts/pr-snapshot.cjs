@@ -3,6 +3,12 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const DEFAULT_ADVISORY_CHECKS = [
+  'SonarCloud',
+  'SonarCloud Code Analysis',
+  'SonarQubeCloud / SonarCloud Code Analysis',
+];
+
 function parseArgs(argv) {
   const args = { pr: null, repo: process.env.GITHUB_REPOSITORY || null, json: false, output: null };
   for (let index = 0; index < argv.length; index += 1) {
@@ -69,6 +75,16 @@ function normalizeValue(value) {
   return String(value || '').toLowerCase();
 }
 
+function normalizeCheckName(value) {
+  return normalizeValue(value).replace(/\s+/g, ' ').trim();
+}
+
+function splitRepo(repo) {
+  const [owner, name] = String(repo || '').split('/');
+  if (!owner || !name) throw new Error('--repo precisa estar no formato owner/repo');
+  return { owner, name };
+}
+
 function checkKey(name) {
   const normalized = normalizeValue(name);
   if (normalized.includes('security') || normalized.includes('audit')) return 'security';
@@ -110,7 +126,108 @@ function isFailed(job) {
   return ['failure', 'cancelled', 'timed_out', 'action_required'].includes(job?.conclusion);
 }
 
+function isPendingCheck(check) {
+  return !check?.conclusion || ['pending', 'queued', 'in_progress', 'requested', 'waiting', 'missing'].includes(check.status);
+}
+
+function normalizeCheckDetail(check) {
+  const status = normalizeValue(check.status);
+  const conclusion = normalizeValue(check.conclusion);
+  return {
+    name: check.name,
+    key: checkKey(check.name),
+    status: status || 'unknown',
+    conclusion: conclusion || null,
+    detailsUrl: check.detailsUrl || null,
+    startedAt: check.startedAt || null,
+    completedAt: check.completedAt || null,
+  };
+}
+
+function isAdvisoryCheck(name, requiredNames = []) {
+  const normalized = normalizeCheckName(name);
+  if (requiredNames.some((required) => normalizeCheckName(required) === normalized)) return false;
+  return DEFAULT_ADVISORY_CHECKS.some((advisory) => normalizeCheckName(advisory) === normalized)
+    || normalized.includes('sonarcloud')
+    || normalized.includes('sonarqube');
+}
+
+function normalizeRequiredCheckNames(protection) {
+  return [
+    ...(protection?.requiredChecks || []),
+    ...(protection?.checks || []).map((check) => check.context || check.name).filter(Boolean),
+  ].filter(Boolean);
+}
+
+function categorizeChecks(checks = [], branchProtection = {}) {
+  const normalizedChecks = checks.map(normalizeCheckDetail);
+  const requiredNames = [...new Set(normalizeRequiredCheckNames(branchProtection))];
+  const required = [];
+  const advisory = [];
+  const unknown = [];
+  const seenRequired = new Set();
+
+  for (const check of normalizedChecks) {
+    const requiredName = requiredNames.find((name) => normalizeCheckName(name) === normalizeCheckName(check.name));
+    if (requiredName) {
+      required.push({ ...check, required: true });
+      seenRequired.add(normalizeCheckName(requiredName));
+    } else if (isAdvisoryCheck(check.name, requiredNames)) {
+      advisory.push({ ...check, required: false });
+    } else if (requiredNames.length === 0) {
+      required.push({ ...check, required: true, inferred: true });
+    } else {
+      unknown.push({ ...check, required: false });
+    }
+  }
+
+  for (const name of requiredNames) {
+    if (!seenRequired.has(normalizeCheckName(name))) {
+      required.push({
+        name,
+        key: checkKey(name),
+        status: 'missing',
+        conclusion: null,
+        detailsUrl: null,
+        startedAt: null,
+        completedAt: null,
+        required: true,
+        missing: true,
+      });
+    }
+  }
+
+  return { required, advisory, unknown };
+}
+
+function failedRequiredChecks(checks) {
+  return checks.required.filter((check) => isFailed(check));
+}
+
+function pendingRequiredChecks(checks) {
+  return checks.required.filter((check) => check.missing || isPendingCheck(check));
+}
+
+function failedAdvisoryChecks(checks) {
+  return checks.advisory.filter((check) => isFailed(check));
+}
+
+function addUnique(actions, action) {
+  if (!actions.includes(action)) actions.push(action);
+}
+
 function deriveActions(snapshot) {
+  if (snapshot.merge) {
+    if (snapshot.merge.ready) return [snapshot.merge.status === 'ready_with_advisory' ? 'ready_with_advisory' : 'ready'];
+    const actions = [];
+    for (const blocker of snapshot.merge.blockers || []) addUnique(actions, blocker.action || 'escalate_manual');
+    for (const advisory of snapshot.merge.advisories || []) {
+      if (advisory.action) addUnique(actions, advisory.action);
+    }
+    if (actions.length === 0) return ['escalate_manual'];
+    return actions;
+  }
+
   const actions = [];
   const jobs = snapshot.ci?.jobs || {};
   const add = (action) => {
@@ -134,6 +251,162 @@ function deriveActions(snapshot) {
   if (actions.length === 0 && snapshot.ci?.overall === 'success') add('ready');
   if (actions.length === 0) add('diagnose_ci');
   return actions;
+}
+
+function fetchBranchProtection({ repo, baseRefName, ghJson, githubApi, allowApiFallback }) {
+  if (!baseRefName) return { status: 'unknown', requiredChecks: [], checks: [], error: 'base ref ausente' };
+  const apiPath = `repos/${repo}/branches/${encodeURIComponent(baseRefName)}/protection/required_status_checks`;
+  const normalize = (result) => ({
+    status: 'known',
+    strict: Boolean(result?.strict),
+    requiredChecks: [...(result?.contexts || []), ...(result?.checks || []).map((check) => check.context || check.name).filter(Boolean)],
+    checks: result?.checks || [],
+  });
+  try {
+    return normalize(ghJson(['api', apiPath]));
+  } catch (error) {
+    if (!allowApiFallback) {
+      return { status: 'unknown', requiredChecks: [], checks: [], error: error.message };
+    }
+    try {
+      return normalize(githubApi(`/${apiPath}`));
+    } catch (fallbackError) {
+      return { status: 'unknown', requiredChecks: [], checks: [], error: fallbackError.message || error.message };
+    }
+  }
+}
+
+function mapReviewThread(thread) {
+  const comments = thread.comments?.nodes || [];
+  const lastComment = comments[comments.length - 1] || {};
+  return {
+    isResolved: Boolean(thread.isResolved),
+    isOutdated: Boolean(thread.isOutdated),
+    path: thread.path || lastComment.path || null,
+    line: thread.line || lastComment.line || null,
+    author: lastComment.author?.login || null,
+    lastComment: String(lastComment.bodyText || lastComment.body || '').split(/\r?\n/)[0],
+  };
+}
+
+function fetchReviewThreads({ repo, prNumber, ghJson }) {
+  const { owner, name } = splitRepo(repo);
+  const query = `query($owner:String!,$name:String!,$number:Int!){
+    repository(owner:$owner,name:$name){
+      pullRequest(number:$number){
+        reviewThreads(first:100){
+          nodes{
+            isResolved
+            isOutdated
+            path
+            line
+            comments(last:1){
+              nodes{
+                bodyText
+                path
+                line
+                author{login}
+              }
+            }
+          }
+        }
+      }
+    }
+  }`;
+  try {
+    const result = ghJson([
+      'api',
+      'graphql',
+      '-f',
+      `query=${query}`,
+      '-F',
+      `owner=${owner}`,
+      '-F',
+      `name=${name}`,
+      '-F',
+      `number=${prNumber}`,
+    ]);
+    const threads = result?.repository?.pullRequest?.reviewThreads?.nodes || [];
+    const unresolved = threads.filter((thread) => !thread.isResolved).map(mapReviewThread);
+    return { status: 'known', unresolved };
+  } catch (error) {
+    return { status: 'unknown', unresolved: [], error: error.message };
+  }
+}
+
+function evaluateMerge({ pr, checks, reviewThreads, branchProtection, copilotBlockers = [], humanBlockers = [] }) {
+  const blockers = [];
+  const advisories = [];
+  const mergeState = String(pr.mergeStateStatus || 'UNKNOWN').toUpperCase();
+  const mergeable = String(pr.mergeable || 'UNKNOWN').toUpperCase();
+
+  const block = (type, message, action, data = {}) => {
+    blockers.push({ type, message, action, ...data });
+  };
+  const advise = (type, message, action, data = {}) => {
+    advisories.push({ type, message, action, ...data });
+  };
+
+  if (pr.isDraft) block('draft', 'PR ainda esta em draft', 'escalate_manual');
+  if (!['OPEN', ''].includes(String(pr.state || '').toUpperCase())) {
+    block('pr_not_open', `PR state=${pr.state}`, 'escalate_manual');
+  }
+  if (mergeable === 'CONFLICTING') block('merge_conflict', 'PR tem conflito de merge', 'escalate_manual');
+
+  for (const check of failedRequiredChecks(checks)) {
+    block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', { check });
+  }
+  for (const check of pendingRequiredChecks(checks)) {
+    block('required_check_pending', `check obrigatorio pendente/ausente: ${check.name}`, 'wait_ci', { check });
+  }
+  for (const check of failedAdvisoryChecks(checks)) {
+    advise('advisory_check_failed', `check opcional falhou: ${check.name}`, 'diagnose_optional_check', { check });
+  }
+
+  if (reviewThreads.status === 'unknown') {
+    block('review_threads_unknown', 'review threads nao puderam ser confirmadas via GraphQL', 'verify_review_threads_manual', {
+      error: reviewThreads.error || null,
+    });
+  } else if (reviewThreads.unresolved.length > 0) {
+    block('unresolved_review_threads', `${reviewThreads.unresolved.length} review thread(s) unresolved`, 'resolve_review_threads', {
+      unresolved: reviewThreads.unresolved,
+    });
+  }
+  for (const blocker of copilotBlockers) {
+    block('copilot_blocker', blocker, 'process_copilot');
+  }
+  for (const blocker of humanBlockers) {
+    block('human_review_blocker', blocker, 'process_human');
+  }
+
+  if (mergeState === 'BLOCKED') {
+    block('blocked_by_policy', 'GitHub mergeStateStatus=BLOCKED', 'blocked_by_policy');
+  } else if (mergeState === 'BEHIND') {
+    block('branch_behind', 'branch atrasada em relacao a base', 'sync_branch');
+  } else if (mergeState === 'DIRTY') {
+    block('merge_conflict', 'GitHub mergeStateStatus=DIRTY', 'escalate_manual');
+  } else if (mergeState === 'UNKNOWN' && branchProtection.status === 'unknown') {
+    block('merge_state_unknown', 'merge state e branch protection desconhecidos', 'escalate_manual');
+  } else if (mergeState === 'UNSTABLE') {
+    advise('merge_unstable', 'GitHub mergeStateStatus=UNSTABLE; confira checks opcionais', 'diagnose_optional_check');
+  }
+
+  if (branchProtection.status === 'unknown' && mergeState !== 'CLEAN') {
+    advise('branch_protection_unknown', 'branch protection nao pode ser lida', null, {
+      error: branchProtection.error || null,
+    });
+  }
+
+  const ready = blockers.length === 0;
+  const hasAdvisoryFailure = advisories.some((advisory) => advisory.type === 'advisory_check_failed' || advisory.type === 'merge_unstable');
+  return {
+    state: mergeState,
+    mergeable,
+    ready,
+    status: ready ? (hasAdvisoryFailure ? 'ready_with_advisory' : 'ready') : 'blocked',
+    blockers,
+    advisories,
+  };
 }
 
 function formatInlineComment(comment) {
@@ -215,6 +488,7 @@ function buildSnapshot(options) {
   const repo = options.repo || process.env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('--repo ou GITHUB_REPOSITORY requerido');
   const githubApi = options.githubApi || runGitHubApi;
+  const allowApiFallback = Boolean(options.githubApi);
 
   const pr = queryGhOrApi({
     ghJson,
@@ -229,6 +503,15 @@ function buildSnapshot(options) {
     args: ['pr', 'checks', String(prNumber), '--json', 'name,status,conclusion,detailsUrl,startedAt,completedAt'],
     fallback: (api) => (headSha ? mapCheckRunsApi(api(`/repos/${repo}/commits/${headSha}/check-runs`)) : []),
   });
+  const branchProtection = fetchBranchProtection({
+    repo,
+    baseRefName: pr.baseRefName,
+    ghJson,
+    githubApi,
+    allowApiFallback,
+  });
+  const categorizedChecks = categorizeChecks(checks || [], branchProtection);
+  const reviewThreads = fetchReviewThreads({ repo, prNumber, ghJson });
   const inlineComments = queryGhOrApi({
     ghJson,
     githubApi,
@@ -285,11 +568,22 @@ function buildSnapshot(options) {
       isDraft: Boolean(pr.isDraft),
     },
     ci: normalizeChecks(checks || []),
+    checks: categorizedChecks,
+    branchProtection,
+    reviewThreads,
     copilotBlockers: collectCopilotBlockers(inlineComments),
     humanBlockers: collectHumanBlockers(reviews),
     latestRun,
     artifacts,
   };
+  snapshot.merge = evaluateMerge({
+    pr: snapshot.pr,
+    checks: categorizedChecks,
+    reviewThreads,
+    branchProtection,
+    copilotBlockers: snapshot.copilotBlockers,
+    humanBlockers: snapshot.humanBlockers,
+  });
   snapshot.actions = deriveActions(snapshot);
   return snapshot;
 }
@@ -327,7 +621,9 @@ if (require.main === module) {
 
 module.exports = {
   buildSnapshot,
+  categorizeChecks,
   deriveActions,
+  evaluateMerge,
   normalizeChecks,
   parseArgs,
 };

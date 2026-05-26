@@ -9,6 +9,7 @@
       "SonarCloud",
       "Docker image gate"
     ],
+    "advisoryChecks": [],
     "coverageRatchet": true,
     "maxFileLines": 300
   },
@@ -55,5 +56,11 @@
       "Medium"
     ],
     "fallbackWhenUnavailable": "static-advisory"
+  },
+  "localValidation": {
+    "untrackedAllowlist": [
+      "samples/**"
+    ],
+    "pytestBasetempPattern": ".pytest-tmp-qg-${timestamp}-${pid}"
   }
 }

@@ -24,6 +24,8 @@ node --test scripts\docker-gate.test.cjs
 node --test scripts\pr-snapshot.test.cjs
 node --test scripts\ci-diagnose.test.cjs
 node --test scripts\babysit-loop.test.cjs
+node --test scripts\local-validate.test.cjs
+node --test scripts\dependabot-consolidate.test.cjs
 node --test scripts\e2e-smoke.test.cjs
 node scripts\doctor.cjs --dry-run
 node scripts\doctor.cjs --release
@@ -64,8 +66,10 @@ scripts/
   doctor.cjs           # auditor read-only por padrao
   setup.js             # orquestrador GitHub atual
   babysit-loop.cjs     # ciclo snapshot + diagnostico sem corrigir codigo
+  dependabot-consolidate.cjs # plano dry-run para PRs Dependabot
   docker-gate.cjs      # detector Docker + wrapper Docker Image Doctor
   bootstrap-repo.cjs   # LICENSE/FUNDING/Dependabot/README scaffold
+  local-validate.cjs   # validacao local unica para PR
   pr-snapshot.cjs      # JSON para babysit-pr
   ci-diagnose.cjs      # diagnostico deterministico de CI
   lib/
@@ -207,8 +211,13 @@ Status: implementada.
 
 Comportamento:
 
-- `pr-snapshot.cjs --pr N --json` coleta checks, mergeability, comentarios e
-  artefatos com `gh` primeiro e fallback por API.
+- `pr-snapshot.cjs --pr N --json` coleta checks, mergeability, comentarios,
+  review threads e artefatos com `gh` primeiro e fallback por API.
+- Snapshot separa `checks.required`, `checks.advisory`, `checks.unknown`,
+  `merge.blockers`, `merge.advisories` e `reviewThreads`.
+- `ready` so existe quando `merge.ready === true`.
+- Sonar falho entra como advisory quando nao estiver em branch protection ou
+  policy required.
 - `babysit-pr` passa a consumir snapshot JSON.
 
 Aceite:
@@ -226,15 +235,76 @@ Comportamento:
 
 - `ci-diagnose.cjs --run ID --json` classifica lint, audit, coverage, Sonar e
   falha de infra.
+- Sonar advisory vira `diagnose_optional_check`, nao blocker obrigatorio.
+- Coverage stale vira categoria propria para impedir `qg-chk` com artefato velho.
+- Artefatos de run apontam para `.quality-gate/reports/ci/<run-id>/`.
 - Skill usa diagnostico pronto e decide correcao.
 - `babysit-loop.cjs --pr N --once --json` une snapshot e diagnose em um ciclo
-  deterministico. Ele nao corrige codigo; só retorna actions para a skill.
+  deterministico. Ele nao corrige codigo; so retorna actions para a skill.
+  O loop nao aceita `actions=["ready"]` se `merge.ready=false`.
 
 Aceite:
 
 ```bash
 node --test scripts\ci-diagnose.test.cjs
 node scripts\ci-diagnose.cjs --snapshot .quality-gate/reports/pr-snapshot.json --json
+```
+
+### Fase 6 — Local Validate
+
+Status: implementada.
+
+Comportamento:
+
+- `local-validate.cjs --project <repo> --profile pr --json` roda validacao local
+  em uma unica entrada.
+- Detecta `pipeline/pyproject.toml` e surfaces Node via `package.json`.
+- Pytest usa `--basetemp .pytest-tmp-qg-<timestamp>-<pid>`.
+- `qg-chk` so roda depois de pytest verde e `coverage/coverage.json` fresco.
+- Relatorio final vai para `.quality-gate/reports/local-validation.json`.
+
+Aceite:
+
+```bash
+node --test scripts\local-validate.test.cjs
+node scripts\local-validate.cjs --project . --profile pr --dry-run --json
+```
+
+### Fase 7 — Policy mixed e workflow
+
+Status: implementada.
+
+Comportamento:
+
+- Policy aceita `project.surfaces`, `ci.advisoryChecks` e `localValidation`.
+- `bootstrap-repo.cjs` detecta Python/uv e Node, grava policy inicial e workflow.
+- Workflow gerado inclui `Python validation` e `UI validation` quando necessario.
+- `doctor.cjs` avisa surface detectada sem policy e falha se surface required nao
+  tiver job de workflow.
+
+Aceite:
+
+```bash
+node --test scripts\doctor.test.cjs
+node --test scripts\bootstrap-repo.test.cjs
+```
+
+### Fase 8 — Dependabot consolidation
+
+Status: implementada V1 dry-run.
+
+Comportamento:
+
+- `dependabot-consolidate.cjs --repo OWNER/REPO --dry-run --json` lista PRs
+  Dependabot abertos, arquivos tocados e conflitos provaveis.
+- Dois PRs no mesmo workflow geram recomendacao `consolidate`.
+- PRs independentes geram ordem sugerida de merge.
+
+Aceite:
+
+```bash
+node --test scripts\dependabot-consolidate.test.cjs
+node scripts\dependabot-consolidate.cjs --repo OWNER/REPO --dry-run --json
 ```
 
 ## Regras de alteracao

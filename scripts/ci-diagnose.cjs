@@ -92,6 +92,14 @@ function textIncludes(text, patterns) {
 function classifyFailure({ name = '', log = '' }) {
   const source = `${name}\n${log}`;
 
+  if (textIncludes(source, [/coverage\.json.*stale/i, /coverage.*stale/i, /pytest.*failed.*coverage/i])) {
+    return {
+      category: 'coverage_stale',
+      action: 'rerun_tests',
+      confidence: 'high',
+      reason: 'coverage artifact is stale or was not refreshed after pytest',
+    };
+  }
   if (textIncludes(source, [/ECONNRESET/i, /ETIMEDOUT/i, /timed out/i, /runner.*lost/i, /network/i, /502 Bad Gateway/i])) {
     return {
       category: 'infra',
@@ -118,7 +126,7 @@ function classifyFailure({ name = '', log = '' }) {
   }
   if (textIncludes(source, [/ratchet/i, /coverage.*regress/i, /Quality Gate.*Ratchet/i, /coverage-summary/i])) {
     return {
-      category: 'ratchet',
+      category: 'coverage_ratchet',
       action: 'fix_ratchet',
       confidence: 'high',
       reason: 'coverage ratchet failed',
@@ -166,9 +174,27 @@ function failedJobsFromSnapshot(snapshot) {
     }));
 }
 
+function failedAdvisoryNames(snapshot) {
+  return new Set((snapshot?.checks?.advisory || [])
+    .filter((check) => ['failure', 'cancelled', 'timed_out', 'action_required'].includes(check?.conclusion))
+    .map((check) => String(check.name || '').toLowerCase()));
+}
+
 function diagnoseSnapshot({ snapshot, logs = {}, now }) {
   const failedJobs = failedJobsFromSnapshot(snapshot);
+  const advisoryFailures = failedAdvisoryNames(snapshot);
   const findings = failedJobs.map((job) => {
+    if (advisoryFailures.has(String(job.name || '').toLowerCase())) {
+      return {
+        job: job.name,
+        conclusion: job.conclusion,
+        category: /sonar/i.test(job.name) ? 'sonar_advisory' : 'advisory',
+        action: 'diagnose_optional_check',
+        confidence: 'high',
+        reason: 'failed check is advisory in snapshot contract',
+        url: job.html_url || null,
+      };
+    }
     const classified = classifyFailure({ name: job.name, log: logs[job.name] || '' });
     return {
       job: job.name,
@@ -200,7 +226,7 @@ function diagnoseSnapshot({ snapshot, logs = {}, now }) {
   }
 
   const actions = unique([...(snapshot.actions || []), ...findings.map((finding) => finding.action)])
-    .filter((action) => action !== 'ready' && action !== 'wait_ci');
+    .filter((action) => !['ready', 'ready_with_advisory', 'wait_ci'].includes(action));
 
   return {
     schemaVersion: 1,
@@ -215,6 +241,35 @@ function diagnoseSnapshot({ snapshot, logs = {}, now }) {
     },
     findings,
     actions,
+  };
+}
+
+function artifactDirectory(reportsRoot, runId) {
+  return path.join(reportsRoot || '.quality-gate/reports', 'ci', String(runId)).replaceAll('\\', '/');
+}
+
+function collectArtifactsForRun({ runId, repo, ghJson, githubApi, reportsRoot }) {
+  const directory = artifactDirectory(reportsRoot, runId);
+  let raw;
+  try {
+    raw = ghJson(['run', 'view', String(runId), '--json', 'artifacts']);
+  } catch {
+    if (githubApi) {
+      try {
+        raw = githubApi(`/repos/${repo}/actions/runs/${runId}/artifacts`);
+      } catch {
+        raw = null;
+      }
+    }
+  }
+  const items = raw?.artifacts || [];
+  return {
+    directory,
+    items: items.map((artifact) => ({
+      name: artifact.name,
+      sizeInBytes: artifact.sizeInBytes ?? artifact.size_in_bytes ?? null,
+      target: path.posix.join(directory, artifact.name || 'artifact'),
+    })),
   };
 }
 
@@ -245,6 +300,13 @@ function diagnoseRun(options) {
   }) || {};
   const jobs = jobsResult.jobs || [];
   const failedJobs = jobs.filter((job) => ['failure', 'cancelled', 'timed_out', 'action_required'].includes(job.conclusion));
+  const artifacts = collectArtifactsForRun({
+    runId,
+    repo,
+    ghJson,
+    githubApi: options.githubApi ? githubApi : null,
+    reportsRoot: options.reportsRoot,
+  });
   const findings = failedJobs.map((job) => {
     let log = '';
     try {
@@ -276,6 +338,7 @@ function diagnoseRun(options) {
       findings: findings.length,
       actions: actions.length,
     },
+    artifacts,
     findings,
     actions,
   };

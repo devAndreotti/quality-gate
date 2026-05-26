@@ -1,9 +1,13 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const {
+  checkProjectSurfaces,
+  checkWorkflowSurfaces,
+  detectProjectSurfaces,
   findMissingRequiredContexts,
   parseSetupRequiredContexts,
   parseWorkflowJobNames,
@@ -28,6 +32,15 @@ test('branch protection contexts match workflow job names', () => {
     findMissingRequiredContexts(requiredContexts, workflowJobNames),
     [],
   );
+});
+
+test('doctor fails when required UI surface has no workflow job', () => {
+  const check = checkWorkflowSurfaces('jobs:\n  python:\n    name: Python validation\n', {
+    project: { surfaces: [{ type: 'node', root: 'UI', required: true }] },
+  });
+
+  assert.equal(check.level, 'fail');
+  assert.match(check.detail, /UI validation/);
 });
 
 test('policy required checks match workflow job names', () => {
@@ -94,6 +107,40 @@ test('policy validation stays aligned with schema-required fields', () => {
   assert.match(validatePolicy(missingFunding).join('\n'), /bootstrap\.funding\.buyMeACoffee/);
   assert.match(validatePolicy(missingFallback).join('\n'), /dockerImageDoctor\.fallbackWhenUnavailable/);
   assert.deepEqual(validatePolicy(policy), []);
+});
+
+test('policy validation accepts mixed project surfaces and local validation allowlist', () => {
+  const policy = loadPolicy(root);
+  const mixed = structuredClone(policy);
+  mixed.project = {
+    surfaces: [
+      { type: 'python-uv', root: 'pipeline', required: true, coverageJson: '../coverage/coverage.json' },
+      { type: 'node', root: 'UI', required: true, commands: { test: 'npm run test --if-present' } },
+    ],
+  };
+  mixed.ci.advisoryChecks = ['SonarCloud Code Analysis'];
+  mixed.localValidation = {
+    untrackedAllowlist: ['samples/**'],
+    pytestBasetempPattern: '.pytest-tmp-qg-${timestamp}-${pid}',
+  };
+
+  assert.deepEqual(validatePolicy(mixed), []);
+});
+
+test('doctor detects missing declared Node surface for project with UI package', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-doctor-surfaces-'));
+  fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
+  fs.mkdirSync(path.join(project, 'UI'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'UI', 'package.json'), '{"scripts":{"test":"vitest"}}\n');
+  const detected = detectProjectSurfaces(project);
+  const check = checkProjectSurfaces(project, {
+    project: { surfaces: [{ type: 'python-uv', root: 'pipeline', required: true }] },
+  });
+
+  assert.deepEqual(detected.map((surface) => `${surface.type}:${surface.root}`).sort(), ['node:UI', 'python-uv:pipeline']);
+  assert.equal(check.level, 'warn');
+  assert.match(check.detail, /node:UI/);
 });
 
 test('packaged .js scripts do not require package type=module', () => {
