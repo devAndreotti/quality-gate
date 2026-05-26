@@ -164,11 +164,15 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 function formatCliError(error) {
-  const message = String(error?.message || error || 'erro desconhecido')
-    .replace(/[\r\n].*/s, '')
-    .slice(0, 180);
-  if (/^GitHub API \d+:/i.test(message)) {
-    return message.replace(/:.*$/s, '');
+  const rawMessage = String(error?.message || error || 'erro desconhecido');
+  const crIndex = rawMessage.indexOf('\r');
+  const lfIndex = rawMessage.indexOf('\n');
+  const lineEndCandidates = [crIndex, lfIndex].filter((index) => index >= 0);
+  const lineEnd = lineEndCandidates.length ? Math.min(...lineEndCandidates) : rawMessage.length;
+  const message = rawMessage.slice(0, lineEnd).slice(0, 180);
+  if (message.toLowerCase().startsWith('github api ')) {
+    const colonIndex = message.indexOf(':');
+    return colonIndex >= 0 ? message.slice(0, colonIndex) : message;
   }
   return message;
 }
