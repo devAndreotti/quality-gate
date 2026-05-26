@@ -163,13 +163,21 @@ async function main(argv = process.argv.slice(2)) {
   else printHuman(result);
 }
 
-if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
-    console.error(`dependabot-consolidate: ${error.message}`);
-    process.exit(1);
+function formatCliError(error) {
+  const message = String(error?.message || error || 'erro desconhecido')
+    .replace(/[\r\n].*/s, '')
+    .slice(0, 180);
+  if (/^GitHub API \d+:/i.test(message)) {
+    return message.replace(/:.*$/s, '');
   }
+  return message;
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`dependabot-consolidate: ${formatCliError(error)}`);
+    process.exit(1);
+  });
 }
 
 module.exports = {
