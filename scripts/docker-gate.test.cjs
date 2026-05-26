@@ -75,7 +75,15 @@ test('runDockerGate skips without invoking Docker Doctor when no Docker files ex
 test('runDockerGate dry-run plans command for Docker project without executing it', () => {
   const project = tempProject();
   fs.writeFileSync(path.join(project, 'Dockerfile'), 'FROM alpine:3.20\n');
-  const policy = loadPolicy(root);
+  const doctorScript = path.join(project, 'doctor.ps1');
+  fs.writeFileSync(doctorScript, 'Write-Output "{}"\n');
+  const policy = {
+    ...loadPolicy(root),
+    dockerImageDoctor: {
+      ...loadPolicy(root).dockerImageDoctor,
+      scriptPath: doctorScript,
+    },
+  };
   let invoked = false;
 
   const result = runDockerGate({

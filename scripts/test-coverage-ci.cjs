@@ -79,6 +79,8 @@ function runTestsWithCoverage(root = DEFAULT_ROOT) {
   const result = spawnSync(process.execPath, [
     '--test',
     '--experimental-test-coverage',
+    '--test-reporter=spec',
+    '--test-reporter-destination=stdout',
     '--test-reporter=lcov',
     `--test-reporter-destination=${lcovPath}`,
     ...collectTestFiles(root),
