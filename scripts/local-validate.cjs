@@ -53,6 +53,11 @@ function command(name, cwd, commandLine, extra = {}) {
   };
 }
 
+function executable(name) {
+  if (process.platform !== 'win32') return name;
+  return ['npm', 'uv', 'uvx', 'qg-chk', 'qg-doc'].includes(name) ? `${name}.cmd` : name;
+}
+
 function buildValidationPlan(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
   const profile = options.profile || 'pr';
@@ -65,9 +70,12 @@ function buildValidationPlan(options = {}) {
 
   if (exists(path.join(pipelineRoot, 'pyproject.toml'))) {
     commands.push(
-      command('ruff', pipelineRoot, 'uvx ruff check src tests --output-format=json > ..\\coverage\\ruff.json', {
+      command('ruff', pipelineRoot, 'uvx ruff check src tests --output-format=json > ../coverage/ruff.json', {
         artifact: path.join(reportsRoot, 'ruff.log'),
         surface: 'python-uv',
+        file: 'uvx',
+        args: ['ruff', 'check', 'src', 'tests', '--output-format=json'],
+        stdoutFile: path.join(projectRoot, 'coverage', 'ruff.json'),
         ensureDirs: [path.join(projectRoot, 'coverage')],
       }),
       command(
@@ -77,6 +85,18 @@ function buildValidationPlan(options = {}) {
         {
           artifact: path.join(reportsRoot, 'pytest.log'),
           surface: 'python-uv',
+          file: 'uv',
+          args: [
+            'run',
+            'pytest',
+            '--basetemp',
+            basetemp,
+            '-q',
+            '--cov=src',
+            '--cov-report=json:../coverage/coverage.json',
+            '--cov-report=xml:../coverage/coverage.xml',
+            '--cov-report=term-missing',
+          ],
           coverageJson: path.join(projectRoot, 'coverage', 'coverage.json'),
           basetemp,
           ensureDirs: [path.join(projectRoot, 'coverage')],
@@ -85,6 +105,8 @@ function buildValidationPlan(options = {}) {
       command('pip-audit', pipelineRoot, 'uvx pip-audit --path .venv', {
         artifact: path.join(reportsRoot, 'pip-audit.log'),
         surface: 'python-uv',
+        file: 'uvx',
+        args: ['pip-audit', '--path', '.venv'],
       }),
     );
   }
@@ -94,22 +116,32 @@ function buildValidationPlan(options = {}) {
       command('node:install', surface.root, 'npm ci', {
         artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-ci.log`),
         surface: 'node',
+        file: 'npm',
+        args: ['ci'],
       }),
       command('node:test', surface.root, 'npm run test --if-present', {
         artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-test.log`),
         surface: 'node',
+        file: 'npm',
+        args: ['run', 'test', '--if-present'],
       }),
       command('node:lint', surface.root, 'npm run lint --if-present', {
         artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-lint.log`),
         surface: 'node',
+        file: 'npm',
+        args: ['run', 'lint', '--if-present'],
       }),
       command('node:build', surface.root, 'npm run build --if-present', {
         artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-build.log`),
         surface: 'node',
+        file: 'npm',
+        args: ['run', 'build', '--if-present'],
       }),
       command('node:audit', surface.root, 'npm audit --audit-level=moderate', {
         artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-audit.log`),
         surface: 'node',
+        file: 'npm',
+        args: ['audit', '--audit-level=moderate'],
       }),
     );
   }
@@ -117,16 +149,24 @@ function buildValidationPlan(options = {}) {
   commands.push(
     command('qg-chk', projectRoot, 'qg-chk', {
       artifact: path.join(reportsRoot, 'qg-chk.log'),
+      file: 'qg-chk',
+      args: [],
       requiresFreshCoverage: exists(path.join(pipelineRoot, 'pyproject.toml')),
     }),
     command('qg-doc', projectRoot, 'qg-doc', {
       artifact: path.join(reportsRoot, 'qg-doc.log'),
+      file: 'qg-doc',
+      args: [],
     }),
     command('git-diff-check', projectRoot, 'git diff --check', {
       artifact: path.join(reportsRoot, 'git-diff-check.log'),
+      file: 'git',
+      args: ['diff', '--check'],
     }),
     command('git-status', projectRoot, 'git status --short --branch', {
       artifact: path.join(reportsRoot, 'git-status.log'),
+      file: 'git',
+      args: ['status', '--short', '--branch'],
     }),
   );
 
@@ -140,9 +180,9 @@ function buildValidationPlan(options = {}) {
 }
 
 function defaultExecutor(step) {
-  const result = childProcess.spawnSync(step.commandLine, { // NOSONAR
+  const result = childProcess.spawnSync(executable(step.file), step.args || [], {
     cwd: step.cwd,
-    shell: true,
+    shell: false,
     encoding: 'utf8',
     maxBuffer: 30 * 1024 * 1024,
   });
@@ -213,6 +253,10 @@ function executeValidationStep({ step, output, executor }) {
   const started = Date.now();
   ensureStepDirs(step);
   const commandResult = executor(step);
+  if (step.stdoutFile) {
+    fs.mkdirSync(path.dirname(step.stdoutFile), { recursive: true });
+    fs.writeFileSync(step.stdoutFile, commandResult.stdout || '');
+  }
   output.durationMs = Date.now() - started;
   output.exitCode = commandResult.exitCode;
   writeLog(step, commandResult);

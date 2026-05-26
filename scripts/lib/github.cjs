@@ -10,44 +10,8 @@ function runGhJson(args, options = {}) {
   return raw.trim() ? JSON.parse(raw) : null;
 }
 
-function runGitHubApi(apiPath, options = {}) {
-  const tokenEnv = options.tokenEnv || 'GITHUB_TOKEN';
-  const userAgent = options.userAgent || 'quality-gate/1.0';
-  const script = `
-const https = require('node:https');
-const token = process.env[${JSON.stringify(tokenEnv)}];
-const req = https.request({
-  hostname: 'api.github.com',
-  path: ${JSON.stringify(apiPath)},
-  method: 'GET',
-  headers: {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': ${JSON.stringify(userAgent)},
-    ...(token ? { Authorization: \`Bearer \${token}\` } : {}),
-  },
-}, (res) => {
-  let data = '';
-  res.on('data', (chunk) => { data += chunk; });
-  res.on('end', () => {
-    if (res.statusCode >= 400) {
-      console.error(\`GitHub API \${res.statusCode}: \${data}\`);
-      process.exit(1);
-    }
-    process.stdout.write(data || 'null');
-  });
-});
-req.on('error', (error) => {
-  console.error(error.message);
-  process.exit(1);
-});
-req.end();
-`;
-  const raw = childProcess.execFileSync(process.execPath, ['-e', script], { // NOSONAR
-    encoding: 'utf8',
-    maxBuffer: options.maxBuffer || 20 * 1024 * 1024,
-  });
-  return raw.trim() ? JSON.parse(raw) : null;
+function runGitHubApi() {
+  throw new Error('GitHub API fallback nao configurado; use gh auth ou injete githubApi em teste');
 }
 
 function splitRepo(repo) {
