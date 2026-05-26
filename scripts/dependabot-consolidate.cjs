@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-const childProcess = require('node:child_process');
-
 function parseArgs(argv) {
   const args = {
     repo: process.env.GITHUB_REPOSITORY || null,
@@ -17,9 +15,24 @@ function parseArgs(argv) {
   return args;
 }
 
-function runGhJson(args) {
-  const raw = childProcess.execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-  return raw.trim() ? JSON.parse(raw) : null;
+function splitRepo(repo) {
+  const [owner, name] = String(repo || '').split('/');
+  if (!owner || !name) throw new Error('--repo precisa estar no formato owner/repo');
+  return { owner, name };
+}
+
+async function githubJson(apiPath, env = process.env) {
+  const token = env.GITHUB_TOKEN || env.GH_TOKEN || '';
+  const response = await fetch(`https://api.github.com${apiPath}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'quality-gate-dependabot-consolidate/1.0',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!response.ok) throw new Error(`GitHub API ${response.status}: ${await response.text()}`);
+  return response.json();
 }
 
 function analyzeDependabotPulls(pullRequests) {
@@ -87,11 +100,31 @@ function loadDependabotPulls({ repo, ghJson }) {
   });
 }
 
+async function loadDependabotPullsFromApi({ repo, env }) {
+  const { owner, name } = splitRepo(repo);
+  const pulls = await githubJson(`/repos/${owner}/${name}/pulls?state=open&per_page=100`, env);
+  const dependabotPulls = pulls.filter((pull) => pull.user?.login === 'dependabot[bot]');
+  const result = [];
+  for (const pull of dependabotPulls) {
+    const files = await githubJson(`/repos/${owner}/${name}/pulls/${pull.number}/files?per_page=100`, env);
+    result.push({
+      number: pull.number,
+      title: pull.title,
+      headRefName: pull.head?.ref,
+      url: pull.html_url,
+      files: normalizeFiles({ files }),
+    });
+  }
+  return result;
+}
+
 function runDependabotConsolidate(options = {}) {
   const repo = options.repo;
   if (!repo) throw new Error('--repo ou GITHUB_REPOSITORY requerido');
-  const ghJson = options.ghJson || runGhJson;
-  const pullRequests = options.pullRequests || loadDependabotPulls({ repo, ghJson });
+  if (!options.pullRequests && !options.ghJson) {
+    throw new Error('pullRequests ou ghJson requerido no modo sincrono');
+  }
+  const pullRequests = options.pullRequests || loadDependabotPulls({ repo, ghJson: options.ghJson });
   const analysis = analyzeDependabotPulls(pullRequests);
   return {
     schemaVersion: 1,
@@ -104,6 +137,12 @@ function runDependabotConsolidate(options = {}) {
   };
 }
 
+async function runDependabotConsolidateAsync(options = {}) {
+  if (options.pullRequests || options.ghJson) return runDependabotConsolidate(options);
+  const pullRequests = await loadDependabotPullsFromApi({ repo: options.repo, env: options.env || process.env });
+  return runDependabotConsolidate({ ...options, pullRequests });
+}
+
 function printHuman(result) {
   console.log('\nDependabot Consolidate');
   console.log('======================\n');
@@ -114,9 +153,9 @@ function printHuman(result) {
   }
 }
 
-function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const result = runDependabotConsolidate({
+  const result = await runDependabotConsolidateAsync({
     repo: args.repo,
     dryRun: args.dryRun,
   });
@@ -137,4 +176,5 @@ module.exports = {
   analyzeDependabotPulls,
   parseArgs,
   runDependabotConsolidate,
+  runDependabotConsolidateAsync,
 };
