@@ -125,7 +125,7 @@ The `.codex/skills/babysit-pr/` folder should be placed in:
 Create a GitHub Personal Access Token (PAT) with admin permissions on the repository:
 → https://github.com/settings/tokens (Scopes: `repo`, `admin:repo_hook`)
 
-Edit `sonar-project.properties` (replace `YOUR_ORG` and `YOUR_REPO`), then run:
+Run `setup.js` to rewrite `sonar-project.properties` for the target repository, then configure SonarCloud when desired:
 
 ```bash
 # PowerShell — validate the package before configuring GitHub:
@@ -299,7 +299,7 @@ You merge (or tell Codex: "merge the PR")
 # Audit if workflow/setup/baseline/Sonar are consistent
 node scripts/doctor.cjs --dry-run
 
-# Release v1 gate: fails if placeholders or zero baselines still exist
+# Release v1 gate: fails while release blockers such as zero baselines remain
 node scripts/doctor.cjs --release
 
 # Write detected state for the agent/CI to consume
@@ -337,7 +337,7 @@ node scripts/quality-gate.js report
 **SonarCloud does not appear in the PR**
 → Verify that `SONAR_TOKEN` is present in Settings → Secrets → Actions.
 → Confirm that `fetch-depth: 0` is set in the checkout step of the `sonar` job.
-→ Ensure that `YOUR_ORG` and `YOUR_REPO` in `sonar-project.properties` have been replaced.
+→ Run `node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG` to rewrite the Sonar project key/name for the target repo.
 
 **Copilot Review does not appear automatically**
 → The REST ruleset API currently rejects the automatic Copilot fields for some accounts/plans.
