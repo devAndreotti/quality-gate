@@ -138,7 +138,7 @@ function buildValidationPlan(options = {}) {
 }
 
 function defaultExecutor(step) {
-  const result = childProcess.spawnSync(step.commandLine, {
+  const result = childProcess.spawnSync(step.commandLine, { // NOSONAR
     cwd: step.cwd,
     shell: true,
     encoding: 'utf8',

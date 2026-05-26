@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { runGhJson, runGhText, runGitHubApi } = require('./lib/github.cjs');
 
 function parseArgs(argv) {
   const args = {
@@ -24,53 +24,6 @@ function parseArgs(argv) {
     else if (arg.startsWith('--output=')) args.output = arg.slice('--output='.length);
   }
   return args;
-}
-
-function runGhText(args) {
-  return childProcess.execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 30 * 1024 * 1024 });
-}
-
-function runGhJson(args) {
-  const raw = runGhText(args);
-  return raw.trim() ? JSON.parse(raw) : null;
-}
-
-function runGitHubApi(apiPath) {
-  const script = `
-const https = require('node:https');
-const token = process.env.GITHUB_TOKEN;
-const req = https.request({
-  hostname: 'api.github.com',
-  path: ${JSON.stringify(apiPath)},
-  method: 'GET',
-  headers: {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'quality-gate-ci-diagnose/1.0',
-    ...(token ? { Authorization: \`Bearer \${token}\` } : {}),
-  },
-}, (res) => {
-  let data = '';
-  res.on('data', (chunk) => { data += chunk; });
-  res.on('end', () => {
-    if (res.statusCode >= 400) {
-      console.error(\`GitHub API \${res.statusCode}: \${data}\`);
-      process.exit(1);
-    }
-    process.stdout.write(data || 'null');
-  });
-});
-req.on('error', (error) => {
-  console.error(error.message);
-  process.exit(1);
-});
-req.end();
-`;
-  const raw = childProcess.execFileSync(process.execPath, ['-e', script], {
-    encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-  });
-  return raw.trim() ? JSON.parse(raw) : null;
 }
 
 function queryGhOrApi({ ghJson, githubApi, args, apiPath }) {
