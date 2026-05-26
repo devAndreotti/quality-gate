@@ -1,2 +1,3 @@
 .quality-gate/state.json
 .quality-gate/reports/
+coverage/
