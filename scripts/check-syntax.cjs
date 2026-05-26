@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const vm = require('node:vm');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
@@ -22,7 +22,7 @@ function collectScriptFiles(root = DEFAULT_ROOT) {
   }
 
   walk(scriptsRoot);
-  return files.sort();
+  return files.sort((left, right) => left.localeCompare(right));
 }
 
 function writeEmptyEslintReport(root = DEFAULT_ROOT) {
@@ -36,12 +36,11 @@ function checkSyntax(root = DEFAULT_ROOT) {
   const failures = [];
 
   for (const file of files) {
-    const result = spawnSync(process.execPath, ['--check', file], {
-      cwd: root,
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) {
-      failures.push({ file, stderr: result.stderr, stdout: result.stdout });
+    try {
+      const source = fs.readFileSync(file, 'utf8').replace(/^#!.*\r?\n/, '');
+      new vm.Script(source, { filename: file, displayErrors: true });
+    } catch (error) {
+      failures.push({ file, stderr: error.message, stdout: '' });
     }
   }
 
@@ -52,7 +51,7 @@ function checkSyntax(root = DEFAULT_ROOT) {
 function main() {
   const result = checkSyntax();
   for (const file of result.files) {
-    console.log(`checked ${path.relative(DEFAULT_ROOT, file).replace(/\\/g, '/')}`);
+    console.log(`checked ${path.relative(DEFAULT_ROOT, file).replaceAll('\\', '/')}`);
   }
   for (const failure of result.failures) {
     console.error(failure.stderr || failure.stdout || failure.file);

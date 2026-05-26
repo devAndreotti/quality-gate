@@ -94,7 +94,10 @@ jobs:
           node-version: 20
 
       - name: Node tests — coverage completo
-        run: node scripts/test-coverage-ci.cjs
+        run: |
+          mkdir -p coverage
+          node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs
+          node scripts/test-coverage-ci.cjs
         env:
           CI: true
 

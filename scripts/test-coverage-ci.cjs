@@ -2,7 +2,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
@@ -19,7 +18,7 @@ function parseLcov(text) {
   };
 
   for (const line of String(text || '').split(/\r?\n/)) {
-    const match = line.match(/^(LH|LF|FNH|FNF|BRH|BRF):(\d+)$/);
+    const match = /^(LH|LF|FNH|FNF|BRH|BRF):(\d+)$/.exec(line);
     if (!match) continue;
     const value = Number(match[2]);
     if (match[1] === 'LH') totals.lines.covered += value;
@@ -59,7 +58,7 @@ function collectTestFiles(root = DEFAULT_ROOT) {
   const scriptsRoot = path.join(root, 'scripts');
   return fs.readdirSync(scriptsRoot)
     .filter((name) => name.endsWith('.test.cjs'))
-    .sort()
+    .sort((left, right) => left.localeCompare(right))
     .map((name) => path.join('scripts', name));
 }
 
@@ -72,30 +71,9 @@ function writeCoverageSummary(root = DEFAULT_ROOT) {
   return summary;
 }
 
-function runTestsWithCoverage(root = DEFAULT_ROOT) {
-  const coverageDir = path.join(root, 'coverage');
-  fs.mkdirSync(coverageDir, { recursive: true });
-  const lcovPath = path.join(coverageDir, 'lcov.info');
-  const result = spawnSync(process.execPath, [
-    '--test',
-    '--experimental-test-coverage',
-    '--test-reporter=spec',
-    '--test-reporter-destination=stdout',
-    '--test-reporter=lcov',
-    `--test-reporter-destination=${lcovPath}`,
-    ...collectTestFiles(root),
-  ], {
-    cwd: root,
-    encoding: 'utf8',
-    stdio: 'inherit',
-  });
-  if (result.status !== 0) return result.status || 1;
-  writeCoverageSummary(root);
-  return 0;
-}
-
 function main() {
-  process.exitCode = runTestsWithCoverage();
+  writeCoverageSummary();
+  console.log('coverage/coverage-summary.json atualizado');
 }
 
 if (require.main === module) main();
@@ -104,6 +82,5 @@ module.exports = {
   collectTestFiles,
   lcovToCoverageSummary,
   parseLcov,
-  runTestsWithCoverage,
   writeCoverageSummary,
 };

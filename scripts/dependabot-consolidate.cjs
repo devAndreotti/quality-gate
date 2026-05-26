@@ -33,7 +33,7 @@ function analyzeDependabotPulls(pullRequests) {
   const conflictingFiles = [...fileOwners.entries()]
     .filter(([, prs]) => prs.length > 1)
     .map(([file]) => file)
-    .sort();
+    .sort((left, right) => left.localeCompare(right));
 
   if (pullRequests.length <= 1) {
     return {
