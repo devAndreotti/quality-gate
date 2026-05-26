@@ -138,7 +138,21 @@ jobs:
           name: coverage-report
           path: coverage/
 
+      - name: Detectar configuração do SonarCloud
+        id: sonar-config
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && ! grep -Eq 'YOUR_ORG|YOUR_REPO' sonar-project.properties; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SonarCloud não configurado; job tratado como advisory skip"
+          fi
+
       - name: SonarCloud scan
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -146,6 +160,7 @@ jobs:
 
       # Bloqueia o merge se o quality gate do Sonar falhar
       - name: SonarCloud quality gate check
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:

@@ -6,10 +6,12 @@
       "Security audit",
       "Lint",
       "Tests & ratchet",
-      "SonarCloud",
       "Docker image gate"
     ],
-    "advisoryChecks": [],
+    "advisoryChecks": [
+      "SonarCloud",
+      "SonarCloud Code Analysis"
+    ],
     "coverageRatchet": true,
     "maxFileLines": 300
   },

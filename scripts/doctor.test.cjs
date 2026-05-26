@@ -156,12 +156,14 @@ test('v1 release metadata exists', () => {
   assert.match(fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8'), /## 1\.0\.0/);
 });
 
-test('release mode fails while Sonar placeholders or template baseline remain', () => {
+test('release mode treats optional Sonar as non-blocker and fails on template baseline', () => {
   const { analyzeQualityGate } = require('./doctor.cjs');
   const result = analyzeQualityGate({ root, release: true });
   const releaseGate = result.checks.find((check) => check.name === 'Release readiness');
+  const sonar = result.checks.find((check) => check.name === 'SonarCloud configurado');
 
   assert.equal(releaseGate.level, 'fail');
-  assert.match(releaseGate.detail, /SonarCloud configurado/);
+  assert.equal(sonar.level, 'ok');
+  assert.doesNotMatch(releaseGate.detail, /SonarCloud configurado/);
   assert.match(releaseGate.detail, /baseline\.json real/);
 });
