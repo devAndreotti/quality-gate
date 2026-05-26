@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const childProcess = require('node:child_process');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
@@ -37,10 +37,12 @@ function checkSyntax(root = DEFAULT_ROOT) {
 
   for (const file of files) {
     try {
-      const source = fs.readFileSync(file, 'utf8').replace(/^#!.*\r?\n/, '');
-      new vm.Script(source, { filename: file, displayErrors: true });
+      childProcess.execFileSync(process.execPath, ['--check', file], {
+        encoding: 'utf8',
+        maxBuffer: 5 * 1024 * 1024,
+      });
     } catch (error) {
-      failures.push({ file, stderr: error.message, stdout: '' });
+      failures.push({ file, stderr: error.stderr || error.message, stdout: error.stdout || '' });
     }
   }
 
