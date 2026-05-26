@@ -88,8 +88,18 @@ test('runBootstrap detects mixed project surfaces in generated policy', () => {
     'node:UI',
     'python-uv:pipeline',
   ]);
+  assert.deepEqual(policy.ci.requiredChecks, [
+    'Python validation',
+    'UI validation',
+    'Security audit',
+    'Docker image gate',
+  ]);
   assert.match(workflow, /name: UI validation/);
   assert.match(workflow, /working-directory: UI/);
+  assert.match(workflow, /mkdir -p \.\.\/coverage/);
+  assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /PYTHON_RESULT: \$\{\{ needs\['python-validation'\]\.result \}\}/);
+  assert.match(workflow, /UI_RESULT: \$\{\{ needs\['ui-validation'\]\.result \}\}/);
 });
 
 test('runBootstrap does not generate UI job for python-only project', () => {

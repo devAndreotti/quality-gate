@@ -276,15 +276,27 @@ function detectSurfaces(projectRoot) {
   return surfaces;
 }
 
+function requiredChecksForSurfaces(policy, surfaces) {
+  if (!surfaces.length) return policy.ci?.requiredChecks || [];
+  return [
+    surfaces.some((surface) => surface.type === 'python-uv') ? 'Python validation' : null,
+    surfaces.some((surface) => surface.type === 'node') ? 'UI validation' : null,
+    'Security audit',
+    'Docker image gate',
+  ].filter(Boolean);
+}
+
 function buildProjectPolicy(policy, projectRoot) {
+  const surfaces = detectSurfaces(projectRoot);
   return {
     ...policy,
     project: {
       ...(policy.project || {}),
-      surfaces: detectSurfaces(projectRoot),
+      surfaces,
     },
     ci: {
       ...policy.ci,
+      requiredChecks: requiredChecksForSurfaces(policy, surfaces),
       advisoryChecks: policy.ci?.advisoryChecks || [],
     },
     localValidation: {

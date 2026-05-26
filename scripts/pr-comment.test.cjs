@@ -49,6 +49,30 @@ test('buildBody uses REQUIRED_CHECKS so skipped Sonar does not block all-green s
   assert.match(body, /https:\/\/github\.com\/owner\/repo\/actions\/runs\/123/);
 });
 
+test('buildBody supports generated Python and UI validation jobs', () => {
+  const project = tempProject();
+  writeBaseline(project);
+
+  const body = buildBody({
+    root: project,
+    now: new Date('2026-05-24T12:30:00.000Z'),
+    env: {
+      GITHUB_REPOSITORY: 'owner/repo',
+      RUN_ID: '456',
+      SECURITY_RESULT: 'success',
+      PYTHON_RESULT: 'success',
+      UI_RESULT: 'success',
+      DOCKER_RESULT: 'success',
+      REQUIRED_CHECKS: 'Python validation,UI validation,Security audit,Docker image gate',
+    },
+  });
+
+  assert.match(body, /## ✅ Quality Gate/);
+  assert.match(body, /Python validation/);
+  assert.match(body, /UI validation/);
+  assert.doesNotMatch(body, /Lint/);
+});
+
 test('readCoverageSection supports coverage.py JSON reports', () => {
   const project = tempProject();
   writeBaseline(project);

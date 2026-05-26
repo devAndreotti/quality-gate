@@ -76,11 +76,24 @@ function firstSurfaceRoot(policy, type) {
   return (policy?.project?.surfaces || []).find((surface) => surface.type === type)?.root || '.';
 }
 
+function coverageDirForPythonRoot(pythonRoot) {
+  return pythonRoot === '.' ? 'coverage' : '../coverage';
+}
+
+function githubNeedsResult(jobName) {
+  return `\${{ needs['${jobName}'].result }}`;
+}
+
 function renderQualityGateWorkflow(policy = {}) {
   const hasPython = hasSurface(policy, 'python-uv');
   const hasNode = hasSurface(policy, 'node');
   const pythonRoot = firstSurfaceRoot(policy, 'python-uv');
+  const pythonCoverageDir = coverageDirForPythonRoot(pythonRoot);
   const nodeRoot = firstSurfaceRoot(policy, 'node');
+  const requiredChecks = (policy.ci?.requiredChecks || []).join(',');
+  const pythonResult = hasPython ? githubNeedsResult('python-validation') : 'skipped';
+  const uiResult = hasNode ? githubNeedsResult('ui-validation') : 'skipped';
+  const testResult = hasPython ? pythonResult : uiResult;
   const jobs = [];
 
   if (hasPython) {
@@ -97,8 +110,9 @@ function renderQualityGateWorkflow(policy = {}) {
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --dev
+      - run: mkdir -p ${pythonCoverageDir}
       - run: uvx ruff check src tests
-      - run: uv run pytest --basetemp .pytest-tmp-qg --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
+      - run: uv run pytest --basetemp .pytest-tmp-qg --cov=src --cov-report=json:${pythonCoverageDir}/coverage.json --cov-report=xml:${pythonCoverageDir}/coverage.xml --cov-report=term-missing
       - run: uvx pip-audit --path .venv`);
   }
 
@@ -149,10 +163,25 @@ function renderQualityGateWorkflow(policy = {}) {
     'security',
     'docker',
   ].filter(Boolean).join(', ')}]
-    if: always()
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - run: node scripts/pr-comment.js`);
+      - run: node scripts/pr-comment.js
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+          RUN_ID: \${{ github.run_id }}
+          REQUIRED_CHECKS: ${requiredChecks}
+          SECURITY_RESULT: \${{ needs.security.result }}
+          LINT_RESULT: skipped
+          TEST_RESULT: ${testResult}
+          PYTHON_RESULT: ${pythonResult}
+          UI_RESULT: ${uiResult}
+          SONAR_RESULT: skipped
+          DOCKER_RESULT: \${{ needs.docker.result }}`);
 
   return `name: Quality Gate
 

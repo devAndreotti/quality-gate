@@ -76,6 +76,9 @@ test('pytest failure skips qg-chk and reports failure', () => {
     now: '2026-05-26T00:00:00.000Z',
     pid: 123,
     executor: (command) => {
+      if (command.name === 'ruff') {
+        assert.equal(fs.existsSync(path.join(project, 'coverage')), true);
+      }
       executed.push(command.name);
       return { exitCode: command.name === 'pytest' ? 1 : 0, stdout: '', stderr: '' };
     },

@@ -30,6 +30,49 @@ test('normalizeChecks summarizes check state and keeps job details', () => {
   assert.equal(normalized.jobs.sonar.status, 'in_progress');
 });
 
+test('buildSnapshot normalizes current gh pr checks fields', () => {
+  const ghJson = (args) => {
+    const key = args.join(' ');
+    if (key.startsWith('pr view 42 --json number,title,state,mergeable,mergeStateStatus')) {
+      return {
+        number: 42,
+        title: 'Current gh fields',
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        headRefName: 'feature/current-gh',
+        headRefOid: 'abc123',
+        baseRefName: 'main',
+        url: 'https://github.com/owner/repo/pull/42',
+        isDraft: false,
+      };
+    }
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
+      return [
+        { name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' },
+        { name: 'SonarCloud Code Analysis', state: 'FAILURE', bucket: 'fail', link: 'https://sonarcloud.io' },
+      ];
+    }
+    if (key === 'api repos/owner/repo/pulls/42/comments') return [];
+    if (key === 'api repos/owner/repo/pulls/42/reviews') return [];
+    if (key.startsWith('api graphql ')) return { repository: { pullRequest: { reviewThreads: { nodes: [] } } } };
+    if (key === 'run list --branch feature/current-gh --limit 1 --json databaseId,status,conclusion,workflowName,displayTitle,headBranch') return [];
+    throw new Error(`unexpected gh call: ${key}`);
+  };
+  const githubApi = (apiPath) => {
+    if (apiPath === '/repos/owner/repo/branches/main/protection/required_status_checks') {
+      return { contexts: ['Lint'], checks: [] };
+    }
+    throw new Error(`unexpected api path: ${apiPath}`);
+  };
+
+  const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi });
+
+  assert.equal(snapshot.checks.required[0].conclusion, 'success');
+  assert.equal(snapshot.checks.advisory[0].conclusion, 'failure');
+  assert.equal(snapshot.merge.status, 'ready_with_advisory');
+});
+
 test('deriveActions maps failed checks and blockers to deterministic actions', () => {
   const actions = deriveActions({
     pr: { mergeable: 'MERGEABLE', mergeStateStatus: 'BLOCKED' },
@@ -93,7 +136,7 @@ test('buildSnapshot collects PR metadata, checks, comments, blockers, and latest
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [
         { name: 'Lint', status: 'COMPLETED', conclusion: 'FAILURE' },
         { name: 'Tests & ratchet', status: 'COMPLETED', conclusion: 'SUCCESS' },
@@ -124,16 +167,20 @@ test('buildSnapshot collects PR metadata, checks, comments, blockers, and latest
     if (key === 'run list --branch feature/auth --limit 1 --json databaseId,status,conclusion,workflowName,displayTitle,headBranch') {
       return [{ databaseId: 123, status: 'completed', conclusion: 'failure', workflowName: 'Quality Gate' }];
     }
-    if (key === 'run view 123 --json artifacts') {
+    throw new Error(`unexpected gh call: ${key}`);
+  };
+  const githubApi = (apiPath) => {
+    if (apiPath === '/repos/owner/repo/actions/runs/123/artifacts') {
       return { artifacts: [{ name: 'coverage-report', sizeInBytes: 1000 }] };
     }
-    throw new Error(`unexpected gh call: ${key}`);
+    throw new Error(`unexpected api path: ${apiPath}`);
   };
 
   const snapshot = buildSnapshot({
     pr: 42,
     repo: 'owner/repo',
     ghJson,
+    githubApi,
     now: '2026-05-24T00:00:00.000Z',
   });
 
@@ -141,7 +188,7 @@ test('buildSnapshot collects PR metadata, checks, comments, blockers, and latest
   assert.equal(snapshot.ci.overall, 'failure');
   assert.equal(snapshot.copilotBlockers.length, 1);
   assert.equal(snapshot.humanBlockers.length, 1);
-  assert.deepEqual(snapshot.actions, ['fix_required_check', 'process_copilot', 'process_human', 'blocked_by_policy']);
+  assert.deepEqual(snapshot.actions, ['fix_required_check', 'process_human', 'blocked_by_policy']);
   assert.equal(snapshot.latestRun.id, 123);
   assert.equal(snapshot.artifacts[0].name, 'coverage-report');
   assert.ok(calls.length >= 5);
@@ -163,7 +210,7 @@ test('buildSnapshot does not treat Copilot advisory comments as blockers', () =>
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [{ name: 'Lint', status: 'completed', conclusion: 'success' }];
     }
     if (key === 'api repos/owner/repo/pulls/42/comments') {
@@ -197,6 +244,10 @@ test('buildSnapshot does not treat Copilot advisory comments as blockers', () =>
     pr: 42,
     repo: 'owner/repo',
     ghJson,
+    githubApi: (apiPath) => {
+      if (apiPath === '/repos/owner/repo/actions/runs/456/artifacts') return { artifacts: [] };
+      throw new Error(`unexpected api path: ${apiPath}`);
+    },
   });
 
   assert.deepEqual(snapshot.copilotBlockers, []);
@@ -220,7 +271,7 @@ test('buildSnapshot does not mark blocked merge state as ready without failed ch
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [{ name: 'SonarCloud Code Analysis', status: 'COMPLETED', conclusion: 'SUCCESS' }];
     }
     if (key === 'api repos/owner/repo/pulls/42/comments') return [];
@@ -256,7 +307,7 @@ test('buildSnapshot treats optional Sonar failure as advisory when required chec
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [
         { name: 'Lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
         { name: 'Tests & ratchet', status: 'COMPLETED', conclusion: 'SUCCESS' },
@@ -301,7 +352,7 @@ test('buildSnapshot blocks on unresolved review threads', () => {
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [{ name: 'Lint', status: 'COMPLETED', conclusion: 'SUCCESS' }];
     }
     if (key === 'api repos/owner/repo/pulls/42/comments') return [];
@@ -356,7 +407,7 @@ test('buildSnapshot asks manual verification when review thread GraphQL is unava
         isDraft: false,
       };
     }
-    if (key === 'pr checks 42 --json name,status,conclusion,detailsUrl,startedAt,completedAt') {
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
       return [{ name: 'Lint', status: 'COMPLETED', conclusion: 'SUCCESS' }];
     }
     if (key === 'api repos/owner/repo/pulls/42/comments') return [];
@@ -371,6 +422,47 @@ test('buildSnapshot asks manual verification when review thread GraphQL is unava
   assert.equal(snapshot.merge.ready, false);
   assert.deepEqual(snapshot.actions, ['verify_review_threads_manual']);
   assert.equal(snapshot.reviewThreads.status, 'unknown');
+});
+
+test('buildSnapshot does not crash when check details are inaccessible', () => {
+  const ghJson = (args) => {
+    const key = args.join(' ');
+    if (key.startsWith('pr view 42 --json number,title,state,mergeable,mergeStateStatus')) {
+      return {
+        number: 42,
+        title: 'Token limited',
+        state: 'OPEN',
+        mergeable: 'MERGEABLE',
+        mergeStateStatus: 'CLEAN',
+        headRefName: 'feature/limited-token',
+        headRefOid: 'abc123',
+        baseRefName: 'main',
+        url: 'https://github.com/owner/repo/pull/42',
+        isDraft: false,
+      };
+    }
+    if (key === 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow') {
+      throw new Error('Resource not accessible by personal access token');
+    }
+    if (key === 'api repos/owner/repo/pulls/42/comments') return [];
+    if (key === 'api repos/owner/repo/pulls/42/reviews') return [];
+    if (key.startsWith('api graphql ')) return { repository: { pullRequest: { reviewThreads: { nodes: [] } } } };
+    if (key === 'run list --branch feature/limited-token --limit 1 --json databaseId,status,conclusion,workflowName,displayTitle,headBranch') return [];
+    throw new Error(`unexpected gh call: ${key}`);
+  };
+  const githubApi = (apiPath) => {
+    if (apiPath === '/repos/owner/repo/branches/main/protection/required_status_checks') return { contexts: [], checks: [] };
+    if (apiPath === '/repos/owner/repo/commits/abc123/check-runs') {
+      throw new Error('Resource not accessible by personal access token');
+    }
+    throw new Error(`unexpected api path: ${apiPath}`);
+  };
+
+  const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi });
+
+  assert.equal(snapshot.checks.status, 'unknown');
+  assert.equal(snapshot.merge.ready, false);
+  assert.deepEqual(snapshot.actions, ['escalate_manual']);
 });
 
 test('buildSnapshot falls back to GitHub API when gh is unavailable', () => {

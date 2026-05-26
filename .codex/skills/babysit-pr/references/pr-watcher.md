@@ -33,7 +33,7 @@ Os scripts tentam `gh` primeiro e caem para API GitHub quando possível.
 gh pr view $PR_NUMBER --json number,title,state,mergeable,headRefName,baseRefName
 
 # Status de todos os checks (CI jobs)
-gh pr checks $PR_NUMBER --json name,status,conclusion,detailsUrl
+gh pr checks $PR_NUMBER --json name,state,bucket,link,startedAt,completedAt,workflow
 
 # Comentários de review (inclui Copilot e humanos)
 gh pr view $PR_NUMBER --json reviews,comments,reviewRequests
@@ -77,7 +77,7 @@ gh pr checks $PR_NUMBER --watch
 
 # Alternativa com timeout manual (loop a cada 30s por até 10min)
 for i in $(seq 1 20); do
-  STATUS=$(gh pr checks $PR_NUMBER --json conclusion -q '[.[] | .conclusion] | unique | @csv')
+  STATUS=$(gh pr checks $PR_NUMBER --json state -q '[.[] | .state] | unique | @csv')
   echo "Ciclo $i: $STATUS"
   if [[ "$STATUS" != *"null"* ]]; then break; fi
   sleep 30
