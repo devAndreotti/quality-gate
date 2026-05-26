@@ -6,6 +6,38 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "profile": { "type": "string", "minLength": 1 },
+    "project": {
+      "type": "object",
+      "required": ["surfaces"],
+      "properties": {
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "root", "required"],
+            "properties": {
+              "type": { "enum": ["python-uv", "node"] },
+              "root": { "type": "string", "minLength": 1 },
+              "required": { "type": "boolean" },
+              "coverageJson": { "type": "string", "minLength": 1 },
+              "commands": {
+                "type": "object",
+                "properties": {
+                  "install": { "type": "string" },
+                  "test": { "type": "string" },
+                  "lint": { "type": "string" },
+                  "build": { "type": "string" },
+                  "audit": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "ci": {
       "type": "object",
       "required": ["requiredChecks", "coverageRatchet", "maxFileLines"],
@@ -13,6 +45,10 @@
         "requiredChecks": {
           "type": "array",
           "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "advisoryChecks": {
+          "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
         "coverageRatchet": { "type": "boolean" },
@@ -103,6 +139,17 @@
           "items": { "enum": ["Critical", "High", "Medium", "Low", "Info"] }
         },
         "fallbackWhenUnavailable": { "enum": ["static-advisory", "skip", "fail"] }
+      },
+      "additionalProperties": false
+    },
+    "localValidation": {
+      "type": "object",
+      "properties": {
+        "untrackedAllowlist": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pytestBasetempPattern": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     }

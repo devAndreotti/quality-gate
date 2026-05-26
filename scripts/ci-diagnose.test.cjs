@@ -32,6 +32,7 @@ test('classifyFailure maps known logs to deterministic actions', () => {
   assert.equal(classifyFailure({ name: 'Security audit', log: '' }).action, 'fix_security');
   assert.equal(classifyFailure({ name: 'Security audit', log: 'npm audit found critical severity vulnerability' }).action, 'fix_security');
   assert.equal(classifyFailure({ name: 'Tests & ratchet', log: 'Quality Gate — Ratchet\ncoverage lines regressed' }).action, 'fix_ratchet');
+  assert.equal(classifyFailure({ name: 'Tests & ratchet', log: 'coverage.json is stale; pytest failed before writing coverage' }).category, 'coverage_stale');
   assert.equal(classifyFailure({ name: 'SonarCloud', log: 'QUALITY GATE STATUS: FAILED' }).action, 'diagnose_sonar');
   assert.equal(classifyFailure({ name: 'Docker image gate', log: 'Docker Image Doctor Critical finding' }).action, 'diagnose_docker');
   assert.equal(classifyFailure({ name: 'Tests', log: 'ECONNRESET while downloading package' }).action, 'rerun_flaky');
@@ -108,6 +109,60 @@ test('diagnoseRun can diagnose from snapshot without GitHub calls', () => {
 
   assert.deepEqual(result.actions, ['fix_security', 'diagnose_sonar', 'process_copilot']);
   assert.equal(result.findings.length, 3);
+});
+
+test('diagnoseRun treats failed advisory Sonar check as optional diagnostic', () => {
+  const result = diagnoseRun({
+    snapshot: {
+      pr: { number: 42 },
+      latestRun: { id: 123 },
+      ci: {
+        jobs: {
+          sonar: { name: 'SonarCloud Code Analysis', conclusion: 'failure' },
+        },
+      },
+      checks: {
+        required: [{ name: 'Lint', conclusion: 'success', status: 'completed' }],
+        advisory: [{ name: 'SonarCloud Code Analysis', conclusion: 'failure', status: 'completed' }],
+        unknown: [],
+      },
+      merge: {
+        ready: true,
+        status: 'ready_with_advisory',
+        blockers: [],
+        advisories: [{ type: 'advisory_check_failed', action: 'diagnose_optional_check', message: 'Sonar failed' }],
+      },
+      copilotBlockers: [],
+      humanBlockers: [],
+      actions: ['ready_with_advisory'],
+    },
+  });
+
+  assert.deepEqual(result.actions, ['diagnose_optional_check']);
+  assert.equal(result.findings[0].category, 'sonar_advisory');
+});
+
+test('diagnoseRun records artifact report directory for GitHub run diagnosis', () => {
+  const result = diagnoseRun({
+    run: 123,
+    repo: 'owner/repo',
+    ghJson: (args) => {
+      const key = args.join(' ');
+      if (key === 'api repos/owner/repo/actions/runs/123/jobs') {
+        return { jobs: [] };
+      }
+      if (key === 'run view 123 --json artifacts') {
+        return { artifacts: [{ name: 'coverage-report', sizeInBytes: 1000 }] };
+      }
+      throw new Error(`unexpected gh json: ${key}`);
+    },
+    ghText: () => '',
+    now: '2026-05-24T00:00:00.000Z',
+    reportsRoot: '.quality-gate/reports',
+  });
+
+  assert.equal(result.artifacts.directory, '.quality-gate/reports/ci/123');
+  assert.equal(result.artifacts.items[0].name, 'coverage-report');
 });
 
 test('diagnoseRun falls back to GitHub API job metadata when gh is unavailable', () => {

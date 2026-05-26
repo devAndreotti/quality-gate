@@ -31,10 +31,25 @@ function validatePolicy(policy) {
 
   if (policy?.schemaVersion !== 1) errors.push('schemaVersion precisa ser 1');
   if (!policy?.profile || typeof policy.profile !== 'string') errors.push('profile precisa ser string');
+  if (policy?.project != null) {
+    if (!Array.isArray(policy.project?.surfaces)) {
+      errors.push('project.surfaces precisa ser array quando project existir');
+    } else {
+      for (const [index, surface] of policy.project.surfaces.entries()) {
+        if (!['python-uv', 'node'].includes(surface?.type)) errors.push(`project.surfaces[${index}].type precisa ser python-uv ou node`);
+        if (!surface?.root || typeof surface.root !== 'string') errors.push(`project.surfaces[${index}].root precisa ser string nao vazia`);
+        if (typeof surface?.required !== 'boolean') errors.push(`project.surfaces[${index}].required precisa ser boolean`);
+      }
+    }
+  }
   if (!Array.isArray(policy?.ci?.requiredChecks) || policy.ci.requiredChecks.length === 0) {
     errors.push('ci.requiredChecks precisa ser array nao vazio');
   } else if (policy.ci.requiredChecks.some((check) => typeof check !== 'string' || !check.trim())) {
     errors.push('ci.requiredChecks aceita apenas strings nao vazias');
+  }
+  if (policy?.ci?.advisoryChecks != null && (!Array.isArray(policy.ci.advisoryChecks)
+    || policy.ci.advisoryChecks.some((check) => typeof check !== 'string' || !check.trim()))) {
+    errors.push('ci.advisoryChecks aceita apenas strings nao vazias');
   }
   if (typeof policy?.ci?.coverageRatchet !== 'boolean') {
     errors.push('ci.coverageRatchet precisa ser boolean');
@@ -89,6 +104,15 @@ function validatePolicy(policy) {
   }
   if (!['static-advisory', 'skip', 'fail'].includes(policy?.dockerImageDoctor?.fallbackWhenUnavailable)) {
     errors.push('dockerImageDoctor.fallbackWhenUnavailable precisa ser static-advisory, skip ou fail');
+  }
+  if (policy?.localValidation != null) {
+    if (policy.localValidation.untrackedAllowlist != null && (!Array.isArray(policy.localValidation.untrackedAllowlist)
+      || policy.localValidation.untrackedAllowlist.some((item) => typeof item !== 'string' || !item.trim()))) {
+      errors.push('localValidation.untrackedAllowlist aceita apenas strings nao vazias');
+    }
+    if (policy.localValidation.pytestBasetempPattern != null && typeof policy.localValidation.pytestBasetempPattern !== 'string') {
+      errors.push('localValidation.pytestBasetempPattern precisa ser string');
+    }
   }
 
   return errors;

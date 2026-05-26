@@ -35,6 +35,33 @@ function readMaxFileLines(root) {
   return Number.isInteger(value) && value > 0 ? value : 300;
 }
 
+function patternToRegExp(pattern) {
+  const escaped = String(pattern)
+    .replace(/\\/g, '/')
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '::DOUBLE_STAR::')
+    .replace(/\*/g, '[^/]*')
+    .replace(/::DOUBLE_STAR::/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function isPathAllowedByPattern(filePath, pattern) {
+  const normalized = String(filePath || '').replace(/\\/g, '/');
+  return patternToRegExp(pattern).test(normalized);
+}
+
+function parseGitStatusPath(line) {
+  return String(line || '').slice(3).trim().replace(/^"|"$/g, '');
+}
+
+function filterGitStatusEntries(lines, allowlist = []) {
+  return (lines || []).filter((line) => {
+    if (!String(line).startsWith('?? ')) return true;
+    const filePath = parseGitStatusPath(line);
+    return !allowlist.some((pattern) => isPathAllowedByPattern(filePath, pattern));
+  });
+}
+
 function pct(value) {
   return typeof value === 'number' ? `${value.toFixed(1)}%` : 'n/a';
 }
@@ -239,6 +266,8 @@ if (require.main === module) {
 module.exports = {
   buildUpdatedBaseline,
   compareMetrics,
+  filterGitStatusEntries,
+  isPathAllowedByPattern,
   parseArgs,
   runQualityGate,
 };

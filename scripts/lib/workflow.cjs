@@ -68,8 +68,111 @@ function findMissingRequiredContexts(requiredContexts, workflowJobNames) {
   return requiredContexts.filter((context) => !available.has(context));
 }
 
+function hasSurface(policy, type) {
+  return (policy?.project?.surfaces || []).some((surface) => surface.type === type);
+}
+
+function firstSurfaceRoot(policy, type) {
+  return (policy?.project?.surfaces || []).find((surface) => surface.type === type)?.root || '.';
+}
+
+function renderQualityGateWorkflow(policy = {}) {
+  const hasPython = hasSurface(policy, 'python-uv');
+  const hasNode = hasSurface(policy, 'node');
+  const pythonRoot = firstSurfaceRoot(policy, 'python-uv');
+  const nodeRoot = firstSurfaceRoot(policy, 'node');
+  const jobs = [];
+
+  if (hasPython) {
+    jobs.push(`  python-validation:
+    name: Python validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${pythonRoot}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --dev
+      - run: uvx ruff check src tests
+      - run: uv run pytest --basetemp .pytest-tmp-qg --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
+      - run: uvx pip-audit --path .venv`);
+  }
+
+  if (hasNode) {
+    jobs.push(`  ui-validation:
+    name: UI validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${nodeRoot}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${nodeRoot === '.' ? 'package-lock.json' : `${nodeRoot}/package-lock.json`}
+      - run: npm ci
+      - run: npm run test --if-present
+      - run: npm run lint --if-present
+      - run: npm run build --if-present
+      - run: npm audit --audit-level=moderate`);
+  }
+
+  jobs.push(`  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "security delegated to surface jobs"`);
+
+  jobs.push(`  docker:
+    name: Docker image gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/docker-gate.cjs --project . --json`);
+
+  jobs.push(`  summary:
+    name: Quality gate summary
+    runs-on: ubuntu-latest
+    needs: [${[
+    hasPython ? 'python-validation' : null,
+    hasNode ? 'ui-validation' : null,
+    'security',
+    'docker',
+  ].filter(Boolean).join(', ')}]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/pr-comment.js`);
+
+  return `name: Quality Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+${jobs.join('\n\n')}
+`;
+}
+
 module.exports = {
   findMissingRequiredContexts,
   parseSetupRequiredContexts,
   parseWorkflowJobNames,
+  renderQualityGateWorkflow,
 };

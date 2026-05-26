@@ -59,13 +59,52 @@ test('runBootstrap creates deterministic bootstrap files', () => {
   assert.equal(fs.existsSync(path.join(project, 'LICENSE')), true);
   assert.equal(fs.existsSync(path.join(project, '.github/FUNDING.yml')), true);
   assert.equal(fs.existsSync(path.join(project, '.github/dependabot.yml')), true);
+  assert.equal(fs.existsSync(path.join(project, '.github/workflows/quality-gate.yml')), true);
   assert.equal(fs.existsSync(path.join(project, 'README.md')), true);
+  assert.equal(fs.existsSync(path.join(project, '.quality-gate/policy.json')), true);
   assert.equal(fs.existsSync(path.join(project, '.quality-gate/reports/bootstrap-repo.json')), true);
 
   const readme = fs.readFileSync(path.join(project, 'README.md'), 'utf8');
   assert.match(readme, /<!-- quality-gate:readme:start -->/);
   assert.match(readme, /sample-app/);
   assert.match(readme, /npm test/);
+});
+
+test('runBootstrap detects mixed project surfaces in generated policy', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
+  fs.mkdirSync(path.join(project, 'UI'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'UI', 'package.json'), '{"scripts":{"test":"vitest"}}\n');
+
+  runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+  });
+
+  const policy = JSON.parse(fs.readFileSync(path.join(project, '.quality-gate/policy.json'), 'utf8'));
+  const workflow = fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8');
+  assert.deepEqual(policy.project.surfaces.map((surface) => `${surface.type}:${surface.root}`).sort(), [
+    'node:UI',
+    'python-uv:pipeline',
+  ]);
+  assert.match(workflow, /name: UI validation/);
+  assert.match(workflow, /working-directory: UI/);
+});
+
+test('runBootstrap does not generate UI job for python-only project', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
+
+  runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+  });
+
+  const workflow = fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8');
+  assert.match(workflow, /name: Python validation/);
+  assert.doesNotMatch(workflow, /name: UI validation/);
 });
 
 test('runBootstrap dry-run reports planned changes without writing files', () => {

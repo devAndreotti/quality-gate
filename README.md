@@ -26,8 +26,10 @@ your-project/                        ← Root of YOUR repository
 │   ├── bootstrap-repo.cjs           ← LICENSE/FUNDING/Dependabot/README scaffold
 │   ├── ci-diagnose.cjs              ← Deterministic CI failure classifier
 │   ├── configure-project.cjs        ← Stack adapter: node or python-uv
+│   ├── dependabot-consolidate.cjs    ← Dependabot PR consolidation planner
 │   ├── doctor.cjs                   ← Read-only package auditor
 │   ├── docker-gate.cjs              ← Docker gate + static fallback advisory
+│   ├── local-validate.cjs            ← One-command local PR validation
 │   ├── lib/                         ← Shared validation libraries
 │   ├── pr-snapshot.cjs              ← PR snapshot JSON generator for babysit-pr
 │   ├── quality-gate.js              ← Ratchet: check | update | report
@@ -94,6 +96,15 @@ qg-upd
 qg-chk
 qg-doc
 ```
+
+Equivalent one-command validation for PR work:
+
+```powershell
+node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --dry-run --json
+node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --json
+```
+
+`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `qg-chk`, `qg-doc`, `git diff --check`, and `git status`. `qg-chk` only runs after successful pytest with fresh coverage.
 
 ### Step 1 — Copy Files to Your Repository
 
@@ -176,6 +187,61 @@ git push
 ```
 
 Now, the ratchet quality gate is active.
+
+---
+
+## PR Readiness Contract
+
+`pr-snapshot.cjs` separates required checks, advisory checks, GitHub merge state, and review-thread state. `babysit-loop.cjs` only returns terminal `ready` when `snapshot.merge.ready === true`.
+
+Important states:
+
+- `ready`: required checks green, merge policy allows merge, review threads known and resolved.
+- `ready_with_advisory`: merge is allowed, required checks green, optional check failed.
+- `wait_ci`: required check pending or missing.
+- `fix_required_check`: required check failed.
+- `resolve_review_threads`: GraphQL found unresolved review thread.
+- `verify_review_threads_manual`: GraphQL could not confirm review threads.
+- `blocked_by_policy`: GitHub reports merge blocked by branch policy.
+
+Sonar is advisory unless policy/branch protection makes it required.
+
+---
+
+## Mixed Projects
+
+`.quality-gate/policy.json` can declare surfaces:
+
+```json
+{
+  "project": {
+    "surfaces": [
+      { "type": "python-uv", "root": "pipeline", "required": true, "coverageJson": "../coverage/coverage.json" },
+      { "type": "node", "root": "UI", "required": true }
+    ]
+  },
+  "ci": {
+    "requiredChecks": ["Python validation", "UI validation", "Docker image gate"],
+    "advisoryChecks": ["SonarCloud Code Analysis"]
+  },
+  "localValidation": {
+    "untrackedAllowlist": ["samples/**"],
+    "pytestBasetempPattern": ".pytest-tmp-qg-${timestamp}-${pid}"
+  }
+}
+```
+
+Bootstrap detects `pipeline/pyproject.toml` and `package.json`, then generates matching workflow jobs. `doctor.cjs` warns about undeclared surfaces and fails when a required surface lacks a workflow job.
+
+---
+
+## Dependabot Consolidation
+
+```powershell
+node scripts\dependabot-consolidate.cjs --repo OWNER/REPO --dry-run --json
+```
+
+The helper lists open Dependabot PRs, touched files, probable conflicts, and whether to consolidate or merge independently.
 
 ---
 

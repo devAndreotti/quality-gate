@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadPolicy } = require('./lib/policy.cjs');
+const { renderQualityGateWorkflow } = require('./lib/workflow.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 const README_START = '<!-- quality-gate:readme:start -->';
@@ -232,6 +233,103 @@ function ensureDependabot(context) {
   });
 }
 
+function detectSurfaces(projectRoot) {
+  const surfaces = [];
+  if (fs.existsSync(path.join(projectRoot, 'pipeline', 'pyproject.toml'))) {
+    surfaces.push({
+      type: 'python-uv',
+      root: 'pipeline',
+      required: true,
+      coverageJson: '../coverage/coverage.json',
+    });
+  }
+  if (fs.existsSync(path.join(projectRoot, 'package.json'))) {
+    surfaces.push({
+      type: 'node',
+      root: '.',
+      required: true,
+      commands: {
+        install: 'npm ci',
+        test: 'npm run test --if-present',
+        lint: 'npm run lint --if-present',
+        build: 'npm run build --if-present',
+        audit: 'npm audit --audit-level=moderate',
+      },
+    });
+  }
+  for (const entry of fs.readdirSync(projectRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+    if (!fs.existsSync(path.join(projectRoot, entry.name, 'package.json'))) continue;
+    surfaces.push({
+      type: 'node',
+      root: entry.name,
+      required: true,
+      commands: {
+        install: 'npm ci',
+        test: 'npm run test --if-present',
+        lint: 'npm run lint --if-present',
+        build: 'npm run build --if-present',
+        audit: 'npm audit --audit-level=moderate',
+      },
+    });
+  }
+  return surfaces;
+}
+
+function buildProjectPolicy(policy, projectRoot) {
+  return {
+    ...policy,
+    project: {
+      ...(policy.project || {}),
+      surfaces: detectSurfaces(projectRoot),
+    },
+    ci: {
+      ...policy.ci,
+      advisoryChecks: policy.ci?.advisoryChecks || [],
+    },
+    localValidation: {
+      untrackedAllowlist: ['samples/**'],
+      pytestBasetempPattern: '.pytest-tmp-qg-${timestamp}-${pid}',
+      ...(policy.localValidation || {}),
+    },
+  };
+}
+
+function ensureProjectPolicy(context) {
+  const relativePath = '.quality-gate/policy.json';
+  const target = path.join(context.projectRoot, relativePath);
+  if (fs.existsSync(target)) {
+    recordStep(context.steps, 'ok', 'Policy', 'existing policy kept', relativePath);
+    return;
+  }
+  writeFileIfChanged({
+    projectRoot: context.projectRoot,
+    relativePath,
+    content: `${JSON.stringify(buildProjectPolicy(context.policy, context.projectRoot), null, 2)}\n`,
+    dryRun: context.dryRun,
+    steps: context.steps,
+    name: 'Policy',
+  });
+}
+
+function ensureWorkflow(context) {
+  const relativePath = '.github/workflows/quality-gate.yml';
+  const target = path.join(context.projectRoot, relativePath);
+  if (fs.existsSync(target)) {
+    recordStep(context.steps, 'ok', 'Workflow', 'existing workflow kept', relativePath);
+    return;
+  }
+  const projectPolicy = buildProjectPolicy(context.policy, context.projectRoot);
+  writeFileIfChanged({
+    projectRoot: context.projectRoot,
+    relativePath,
+    content: renderQualityGateWorkflow(projectPolicy),
+    dryRun: context.dryRun,
+    steps: context.steps,
+    name: 'Workflow',
+  });
+}
+
 function toolBadges(packageJson) {
   const badges = [];
   if (packageJson) {
@@ -429,6 +527,8 @@ function runBootstrap(options = {}) {
   ensureLicense(context);
   ensureFunding(context);
   ensureDependabot(context);
+  ensureProjectPolicy(context);
+  ensureWorkflow(context);
   ensureReadme(context);
 
   const result = {
@@ -487,6 +587,8 @@ module.exports = {
   README_END,
   README_START,
   buildReadmeScaffold,
+  buildProjectPolicy,
+  detectSurfaces,
   parseArgs,
   runBootstrap,
 };
