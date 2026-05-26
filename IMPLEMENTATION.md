@@ -89,33 +89,18 @@ Campos minimos da policy:
   "schemaVersion": 1,
   "profile": "strict-node",
   "ci": {
-    "requiredChecks": ["Security audit", "Lint", "Tests & ratchet", "SonarCloud", "Docker image gate"],
+    "requiredChecks": ["Security audit", "Lint", "Tests & ratchet", "Docker image gate"],
+    "advisoryChecks": ["SonarCloud", "SonarCloud Code Analysis"],
     "coverageRatchet": true,
     "maxFileLines": 300
   },
-  "bootstrap": {
-    "license": { "enabled": true, "type": "MIT" },
-    "funding": { "enabled": true, "buyMeACoffee": "ricardo230a" },
-    "dependabot": { "enabled": true },
-    "readme": { "enabled": true, "style": "devandreotti" }
-  },
-  "github": {
-    "copilotReview": true,
-    "branchProtection": true,
-    "requireConversationResolution": true
-  },
-  "dockerImageDoctor": {
-    "enabled": "auto",
-    "runWhen": "docker-files-present",
-    "scriptPath": "D:\\Dev\\Scripts\\seguranca\\18-Docker-Image-Doctor.ps1",
-    "agentArgs": ["-Preset", "AI", "-ForAI", "-Json", "-FixPlan", "-NoPrompt"],
-    "interactiveAllowed": false,
-    "blockOn": ["Critical"],
-    "warnOn": ["High", "Medium"],
-    "fallbackWhenUnavailable": "static-advisory"
-  }
+  "github": { "branchProtection": true },
+  "bootstrap": { "license": { "enabled": true, "type": "MIT" } },
+  "dockerImageDoctor": { "enabled": "auto", "blockOn": ["Critical"] }
 }
 ```
+
+O exemplo acima mostra formato, nao substitui `.quality-gate/policy.json`.
 
 ## Fases de implementacao
 

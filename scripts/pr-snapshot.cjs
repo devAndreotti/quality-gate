@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { runGhJson, runGitHubApi, splitRepo } = require('./lib/github.cjs');
 
 const DEFAULT_ADVISORY_CHECKS = [
   'SonarCloud',
@@ -24,65 +24,12 @@ function parseArgs(argv) {
   return args;
 }
 
-function runGhText(args) {
-  return childProcess.execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-}
-
-function runGhJson(args) {
-  const raw = runGhText(args);
-  return raw.trim() ? JSON.parse(raw) : null;
-}
-
-function runGitHubApi(apiPath) {
-  const script = `
-const https = require('node:https');
-const token = process.env.GITHUB_TOKEN;
-const req = https.request({
-  hostname: 'api.github.com',
-  path: ${JSON.stringify(apiPath)},
-  method: 'GET',
-  headers: {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'quality-gate-pr-snapshot/1.0',
-    ...(token ? { Authorization: \`Bearer \${token}\` } : {}),
-  },
-}, (res) => {
-  let data = '';
-  res.on('data', (chunk) => { data += chunk; });
-  res.on('end', () => {
-    if (res.statusCode >= 400) {
-      console.error(\`GitHub API \${res.statusCode}: \${data}\`);
-      process.exit(1);
-    }
-    process.stdout.write(data || 'null');
-  });
-});
-req.on('error', (error) => {
-  console.error(error.message);
-  process.exit(1);
-});
-req.end();
-`;
-  const raw = childProcess.execFileSync(process.execPath, ['-e', script], {
-    encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-  });
-  return raw.trim() ? JSON.parse(raw) : null;
-}
-
 function normalizeValue(value) {
   return String(value || '').toLowerCase();
 }
 
 function normalizeCheckName(value) {
   return normalizeValue(value).replace(/\s+/g, ' ').trim();
-}
-
-function splitRepo(repo) {
-  const [owner, name] = String(repo || '').split('/');
-  if (!owner || !name) throw new Error('--repo precisa estar no formato owner/repo');
-  return { owner, name };
 }
 
 function checkKey(name) {
