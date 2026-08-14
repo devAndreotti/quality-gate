@@ -24,6 +24,8 @@ const {
   parseWorkflowJobNames,
 } = require('./lib/workflow.cjs');
 
+const { displayWidth, padEnd, renderHeaderBox, renderSection } = require('./lib/console-ui.cjs');
+
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
 const REQUIRED_FILES = [
@@ -363,19 +365,24 @@ function statusIcon(level) {
 }
 
 function printReport(result, options = {}) {
-  console.log('\n🔒 Quality Gate Doctor');
-  console.log('════════════════════════\n');
+  console.log('');
+  console.log(renderHeaderBox('Quality Gate Doctor', { icon: '◆' }));
+  console.log('');
 
   if (options.dryRun) {
-    console.log(' ⚠️  --dry-run ativo: auditoria read-only; nenhuma alteracao seria feita de qualquer forma.\n');
+    console.log(' ⚠️  --dry-run ativo: auditoria read-only; nenhuma alteracao seria feita de qualquer forma.');
+    console.log('');
   }
 
+  console.log(renderSection('Checks', '▤'));
+  const nameWidth = Math.max(0, ...result.checks.map((check) => displayWidth(check.name)));
   for (const check of result.checks) {
-    console.log(` ${statusIcon(check.level)} ${check.name}: ${check.detail}`);
+    console.log(`    ${statusIcon(check.level)} ${padEnd(check.name, nameWidth)}  ${check.detail}`);
   }
 
   console.log('');
-  console.log(` Resultado: ${result.summary.ok} ok, ${result.summary.warn} avisos, ${result.summary.fail} falhas`);
+  const summaryIcon = result.summary.fail > 0 ? '❌' : result.summary.warn > 0 ? '⚠️ ' : '✅';
+  console.log(` ${summaryIcon} Resultado: ${result.summary.ok} ok, ${result.summary.warn} avisos, ${result.summary.fail} falhas`);
 }
 
 function main(argv = process.argv.slice(2)) {
