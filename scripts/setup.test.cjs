@@ -203,6 +203,46 @@ test('runSetup URL-encodes default branch names in GitHub API paths', async () =
   assert.ok(apiCalls.some((call) => call.apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection'));
 });
 
+test('runSetup skips branch protection with actionable detail when default branch is not pushed', async () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, '.github', 'workflows'), { recursive: true });
+  fs.copyFileSync(path.resolve(__dirname, 'baseline.json'), path.join(project, 'scripts', 'baseline.json'));
+  fs.writeFileSync(path.join(project, 'sonar-project.properties'), 'sonar.projectKey=YOUR_ORG_YOUR_REPO\n');
+  fs.writeFileSync(path.join(project, '.github', 'workflows', 'quality-gate.yml'), 'name: Quality Gate\n');
+
+  const ghApi = async (method, apiPath) => {
+    if (method === 'GET' && apiPath === '/user') return { body: { login: 'me' } };
+    if (method === 'GET' && apiPath === '/repos/owner/repo') return { body: { default_branch: 'main' } };
+    if (method === 'GET' && apiPath === '/repos/owner/repo/rulesets') return { body: [] };
+    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets') return { body: { id: 1 }, status: 201 };
+    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/main/protection') {
+      const error = new Error('GitHub API 404 /repos/owner/repo/branches/main/protection: Branch not found');
+      error.statusCode = 404;
+      error.apiPath = apiPath;
+      throw error;
+    }
+    throw new Error(`unexpected API ${method} ${apiPath}`);
+  };
+
+  const result = await runSetup({
+    args: {
+      repo: 'owner/repo',
+      skipSonar: true,
+      skipBootstrap: true,
+      dryRun: false,
+    },
+    projectRoot: project,
+    env: { GITHUB_TOKEN: 'token' },
+    ghApi,
+    setSecret: async () => {},
+  });
+
+  const branchProtection = result.steps.find((step) => step.name === 'branch-protection');
+  assert.equal(branchProtection.status, 'skipped');
+  assert.match(branchProtection.detail, /push it first/);
+});
+
 test('ghAPI configures an HTTPS request timeout', () => {
   const setupText = fs.readFileSync(path.resolve(__dirname, 'setup.js'), 'utf8');
 

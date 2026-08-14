@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadPolicy } = require('./lib/policy.cjs');
-const { renderQualityGateWorkflow } = require('./lib/workflow.cjs');
+const { WORKFLOW_MARKER_PREFIX, renderQualityGateWorkflow } = require('./lib/workflow.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 const README_START = '<!-- quality-gate:readme:start -->';
@@ -43,6 +43,7 @@ function parseArgs(argv) {
     skipLicense: false,
     skipDependabot: false,
     noReport: false,
+    upgrade: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -56,6 +57,7 @@ function parseArgs(argv) {
     else if (arg === '--skip-license') args.skipLicense = true;
     else if (arg === '--skip-dependabot') args.skipDependabot = true;
     else if (arg === '--no-report') args.noReport = true;
+    else if (arg === '--upgrade') args.upgrade = true;
   }
 
   return args;
@@ -327,15 +329,34 @@ function ensureProjectPolicy(context) {
 function ensureWorkflow(context) {
   const relativePath = '.github/workflows/quality-gate.yml';
   const target = path.join(context.projectRoot, relativePath);
+  const projectPolicy = buildProjectPolicy(context.policy, context.projectRoot);
+  const content = renderQualityGateWorkflow(projectPolicy);
   if (fs.existsSync(target)) {
+    const current = fs.readFileSync(target, 'utf8');
+    if (current === content) {
+      recordStep(context.steps, 'ok', 'Workflow', 'already up to date', relativePath);
+      return;
+    }
+    if (context.upgrade) {
+      if (!current.includes(WORKFLOW_MARKER_PREFIX)) {
+        recordStep(context.steps, 'warn', 'Workflow', 'manual review required; existing workflow has no managed marker', relativePath);
+        return;
+      }
+      if (context.dryRun) {
+        recordStep(context.steps, 'planned', 'Workflow', 'would update managed workflow', relativePath);
+        return;
+      }
+      fs.writeFileSync(target, content);
+      recordStep(context.steps, 'updated', 'Workflow', 'updated managed workflow', relativePath);
+      return;
+    }
     recordStep(context.steps, 'ok', 'Workflow', 'existing workflow kept', relativePath);
     return;
   }
-  const projectPolicy = buildProjectPolicy(context.policy, context.projectRoot);
   writeFileIfChanged({
     projectRoot: context.projectRoot,
     relativePath,
-    content: renderQualityGateWorkflow(projectPolicy),
+    content,
     dryRun: context.dryRun,
     steps: context.steps,
     name: 'Workflow',
@@ -529,6 +550,7 @@ function runBootstrap(options = {}) {
     skipFunding: Boolean(options.skipFunding),
     skipLicense: Boolean(options.skipLicense),
     skipDependabot: Boolean(options.skipDependabot),
+    upgrade: Boolean(options.upgrade),
     info: detectProjectInfo(projectRoot),
   };
 
@@ -584,6 +606,7 @@ function main(argv = process.argv.slice(2)) {
     skipFunding: args.skipFunding,
     skipLicense: args.skipLicense,
     skipDependabot: args.skipDependabot,
+    upgrade: args.upgrade,
     noReport: args.noReport,
   });
   if (args.json) console.log(JSON.stringify(result, null, 2));

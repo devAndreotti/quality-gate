@@ -1,3 +1,4 @@
+# quality-gate:managed-workflow version 1
 name: Quality Gate
 
 on:
@@ -206,6 +207,7 @@ jobs:
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -221,6 +223,15 @@ jobs:
           path: coverage/
         continue-on-error: true
 
+      - name: Generate PR snapshot
+        run: node scripts/pr-snapshot.cjs --pr "$PR_NUMBER" --json --output .quality-gate/reports/pr-snapshot.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        continue-on-error: true
+
       - name: Postar sticky comment no PR
         run: node scripts/pr-comment.js
         env:
@@ -232,3 +243,5 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           SONAR_RESULT: ${{ needs.sonar.result }}
           DOCKER_RESULT: ${{ needs.docker.result }}
+          REQUIRED_CHECKS: 'Security audit,Lint,Tests & ratchet,Docker image gate'
+          SNAPSHOT_PATH: .quality-gate/reports/pr-snapshot.json

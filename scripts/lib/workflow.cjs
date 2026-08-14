@@ -84,6 +84,9 @@ function githubNeedsResult(jobName) {
   return `\${{ needs['${jobName}'].result }}`;
 }
 
+const WORKFLOW_MARKER_PREFIX = '# quality-gate:managed-workflow';
+const WORKFLOW_MARKER = `${WORKFLOW_MARKER_PREFIX} version 1`;
+
 function renderQualityGateWorkflow(policy = {}) {
   const hasPython = hasSurface(policy, 'python-uv');
   const hasNode = hasSurface(policy, 'node');
@@ -104,7 +107,7 @@ function renderQualityGateWorkflow(policy = {}) {
       run:
         working-directory: ${pythonRoot}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -124,8 +127,8 @@ function renderQualityGateWorkflow(policy = {}) {
       run:
         working-directory: ${nodeRoot}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -141,15 +144,15 @@ function renderQualityGateWorkflow(policy = {}) {
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: echo "security delegated to surface jobs"`);
 
   jobs.push(`  docker:
     name: Docker image gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - run: node scripts/docker-gate.cjs --project . --json`);
@@ -166,15 +169,28 @@ function renderQualityGateWorkflow(policy = {}) {
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: Generate PR snapshot
+        run: node scripts/pr-snapshot.cjs --pr "$PR_NUMBER" --json --output .quality-gate/reports/pr-snapshot.json
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: \${{ github.repository }}
+          PR_NUMBER: \${{ github.event.pull_request.number }}
+        continue-on-error: true
       - run: node scripts/pr-comment.js
         env:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: \${{ github.event.pull_request.number }}
           RUN_ID: \${{ github.run_id }}
-          REQUIRED_CHECKS: ${requiredChecks}
+          REQUIRED_CHECKS: '${requiredChecks}'
+          SNAPSHOT_PATH: .quality-gate/reports/pr-snapshot.json
           SECURITY_RESULT: \${{ needs.security.result }}
           LINT_RESULT: skipped
           TEST_RESULT: ${testResult}
@@ -183,7 +199,8 @@ function renderQualityGateWorkflow(policy = {}) {
           SONAR_RESULT: skipped
           DOCKER_RESULT: \${{ needs.docker.result }}`);
 
-  return `name: Quality Gate
+  return `${WORKFLOW_MARKER}
+name: Quality Gate
 
 on:
   pull_request:
@@ -200,6 +217,8 @@ ${jobs.join('\n\n')}
 }
 
 module.exports = {
+  WORKFLOW_MARKER,
+  WORKFLOW_MARKER_PREFIX,
   findMissingRequiredContexts,
   parseSetupRequiredContexts,
   parseWorkflowJobNames,

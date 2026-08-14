@@ -30,6 +30,7 @@ test('parseArgs supports dry-run, project, json, and skip flags', () => {
     '--skip-funding',
     '--skip-license',
     '--skip-dependabot',
+    '--upgrade',
   ]);
 
   assert.equal(args.project, 'C:\\repo\\sample');
@@ -39,6 +40,7 @@ test('parseArgs supports dry-run, project, json, and skip flags', () => {
   assert.equal(args.skipFunding, true);
   assert.equal(args.skipLicense, true);
   assert.equal(args.skipDependabot, true);
+  assert.equal(args.upgrade, true);
 });
 
 test('runBootstrap creates deterministic bootstrap files', () => {
@@ -98,6 +100,8 @@ test('runBootstrap detects mixed project surfaces in generated policy', () => {
   assert.match(workflow, /working-directory: UI/);
   assert.match(workflow, /mkdir -p \.\.\/coverage/);
   assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(workflow, /SNAPSHOT_PATH: \.quality-gate\/reports\/pr-snapshot\.json/);
   assert.match(workflow, /PYTHON_RESULT: \$\{\{ needs\['python-validation'\]\.result \}\}/);
   assert.match(workflow, /UI_RESULT: \$\{\{ needs\['ui-validation'\]\.result \}\}/);
 });
@@ -208,6 +212,57 @@ test('runBootstrap replaces only managed README block', () => {
   assert.match(readme, /^# Existing/);
   assert.doesNotMatch(readme, /old generated content/);
   assert.match(readme, /Manual tail\./);
+});
+
+test('runBootstrap upgrade dry-run plans managed workflow update without writing', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
+  const oldWorkflow = [
+    '# quality-gate:managed-workflow version 0',
+    'name: Quality Gate',
+    'jobs:',
+    '  report:',
+    '    steps:',
+    '      - run: node scripts/pr-comment.js',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), oldWorkflow);
+
+  const result = runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+    dryRun: true,
+    upgrade: true,
+  });
+  const workflowStep = result.steps.find((step) => step.name === 'Workflow');
+
+  assert.equal(workflowStep.status, 'planned');
+  assert.equal(workflowStep.detail, 'would update managed workflow');
+  assert.equal(fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8'), oldWorkflow);
+});
+
+test('runBootstrap upgrade requires manual review for unmarked custom workflow', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), [
+    'name: Custom CI',
+    'jobs:',
+    '  custom:',
+    '    steps:',
+    '      - run: echo custom',
+    '',
+  ].join('\n'));
+
+  const result = runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+    dryRun: true,
+    upgrade: true,
+  });
+  const workflowStep = result.steps.find((step) => step.name === 'Workflow');
+
+  assert.equal(workflowStep.status, 'warn');
+  assert.match(workflowStep.detail, /manual review required/);
 });
 
 test('buildReadmeScaffold includes machine-readable managed markers', () => {

@@ -153,9 +153,11 @@ gh run download $(gh run list --branch $(gh pr view $PR --json headRefName -q .h
 ```
 
 **Sticky comment no PR** — sempre atualizado pelo job `report`:
-- Mostra status de todos os jobs
-- Tabela de coverage vs baseline
-- Top 3 arquivos com menor cobertura
+- Mostra `Can merge`, `Next action`, required checks e coverage resumido.
+- Usa `.quality-gate/reports/pr-snapshot.json` quando o workflow conseguiu gerar snapshot.
+- Se o snapshot nao existir, usa linguagem conservadora: checks verdes nao significam PR pronto.
+- Detalhes completos ficam no `GITHUB_STEP_SUMMARY`; blockers e menor coverage podem aparecer como annotations do Actions.
+- O loop da skill deve continuar confiando em `snapshot.merge.ready`, nao no texto do comentario.
 
 ## Desfechos terminais
 

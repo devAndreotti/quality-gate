@@ -356,6 +356,12 @@ function plannedStepStatus(mode) {
   return 'planned';
 }
 
+function isBranchNotFoundForProtection(error, repoInfo, branch) {
+  return error?.statusCode === 404
+    && error?.apiPath === branchProtectionApiPath(repoInfo, branch)
+    && /branch not found/i.test(error.message || '');
+}
+
 async function runSetup(options = {}) {
   const args = options.args || parseArgs(process.argv.slice(2));
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
@@ -419,12 +425,22 @@ async function runSetup(options = {}) {
     ghApi,
   })) });
 
-  await ghApi(
-    'PUT',
-    branchProtectionApiPath(plan.repo, result.defaultBranch),
-    branchProtectionBody(plan.requiredStatusChecks),
-  );
-  result.steps.push({ name: 'branch-protection', status: 'updated', branch: result.defaultBranch });
+  try {
+    await ghApi(
+      'PUT',
+      branchProtectionApiPath(plan.repo, result.defaultBranch),
+      branchProtectionBody(plan.requiredStatusChecks),
+    );
+    result.steps.push({ name: 'branch-protection', status: 'updated', branch: result.defaultBranch });
+  } catch (error) {
+    if (!isBranchNotFoundForProtection(error, plan.repo, result.defaultBranch)) throw error;
+    result.steps.push({
+      name: 'branch-protection',
+      status: 'skipped',
+      branch: result.defaultBranch,
+      detail: `branch ${result.defaultBranch} not found on GitHub; push it first, then rerun setup.js`,
+    });
+  }
 
   return result;
 }

@@ -105,10 +105,33 @@ test('init creates baseline from Python coverage JSON', () => {
 
   assert.equal(result.status, 'updated');
   assert.equal(result.current.coverage.lines, 83.7);
-  assert.equal(result.current.coverage.statements, 83.7);
-  assert.equal(result.current.coverage.functions, 83.7);
+  assert.equal(result.current.coverage.statements, null);
+  assert.equal(result.current.coverage.functions, null);
   assert.equal(result.current.coverage.branches, 75);
+  assert.equal(Object.hasOwn(baseline.coverage, 'statements'), false);
+  assert.equal(Object.hasOwn(baseline.coverage, 'functions'), false);
   assert.equal(baseline.coverage.branches, 75);
+});
+
+test('Python coverage does not fail on legacy statements/functions baseline', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: {
+      lines: 80,
+      statements: 95,
+      functions: 95,
+      branches: 70,
+    },
+  }, null, 2));
+  writePythonCoverage(project, 83.7);
+
+  const result = runQualityGate({ root: project, command: 'check' });
+  const functionsRow = result.rows.find((row) => row.metric === 'functions');
+
+  assert.equal(result.status, 'passed');
+  assert.equal(functionsRow.current, 'n/a');
+  assert.equal(functionsRow.passed, true);
 });
 
 test('file size gate uses maxFileLines from policy', () => {
