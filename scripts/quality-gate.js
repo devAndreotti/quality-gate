@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { renderTable } = require('./lib/console-ui.cjs');
 
 function parseArgs(argv) {
   return {
@@ -240,33 +241,8 @@ function runQualityGate(options = {}) {
   throw new Error(`Comando desconhecido: "${command}". Use: check | update | init | report`);
 }
 
-function displayWidth(value) {
-  const str = String(value);
-  let width = 0;
-  for (const char of str) {
-    const codePoint = char.codePointAt(0);
-    if (codePoint === 0xfe0f) continue;
-    const isPictograph = codePoint >= 0x1f300 && codePoint <= 0x1faff;
-    const isDingbat = codePoint >= 0x2600 && codePoint <= 0x27bf;
-    const isMiscSymbolArrow = codePoint >= 0x2b00 && codePoint <= 0x2bff;
-    if (isPictograph || isDingbat || isMiscSymbolArrow) {
-      width += 2;
-      continue;
-    }
-    width += 1;
-  }
-  return width;
-}
-
-function padEnd(value, width) {
-  const str = String(value);
-  const visible = displayWidth(str);
-  return visible >= width ? str : str + ' '.repeat(width - visible);
-}
-
-function renderTable(rows) {
-  const headers = ['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'];
-  const data = rows.map((row) => [
+function toMetricsTableRows(rows) {
+  return rows.map((row) => [
     row.passed ? '✅' : '❌',
     row.group,
     row.metric,
@@ -274,24 +250,12 @@ function renderTable(rows) {
     row.current,
     row.delta,
   ]);
-  const widths = headers.map((header, index) =>
-    Math.max(displayWidth(header), ...data.map((line) => displayWidth(line[index]))),
-  );
-  const renderRow = (cells) => `│ ${cells.map((cell, index) => padEnd(cell, widths[index])).join(' │ ')} │`;
-  const separator = (left, mid, right) => `${left}${widths.map((w) => '─'.repeat(w + 2)).join(mid)}${right}`;
-  return [
-    separator('┌', '┬', '┐'),
-    renderRow(headers),
-    separator('├', '┼', '┤'),
-    ...data.map(renderRow),
-    separator('└', '┴', '┘'),
-  ].join('\n');
 }
 
 function printReport(result) {
   console.log('\nQuality Gate — Ratchet\n');
   if ((result.rows || []).length > 0) {
-    console.log(renderTable(result.rows));
+    console.log(renderTable(['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'], toMetricsTableRows(result.rows)));
   }
   // check e report leem o mesmo compareMetrics; a unica diferenca real e o exit code
   // (main() abaixo). Essa linha final deixa isso visivel pra quem so olha o terminal.
