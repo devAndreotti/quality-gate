@@ -240,13 +240,42 @@ function runQualityGate(options = {}) {
   throw new Error(`Comando desconhecido: "${command}". Use: check | update | init | report`);
 }
 
+function padEnd(value, width) {
+  const str = String(value);
+  return str.length >= width ? str : str + ' '.repeat(width - str.length);
+}
+
+function renderTable(rows) {
+  const headers = ['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'];
+  const data = rows.map((row) => [
+    row.passed ? '✅' : '❌',
+    row.group,
+    row.metric,
+    row.baseline,
+    row.current,
+    row.delta,
+  ]);
+  const widths = headers.map((header, index) =>
+    Math.max(header.length, ...data.map((line) => String(line[index]).length)),
+  );
+  const renderRow = (cells) => `│ ${cells.map((cell, index) => padEnd(cell, widths[index])).join(' │ ')} │`;
+  const separator = (left, mid, right) => `${left}${widths.map((w) => '─'.repeat(w + 2)).join(mid)}${right}`;
+  return [
+    separator('┌', '┬', '┐'),
+    renderRow(headers),
+    separator('├', '┼', '┤'),
+    ...data.map(renderRow),
+    separator('└', '┴', '┘'),
+  ].join('\n');
+}
+
 function printReport(result) {
-  console.log('\nQuality Gate — Ratchet');
-  for (const row of result.rows || []) {
-    const icon = row.passed ? '✅' : '❌';
-    console.log(`${icon} ${row.group}/${row.metric}: ${row.baseline} -> ${row.current} (${row.delta})`);
+  console.log('\nQuality Gate — Ratchet\n');
+  if ((result.rows || []).length > 0) {
+    console.log(renderTable(result.rows));
   }
   if (result.updated) {
+    console.log('');
     console.log(`${result.status === 'planned' ? '⚠️ ' : '✅'} baseline.json ${result.status}`);
     console.log(JSON.stringify(result.updated, null, 2));
   }
