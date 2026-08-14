@@ -64,6 +64,8 @@ qg-upd
 qg-rpt
 ```
 
+`qg` with no flags is the primary local entry point: it opens an interactive menu (state summary + install/repair, doctor, local PR validation, update baseline, GitHub setup, PR snapshot, babysit PR once, show report). All the `qg-*` aliases and explicit flags keep working exactly as before — the menu never intercepts them, it only appears when `qg` is called with nothing else to do.
+
 `qg-init` detects the project stack before writing. Version `1.0.0` supports:
 
 - `node`: `package.json` at the repository root.
@@ -212,6 +214,8 @@ Important states:
 - `blocked_by_policy`: GitHub reports merge blocked by branch policy.
 
 Sonar is advisory unless policy/branch protection makes it required.
+
+The GitHub-generated PR notification email itself is not customizable — GitHub controls its subject/body. What Quality Gate controls is the sticky PR comment, the job summary, and Actions annotations described above; that's the "email-friendly" surface, not the email itself.
 
 ---
 

@@ -63,6 +63,7 @@ Skill faz:
   state.json           # estado detectado; gerado
 
 scripts/
+  QualityGate.ps1      # wrapper humano interativo (qg); scripts .cjs/.js abaixo sao a fonte deterministica que ele chama
   doctor.cjs           # auditor read-only por padrao
   setup.js             # orquestrador GitHub atual
   babysit-loop.cjs     # ciclo snapshot + diagnostico sem corrigir codigo

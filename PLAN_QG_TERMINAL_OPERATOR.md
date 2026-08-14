@@ -207,16 +207,16 @@ pwsh -NoProfile -Command '& { $code = Get-Content -LiteralPath ".\scripts\Qualit
 
 ### Slice 7 - Menu `qg` interativo
 
-- [ ] `qg` sem flags abre menu, nao apenas help.
-- [ ] Menu detecta se Quality Gate esta instalado no cwd.
-- [ ] Menu mostra estado resumido:
+- [x] `qg` sem flags abre menu, nao apenas help.
+- [x] Menu detecta se Quality Gate esta instalado no cwd.
+- [x] Menu mostra estado resumido:
   - perfil;
   - repo remoto;
   - branch atual;
   - token env ativo;
   - ultimo report local;
   - PR detectado quando branch tem upstream.
-- [ ] Opcoes iniciais:
+- [x] Opcoes iniciais:
   - install/repair;
   - doctor;
   - local PR validation;
@@ -226,7 +226,13 @@ pwsh -NoProfile -Command '& { $code = Get-Content -LiteralPath ".\scripts\Qualit
   - babysit PR once;
   - show report;
   - help.
-- [ ] Flags existentes continuam sem prompt.
+- [x] Flags existentes continuam sem prompt.
+
+Implementado via `Out-ConsoleGridView` (modulo `Microsoft.PowerShell.ConsoleGuiTools`,
+instalado sob demanda em `Invoke-QgMenu`; se a instalacao falhar, cai para menu de
+texto por `Read-Host`). Instalar/repair chama `Invoke-Init` (mesmo wizard do `-Init`,
+extraido para funcao). Doctor/Update/Show report chamam `doctor.cjs`/`quality-gate.js`
+diretamente no `$ProjectRoot`.
 
 Teste alvo:
 
@@ -237,14 +243,16 @@ pwsh -NoProfile -File scripts\QualityGate.ps1 -Doctor
 
 ### Slice 8 - Doctor de auth e remoto
 
-- [ ] Novo diagnostico mostra quando `GITHUB_TOKEN` ou `GH_TOKEN` esta ativo.
-- [ ] Diagnostico distingue:
+- [x] Novo diagnostico mostra quando `GITHUB_TOKEN` ou `GH_TOKEN` esta ativo.
+- [x] Diagnostico distingue:
   - token env ativo;
   - gh keyring disponivel;
   - repo remoto ausente;
-  - repo remoto sem branch default;
-  - push sem permissao.
-- [ ] Mensagem sugere comando temporario seguro:
+  - repo remoto sem branch default.
+- [ ] push sem permissao — nao verificado ativamente por `Get-QgAuthDiagnostic` (exigiria uma
+  chamada de escrita de teste); hoje so aparece indiretamente quando `setup.js` falha durante
+  o setup do GitHub. Gap real, nao implementado.
+- [x] Mensagem sugere comando temporario seguro:
 
 ```powershell
 $env:GITHUB_TOKEN=$null; $env:GH_TOKEN=$null; git push
@@ -252,24 +260,26 @@ $env:GITHUB_TOKEN=$null; $env:GH_TOKEN=$null; git push
 
 ### Slice 9 - Fluxo PR integrado
 
-- [ ] Menu pede numero do PR quando nao conseguir inferir.
-- [ ] `qg` salva snapshot em `.quality-gate/reports/pr-snapshot.json`.
-- [ ] Resultado humano mostra:
+- [x] Menu pede numero do PR quando nao conseguir inferir (`Resolve-QgPrNumber`: tenta
+  `gh pr view` na branch atual, senao pergunta).
+- [x] `qg` salva snapshot em `.quality-gate/reports/pr-snapshot.json`.
+- [x] Resultado humano mostra:
   - ready / blocked / waiting / advisory;
   - blockers;
   - next command;
   - link do PR/run.
-- [ ] `babysit once` chama `babysit-loop.cjs --once`.
-- [ ] Loop continuo fica opcional e explicito.
+- [x] `babysit once` chama `babysit-loop.cjs --once`.
+- [x] Loop continuo fica opcional e explicito (menu so oferece `--once`; loop continuo
+  continua exigindo `babysit-loop.cjs --pr N` sem `--once` fora do menu).
 
 ### Slice 10 - Docs e skill
 
-- [ ] README passa a recomendar `qg` como entrada primaria local.
-- [ ] `IMPLEMENTATION.md` documenta `qg` como wrapper humano, scripts como fonte
+- [x] README passa a recomendar `qg` como entrada primaria local.
+- [x] `IMPLEMENTATION.md` documenta `qg` como wrapper humano, scripts como fonte
   deterministica.
-- [ ] Skill `babysit-pr` revisada: usar `qg`/scripts quando instalados; nao
+- [x] Skill `babysit-pr` revisada: usar `qg`/scripts quando instalados; nao
   reinventar snapshot manual antes.
-- [ ] Docs deixam claro: email do GitHub nao e customizavel diretamente; o que
+- [x] Docs deixam claro: email do GitHub nao e customizavel diretamente; o que
   controlamos e comentario, job summary, annotations e checks.
 
 ## Criterios de aceite finais
