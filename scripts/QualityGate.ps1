@@ -12,6 +12,7 @@ param(
     [switch]$Check,
     [switch]$Update,
     [switch]$Report,
+    [switch]$Dashboard,
     [switch]$Help,
 
     # Flags específicas para o -Init
@@ -131,6 +132,7 @@ function Show-Help {
         [pscustomobject]@{ Command = 'qg-chk'; Aliases = 'qg -Check'; Description = 'gate: falha (exit 1) se métricas regrediram' }
         [pscustomobject]@{ Command = 'qg-upd'; Aliases = 'qg -Update'; Description = 'atualiza o baseline de métricas' }
         [pscustomobject]@{ Command = 'qg-rpt'; Aliases = 'qg -Report'; Description = 'só consulta o relatório, nunca falha' }
+        [pscustomobject]@{ Command = 'qg-dash'; Aliases = 'qg -Dashboard'; Description = 'painel ao vivo, refresh a cada 5s ([q] sai)' }
     )
     Write-Host ''
 
@@ -585,6 +587,7 @@ function Invoke-QgMenu {
             [pscustomobject]@{ Opcao = 'S'; Acao = 'PR snapshot' }
             [pscustomobject]@{ Opcao = 'B'; Acao = 'Babysit PR once' }
             [pscustomobject]@{ Opcao = 'R'; Acao = 'Show report' }
+            [pscustomobject]@{ Opcao = 'P'; Acao = 'Painel ao vivo (dashboard)' }
             [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
         )
     }
@@ -663,6 +666,7 @@ function Invoke-QgMenu {
             & node $babysitJs --pr $prNumber --once
         }
         'R' { Invoke-ReportAction }
+        'P' { Invoke-DashboardAction }
         'H' { Show-Help }
         default { Write-Warning "Opção '$selection' inválida." }
     }
@@ -1048,9 +1052,21 @@ function Invoke-LocalValidateAction {
     & node $localValidate --project $ProjectRoot --profile pr --json
 }
 
+function Invoke-DashboardAction {
+    $dashboardJs = Join-Path $ProjectRoot "scripts\dashboard.cjs"
+    if (-not (Test-Path $dashboardJs)) {
+        Write-Error "O Quality Gate não parece estar instalado na pasta atual (dashboard.cjs ausente)."
+        return
+    }
+    # Sem -Cyan/Write-Host aqui: dashboard.cjs assume a tela (console.clear() a cada refresh),
+    # uma linha de intro antes so ficaria visivel por um instante e some no primeiro clear.
+    & node $dashboardJs $ProjectRoot
+}
+
 if ($Doctor) { Invoke-DoctorAction; return }
 if ($Check) { Invoke-CheckAction; return }
 if ($Update) { Invoke-UpdateAction; return }
+if ($Dashboard) { Invoke-DashboardAction; return }
 if ($Report) {
     Invoke-ReportAction
     return
