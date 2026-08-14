@@ -28,36 +28,105 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# ── UI compartilhada (porte local do estilo Scriply/winh — sem depender do
+# profile em runtime, já que QualityGate.ps1 também pode rodar via -NoProfile
+# ou em CI) ─────────────────────────────────────────────────────────────
+function Get-QgDisplayWidth {
+    param([AllowNull()][string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return 0 }
+    $clean = [regex]::Replace($Text, [char]27 + '\[[\d;]*m', '')
+    $enumerator = [System.Globalization.StringInfo]::GetTextElementEnumerator($clean)
+    $width = 0
+    while ($enumerator.MoveNext()) {
+        $element = [string]$enumerator.Current
+        if ([string]::IsNullOrEmpty($element)) { continue }
+        $codePoint = [System.Char]::ConvertToUtf32($element, 0)
+        $hasEmojiVariation = ($element.IndexOf([char]0xFE0F) -ge 0)
+        if ($codePoint -eq 0xFE0F) { continue }
+        if ($codePoint -ge 0xE000 -and $codePoint -le 0xF8FF) { $width++; continue }
+        $isPictograph = $codePoint -ge 0x1F300 -and $codePoint -le 0x1FAFF
+        $isDingbat = $codePoint -ge 0x2600 -and $codePoint -le 0x27BF
+        $isMiscSymbolArrow = $codePoint -ge 0x2B00 -and $codePoint -le 0x2BFF
+        if ($isPictograph -or $isDingbat -or $isMiscSymbolArrow -or $hasEmojiVariation) { $width += 2; continue }
+        $width++
+    }
+    return $width
+}
+
+function Get-QgBoxLine {
+    param([string]$Left, [string]$Right = '', [int]$Width = 60)
+    $leftText = if ($null -eq $Left) { '' } else { $Left }
+    $rightText = if ($null -eq $Right) { '' } else { $Right }
+    $padding = [Math]::Max(1, $Width - (Get-QgDisplayWidth -Text $leftText) - (Get-QgDisplayWidth -Text $rightText))
+    $line = $leftText + (' ' * $padding) + $rightText
+    while ((Get-QgDisplayWidth -Text $line) -gt $Width -and $leftText.Length -gt 0) {
+        $leftText = $leftText.Substring(0, $leftText.Length - 1)
+        $padding = [Math]::Max(1, $Width - (Get-QgDisplayWidth -Text $leftText) - (Get-QgDisplayWidth -Text $rightText))
+        $line = $leftText + (' ' * $padding) + $rightText
+    }
+    $tailPadding = [Math]::Max(0, $Width - (Get-QgDisplayWidth -Text $line))
+    return $line + (' ' * $tailPadding)
+}
+
+function Write-QgHeader {
+    param([string]$Title, [string]$Version = '', [string]$Color = 'Blue', [string]$Icon = '◆')
+    Write-Host ''
+    Write-Host ("  ╭{0}╮" -f ('─' * 60)) -ForegroundColor $Color
+    Write-Host ("  │{0}│" -f (Get-QgBoxLine -Left (" {0} {1}" -f $Icon, $Title) -Right $Version)) -ForegroundColor $Color
+    Write-Host ("  ╰{0}╯" -f ('─' * 60)) -ForegroundColor $Color
+    Write-Host ''
+}
+
+function Write-QgSection {
+    param([string]$Title, [string]$Color = 'Yellow', [string]$Icon = '◆')
+    Write-Host ("  {0} {1}" -f $Icon, $Title.ToUpper()) -ForegroundColor $Color
+    Write-Host ("  {0}" -f ('─' * 60)) -ForegroundColor DarkGray
+}
+
+function Write-QgEntry {
+    param([string]$Command, [string]$Aliases = '-', [string]$Description, [string]$CommandColor = 'White')
+    Write-Host ("    {0,-24}" -f $Command) -NoNewline -ForegroundColor $CommandColor
+    Write-Host (" {0,-20}" -f $Aliases) -NoNewline -ForegroundColor DarkGray
+    Write-Host (" {0}" -f $Description) -ForegroundColor Gray
+}
+
+function Write-QgKeyValue {
+    param([string]$Label, [string]$Value, [string]$Color = 'Gray')
+    Write-Host ("    {0,-14} {1}" -f $Label, $Value) -ForegroundColor $Color
+}
+
+function Write-QgHint {
+    param([string]$Text, [string]$Color = 'DarkGray')
+    Write-Host ("  {0}" -f $Text) -ForegroundColor $Color
+}
+
 # Função para exibir ajuda amigável
 function Show-Help {
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '🛡️'
+
+    Write-QgSection -Title 'Comandos' -Color 'Blue' -Icon '▤'
+    Write-QgEntry -Command 'qg' -Description 'sem args: abre o menu interativo'
+    Write-QgEntry -Command 'qg-init' -Aliases 'qg -Init' -Description 'wizard interativo de instalação'
+    Write-QgEntry -Command 'qg-doc' -Aliases 'qg -Doctor' -Description 'diagnóstico das ferramentas'
+    Write-QgEntry -Command 'qg-chk' -Aliases 'qg -Check' -Description 'gate: falha (exit 1) se métricas regrediram'
+    Write-QgEntry -Command 'qg-upd' -Aliases 'qg -Update' -Description 'atualiza o baseline de métricas'
+    Write-QgEntry -Command 'qg-rpt' -Aliases 'qg -Report' -Description 'só consulta o relatório, nunca falha'
     Write-Host ''
-    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Blue
-    Write-Host '  │  Quality Gate                                          v1.0│' -ForegroundColor Blue
-    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Blue
+
+    Write-QgSection -Title 'Flags do wizard (-Init)' -Color 'Blue' -Icon '◈'
+    Write-QgEntry -Command '-Sonar' -Description 'configura org/token do SonarCloud'
+    Write-QgEntry -Command '-SkipCodex' -Description 'pula a cópia da pasta .codex/'
+    Write-QgEntry -Command '-SkipBaseline' -Description 'pula a captura do baseline inicial'
+    Write-QgEntry -Command '-SkipCommit' -Description 'pula o commit automático no git'
+    Write-QgEntry -Command '-SkipGitHub' -Description 'pula branch protection e ruleset remoto'
+    Write-QgEntry -Command '-DryRun' -Description 'executa em modo demonstração'
+    Write-QgEntry -Command '-Yes' -Description 'confirma etapas com padrão seguro'
+    Write-QgEntry -Command '-Force' -Description 'permite instalar em stack não Node'
+    Write-QgEntry -Command '-Repo <owner/repo>' -Description 'força repositório específico'
     Write-Host ''
-    Write-Host '   COMANDOS' -ForegroundColor Blue
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host '    qg                  -               exibe esta tela de ajuda' -ForegroundColor Gray
-    Write-Host '    qg-init             qg -Init        wizard interativo de instalacao' -ForegroundColor Gray
-    Write-Host '    qg-doc              qg -Doctor      diagnostico das ferramentas' -ForegroundColor Gray
-    Write-Host '    qg-chk              qg -Check       verifica regressao de metricas' -ForegroundColor Gray
-    Write-Host '    qg-upd              qg -Update      atualiza o baseline de metricas' -ForegroundColor Gray
-    Write-Host '    qg-rpt              qg -Report      exibe o relatorio de qualidade' -ForegroundColor Gray
-    Write-Host ''
-    Write-Host '   FLAGS DO WIZARD (-Init)' -ForegroundColor Blue
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host '    -Sonar              -               configura org/token do SonarCloud' -ForegroundColor Gray
-    Write-Host '    -SkipCodex          -               pula a copia da pasta .codex/' -ForegroundColor Gray
-    Write-Host '    -SkipBaseline       -               pula a captura do baseline inicial' -ForegroundColor Gray
-    Write-Host '    -SkipCommit         -               pula o commit automatico no git' -ForegroundColor Gray
-    Write-Host '    -SkipGitHub         -               pula branch protection e ruleset remoto' -ForegroundColor Gray
-    Write-Host '    -DryRun             -               executa em modo demonstracao' -ForegroundColor Gray
-    Write-Host '    -Yes                -               confirma etapas com padrao seguro' -ForegroundColor Gray
-    Write-Host '    -Force              -               permite instalar em stack nao Node' -ForegroundColor Gray
-    Write-Host '    -Repo <owner/repo>  -               forca repositorio especifico' -ForegroundColor Gray
-    Write-Host ''
-    Write-Host '  uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt' -ForegroundColor DarkGray
-    Write-Host '  atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]' -ForegroundColor DarkGray
+
+    Write-QgHint -Text 'uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt'
+    Write-QgHint -Text 'atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]'
     Write-Host ''
 }
 
@@ -143,16 +212,11 @@ function Write-InitBanner {
         [Parameter(Mandatory=$true)]
         [string]$Mode
     )
-    Write-Host ''
-    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Cyan
-    Write-Host '  │  Quality Gate Init                                     v1.0│' -ForegroundColor Cyan
-    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Cyan
-    Write-Host ''
-    Write-Host '   CONTEXTO' -ForegroundColor Cyan
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host ("    Projeto   {0}" -f $ProjectRoot) -ForegroundColor Gray
-    Write-Host ("    Template  {0}" -f $TemplateRoot) -ForegroundColor Gray
-    Write-Host ("    Modo      {0}" -f $Mode) -ForegroundColor Gray
+    Write-QgHeader -Title 'Quality Gate Init' -Version 'v1.0' -Color 'Cyan' -Icon '◈'
+    Write-QgSection -Title 'Contexto' -Color 'Cyan' -Icon '◉'
+    Write-QgKeyValue -Label 'Projeto' -Value $ProjectRoot
+    Write-QgKeyValue -Label 'Template' -Value $TemplateRoot
+    Write-QgKeyValue -Label 'Modo' -Value $Mode
     Write-Host ''
 }
 
@@ -365,8 +429,7 @@ function Get-QgAuthDiagnostic {
 function Show-QgAuthDiagnostic {
     $diag = Get-QgAuthDiagnostic
     Write-Host ''
-    Write-Host '   AUTH / REMOTO' -ForegroundColor Cyan
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-QgSection -Title 'Auth / Remoto' -Color 'Cyan' -Icon '◇'
     if ($diag.TokenEnvAtivo) {
         Write-InitItem "Token de ambiente ativo: $($diag.TokenEnvNome)" 'Yellow'
     } else {
@@ -467,17 +530,14 @@ function Get-QgMenuState {
 
 function Show-QgMenuState {
     param([Parameter(Mandatory=$true)]$State)
-    Write-Host ''
-    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Blue
-    Write-Host '  │  Quality Gate                                          v1.0│' -ForegroundColor Blue
-    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Blue
-    Write-Host ''
-    Write-InitItem ("Perfil         {0}" -f $State.Perfil)
-    Write-InitItem ("Repo remoto    {0}" -f $State.RepoRemoto)
-    Write-InitItem ("Branch         {0}" -f $State.Branch)
-    Write-InitItem ("Token ativo    {0}" -f $(if ($State.TokenAtivo) { 'sim' } else { 'não' }))
-    Write-InitItem ("Último report  {0}" -f $(if ($State.UltimoReport) { $State.UltimoReport } else { 'nenhum' }))
-    Write-InitItem ("PR detectado   {0}" -f $(if ($State.PrDetectado) { "#$($State.PrDetectado)" } else { 'nenhum' }))
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '🛡️'
+    Write-QgSection -Title 'Estado' -Color 'Cyan' -Icon '◉'
+    Write-QgKeyValue -Label 'Perfil' -Value $State.Perfil
+    Write-QgKeyValue -Label 'Repo remoto' -Value $State.RepoRemoto
+    Write-QgKeyValue -Label 'Branch' -Value $State.Branch
+    Write-QgKeyValue -Label 'Token ativo' -Value $(if ($State.TokenAtivo) { 'sim' } else { 'não' })
+    Write-QgKeyValue -Label 'Último report' -Value $(if ($State.UltimoReport) { $State.UltimoReport } else { 'nenhum' })
+    Write-QgKeyValue -Label 'PR detectado' -Value $(if ($State.PrDetectado) { "#$($State.PrDetectado)" } else { 'nenhum' })
     Write-Host ''
 }
 
@@ -527,8 +587,7 @@ function Invoke-QgMenu {
         $picked = $items | Out-ConsoleGridView -Title 'Quality Gate - escolha uma ação' -OutputMode Single
         if ($picked) { $selection = $picked.Opcao }
     } else {
-        Write-Host '   ESCOLHA UMA AÇÃO' -ForegroundColor Blue
-        Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+        Write-QgSection -Title 'Escolha uma ação' -Color 'Blue' -Icon '▤'
         foreach ($item in $items) {
             Write-Host ("    [{0}] {1}" -f $item.Opcao, $item.Acao) -ForegroundColor Gray
         }
