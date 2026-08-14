@@ -232,6 +232,371 @@ function Test-ProjectProfileSupported {
     return $Profile -in @('node', 'python-uv')
 }
 
+# Passo 3 do wizard (GitHub via setup.js), extraído para função porque também
+# é chamado isoladamente pelo menu interativo (opção "Setup GitHub remote policy").
+function Invoke-GitHubSetupStep {
+    if ($SkipGitHub) {
+        Write-InitItem 'Setup do GitHub pulado por parâmetro.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado por flag'
+        return
+    }
+    $confirm = Request-Step -Message "Deseja rodar o script de setup do GitHub (setup.js)?" -DefaultYes
+    if ($confirm -eq 'c') {
+        Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
+        return
+    }
+    if ($confirm -ne 's') {
+        Write-InitItem 'Setup do GitHub pulado.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado'
+        return
+    }
+
+    $token = $null
+    if ($DryRun) {
+        Write-DryRunPlan "Não leria token do GitHub; setup.js rodará com --dry-run"
+    } else {
+        $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
+        $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
+        $keyringToken = Get-GhKeyringToken
+
+        if (($envHasGitHubToken -or $envHasGhToken) -and -not [string]::IsNullOrWhiteSpace($keyringToken)) {
+            Write-Warning "GITHUB_TOKEN/GH_TOKEN ativo pode sobrescrever o gh keyring. Usando token do gh keyring para esta etapa."
+            $token = $keyringToken
+        } elseif (-not [string]::IsNullOrWhiteSpace($keyringToken)) {
+            $token = $keyringToken
+        } elseif ($envHasGitHubToken) {
+            Write-Warning "Usando GITHUB_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
+            $token = $env:GITHUB_TOKEN
+        } elseif ($envHasGhToken) {
+            Write-Warning "Usando GH_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
+            $token = $env:GH_TOKEN
+        }
+
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            $secureTokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)" -AsSecureString
+            if ($secureTokenInput.Length -gt 0) {
+                $tokenInput = [System.Net.NetworkCredential]::new('', $secureTokenInput).Password
+                if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
+                    $token = $tokenInput.Trim()
+                }
+            }
+        }
+    }
+
+    if (-not $DryRun -and [string]::IsNullOrWhiteSpace($token)) {
+        Write-Warning "Ignorando configuração do GitHub: GITHUB_TOKEN não fornecido."
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'sem token'
+        return
+    }
+
+    $setupArgs = @()
+    if ($Repo) {
+        $setupArgs += "--repo=$Repo"
+    }
+    if ($DryRun) {
+        $setupArgs += "--dry-run"
+    }
+    if (-not $Sonar) {
+        $setupArgs += "--skip-sonar"
+    } elseif (-not $DryRun) {
+        $sonarOrg = Read-Host "Insira a Organização do SonarCloud"
+        $secureSonarToken = Read-Host "Insira o Token do SonarCloud" -AsSecureString
+        $sonarToken = $null
+        if ($secureSonarToken.Length -gt 0) {
+            $sonarToken = [System.Net.NetworkCredential]::new('', $secureSonarToken).Password
+        }
+        if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
+        if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
+    }
+
+    $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
+    if (-not (Test-Path $setupJs)) {
+        Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'
+        Write-InitSummary
+        Write-Error "setup.js não foi encontrado no projeto!"
+        return
+    }
+
+    Write-InitItem 'Executando setup.js...'
+    $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
+    $hadGhToken = Test-Path Env:\GH_TOKEN
+    $savedGitHubToken = $env:GITHUB_TOKEN
+    $savedGhToken = $env:GH_TOKEN
+    try {
+        if (-not $DryRun) {
+            $env:GITHUB_TOKEN = $token
+            Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+        }
+        & node $setupJs $setupArgs
+        if ($LASTEXITCODE -ne 0) {
+            Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
+            Write-InitSummary
+            Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
+        } else {
+            Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
+            Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
+        }
+    } finally {
+        if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+    }
+}
+
+# ── Slice 8: diagnóstico de auth e remoto ──────────────────
+function Get-QgAuthDiagnostic {
+    $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
+    $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
+    $keyringToken = Get-GhKeyringToken
+    $remoteUrl = $null
+    try { $remoteUrl = (git remote get-url origin 2>$null) } catch {}
+    $remoteHeads = $null
+    if ($remoteUrl) {
+        try { $remoteHeads = git ls-remote --heads origin 2>$null } catch {}
+    }
+    [pscustomobject]@{
+        TokenEnvAtivo   = $envHasGitHubToken -or $envHasGhToken
+        TokenEnvNome    = if ($envHasGitHubToken) { 'GITHUB_TOKEN' } elseif ($envHasGhToken) { 'GH_TOKEN' } else { $null }
+        GhKeyringOk     = -not [string]::IsNullOrWhiteSpace($keyringToken)
+        RemotoAusente   = [string]::IsNullOrWhiteSpace($remoteUrl)
+        RemotoSemBranch = [bool]($remoteUrl -and -not $remoteHeads)
+    }
+}
+
+function Show-QgAuthDiagnostic {
+    $diag = Get-QgAuthDiagnostic
+    Write-Host ''
+    Write-Host '   AUTH / REMOTO' -ForegroundColor Cyan
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    if ($diag.TokenEnvAtivo) {
+        Write-InitItem "Token de ambiente ativo: $($diag.TokenEnvNome)" 'Yellow'
+    } else {
+        Write-InitItem 'Token de ambiente: nenhum' 'DarkGray'
+    }
+    Write-InitItem ("gh keyring: {0}" -f $(if ($diag.GhKeyringOk) { 'disponivel' } else { 'indisponivel' })) $(if ($diag.GhKeyringOk) { 'Green' } else { 'DarkGray' })
+    if ($diag.RemotoAusente) {
+        Write-InitItem 'Repo remoto: ausente (git remote origin não configurado)' 'Yellow'
+    } elseif ($diag.RemotoSemBranch) {
+        Write-InitItem 'Repo remoto: sem branch default (nenhum push ainda)' 'Yellow'
+    } else {
+        Write-InitItem 'Repo remoto: configurado' 'Green'
+    }
+    if ($diag.TokenEnvAtivo -and $diag.GhKeyringOk) {
+        Write-InitItem 'Token de ambiente pode conflitar com o gh keyring. Para usar o keyring temporariamente:' 'DarkGray'
+        Write-InitItem '$env:GITHUB_TOKEN=$null; $env:GH_TOKEN=$null; git push' 'DarkGray'
+    }
+    Write-Host ''
+}
+
+# ── Slice 9: fluxo de PR integrado ao menu ─────────────────
+function Resolve-QgPrNumber {
+    $inferred = $null
+    try { $inferred = (gh pr view --json number -q .number 2>$null) } catch {}
+    if ($inferred -match '^\d+$') { return [int]$inferred }
+    $manual = Read-Host 'Número do PR (não foi possível inferir da branch atual)'
+    if ($manual -match '^\d+$') { return [int]$manual }
+    return $null
+}
+
+function Show-QgPrSnapshotSummary {
+    param([Parameter(Mandatory=$true)]$Snapshot)
+
+    $status = $Snapshot.merge.status
+    $label = switch ($status) {
+        'ready' { 'ready' }
+        'ready_with_advisory' { 'advisory' }
+        default { if ($Snapshot.ci.overall -eq 'pending') { 'waiting' } else { 'blocked' } }
+    }
+    $color = switch ($label) {
+        'ready' { 'Green' }
+        'advisory' { 'Yellow' }
+        'waiting' { 'DarkGray' }
+        default { 'Red' }
+    }
+    $blockers = @($Snapshot.merge.blockers)
+    $actions = @($Snapshot.actions)
+
+    Write-Host ''
+    Write-Host ("   PR #{0} — {1}" -f $Snapshot.pr.number, $Snapshot.pr.title) -ForegroundColor Cyan
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-InitItem ("Status: {0}" -f $label) $color
+    if ($blockers.Count -gt 0) {
+        Write-InitItem 'Blockers:' 'Yellow'
+        foreach ($blocker in $blockers) {
+            Write-InitItem ("  - {0}" -f $blocker.message) 'Yellow'
+        }
+    }
+    if ($actions.Count -gt 0) {
+        Write-InitItem ("Next: {0}" -f $actions[0]) 'Gray'
+    }
+    Write-InitItem ("Link: {0}" -f $Snapshot.pr.url) 'DarkGray'
+    Write-Host ''
+}
+
+# ── Slice 7: menu interativo (`qg` sem flags) ──────────────
+function Get-QgMenuState {
+    $projectProfile = Get-ProjectProfile -Root $ProjectRoot
+    $branch = $null
+    try { $branch = (git rev-parse --abbrev-ref HEAD 2>$null) } catch {}
+    $remoteUrl = $null
+    try { $remoteUrl = (git remote get-url origin 2>$null) } catch {}
+    $auth = Get-QgAuthDiagnostic
+    $lastReport = $null
+    $reportPath = Join-Path $ProjectRoot ".quality-gate\reports\pr-snapshot.json"
+    if (Test-Path $reportPath) {
+        $lastReport = (Get-Item $reportPath).LastWriteTime
+    }
+    $prNumber = $null
+    try {
+        $hasUpstream = git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+        if ($hasUpstream) {
+            $inferred = (gh pr view --json number -q .number 2>$null)
+            if ($inferred -match '^\d+$') { $prNumber = [int]$inferred }
+        }
+    } catch {}
+
+    [pscustomobject]@{
+        Instalado    = Test-Path (Join-Path $ProjectRoot "scripts\doctor.cjs")
+        Perfil       = $projectProfile.Name
+        RepoRemoto   = if ($remoteUrl) { $remoteUrl } else { 'não configurado' }
+        Branch       = if ($branch) { $branch } else { 'desconhecida' }
+        TokenAtivo   = $auth.TokenEnvAtivo
+        UltimoReport = $lastReport
+        PrDetectado  = $prNumber
+    }
+}
+
+function Show-QgMenuState {
+    param([Parameter(Mandatory=$true)]$State)
+    Write-Host ''
+    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Blue
+    Write-Host '  │  Quality Gate                                          v1.0│' -ForegroundColor Blue
+    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Blue
+    Write-Host ''
+    Write-InitItem ("Perfil         {0}" -f $State.Perfil)
+    Write-InitItem ("Repo remoto    {0}" -f $State.RepoRemoto)
+    Write-InitItem ("Branch         {0}" -f $State.Branch)
+    Write-InitItem ("Token ativo    {0}" -f $(if ($State.TokenAtivo) { 'sim' } else { 'não' }))
+    Write-InitItem ("Último report  {0}" -f $(if ($State.UltimoReport) { $State.UltimoReport } else { 'nenhum' }))
+    Write-InitItem ("PR detectado   {0}" -f $(if ($State.PrDetectado) { "#$($State.PrDetectado)" } else { 'nenhum' }))
+    Write-Host ''
+}
+
+function Invoke-QgMenu {
+    $state = Get-QgMenuState
+    Show-QgMenuState -State $state
+
+    if (-not $state.Instalado) {
+        Write-Host '  Quality Gate não está instalado nesta pasta.' -ForegroundColor Yellow
+        Write-Host ''
+        $items = @(
+            [pscustomobject]@{ Opcao = 'I'; Acao = 'Install/repair Quality Gate' }
+            [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
+        )
+    } else {
+        $items = @(
+            [pscustomobject]@{ Opcao = 'I'; Acao = 'Install/repair Quality Gate' }
+            [pscustomobject]@{ Opcao = 'D'; Acao = 'Doctor (diagnóstico)' }
+            [pscustomobject]@{ Opcao = 'V'; Acao = 'Run local PR validation' }
+            [pscustomobject]@{ Opcao = 'U'; Acao = 'Update baseline' }
+            [pscustomobject]@{ Opcao = 'G'; Acao = 'Setup GitHub remote policy' }
+            [pscustomobject]@{ Opcao = 'S'; Acao = 'PR snapshot' }
+            [pscustomobject]@{ Opcao = 'B'; Acao = 'Babysit PR once' }
+            [pscustomobject]@{ Opcao = 'R'; Acao = 'Show report' }
+            [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
+        )
+    }
+
+    $selection = $null
+    $gridAvailable = $false
+    if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.ConsoleGuiTools)) {
+        try {
+            Write-Host '  Instalando módulo Microsoft.PowerShell.ConsoleGuiTools (uma vez por máquina)...' -ForegroundColor DarkGray
+            Install-Module -Name Microsoft.PowerShell.ConsoleGuiTools -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
+        } catch {
+            Write-Warning "Não foi possível instalar Microsoft.PowerShell.ConsoleGuiTools ($($_.Exception.Message)). Usando menu de texto."
+        }
+    }
+    if (Get-Module -ListAvailable -Name Microsoft.PowerShell.ConsoleGuiTools) {
+        Import-Module Microsoft.PowerShell.ConsoleGuiTools -ErrorAction SilentlyContinue
+        if (Get-Command Out-ConsoleGridView -ErrorAction SilentlyContinue) {
+            $gridAvailable = $true
+        }
+    }
+
+    if ($gridAvailable) {
+        $picked = $items | Out-ConsoleGridView -Title 'Quality Gate - escolha uma ação' -OutputMode Single
+        if ($picked) { $selection = $picked.Opcao }
+    } else {
+        Write-Host '   ESCOLHA UMA AÇÃO' -ForegroundColor Blue
+        Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+        foreach ($item in $items) {
+            Write-Host ("    [{0}] {1}" -f $item.Opcao, $item.Acao) -ForegroundColor Gray
+        }
+        Write-Host ''
+        $response = Read-Host 'Opção'
+        if ($response) { $selection = $response.ToUpper().Trim() }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($selection)) {
+        Write-Host '  Nenhuma opção selecionada.' -ForegroundColor DarkGray
+        return
+    }
+
+    switch ($selection) {
+        'I' { Invoke-Init }
+        'D' {
+            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\doctor.cjs"))) { Write-Error "doctor.cjs ausente."; return }
+            & node (Join-Path $ProjectRoot "scripts\doctor.cjs") --dry-run
+            Show-QgAuthDiagnostic
+        }
+        'V' {
+            $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
+            if (-not (Test-Path $localValidate)) { Write-Error "local-validate.cjs ausente."; return }
+            & node $localValidate --project $ProjectRoot --profile pr --json
+        }
+        'U' {
+            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\quality-gate.js"))) { Write-Error "quality-gate.js ausente."; return }
+            & node (Join-Path $ProjectRoot "scripts\quality-gate.js") update
+        }
+        'G' {
+            $script:QgInitSummary = @()
+            Invoke-GitHubSetupStep
+            Write-InitSummary
+        }
+        'S' {
+            $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
+            if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
+            $snapshotJs = Join-Path $ProjectRoot "scripts\pr-snapshot.cjs"
+            if (-not (Test-Path $snapshotJs)) { Write-Error "pr-snapshot.cjs ausente."; return }
+            $outputPath = Join-Path $ProjectRoot ".quality-gate\reports\pr-snapshot.json"
+            $raw = & node $snapshotJs --pr $prNumber --json --output $outputPath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "pr-snapshot.cjs retornou $LASTEXITCODE"
+                return
+            }
+            try {
+                $snapshot = ($raw -join "`n") | ConvertFrom-Json
+                Show-QgPrSnapshotSummary -Snapshot $snapshot
+            } catch {
+                Write-Host ($raw -join "`n")
+            }
+        }
+        'B' {
+            $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
+            if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
+            $babysitJs = Join-Path $ProjectRoot "scripts\babysit-loop.cjs"
+            if (-not (Test-Path $babysitJs)) { Write-Error "babysit-loop.cjs ausente."; return }
+            & node $babysitJs --pr $prNumber --once
+        }
+        'R' {
+            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\quality-gate.js"))) { Write-Error "quality-gate.js ausente."; return }
+            & node (Join-Path $ProjectRoot "scripts\quality-gate.js") report
+        }
+        'H' { Show-Help }
+        default { Write-Warning "Opção '$selection' inválida." }
+    }
+}
+
 # Resolve os caminhos importantes
 # $PSScriptRoot é d:\Dev\Tooling\quality-gate\scripts. O pai é a raiz do template.
 $TemplateRoot = Split-Path -Parent $PSScriptRoot
@@ -248,7 +613,7 @@ if ($Help) {
 }
 
 # ── Modo Init (Wizard) ────────────────────────────────────
-if ($Init) {
+function Invoke-Init {
     $script:QgInitSummary = @()
     $mode = if ($DryRun) { 'DryRun (sem escrita, commit ou chamada mutável)' } elseif ($Yes) { 'Execução real (-Yes)' } else { 'Execução real' }
     $projectProfile = Get-ProjectProfile -Root $ProjectRoot
@@ -453,108 +818,7 @@ if ($Init) {
 
     # Passo 3: Configurar GitHub via setup.js
     Write-InitStep -Number 3 -Title 'GitHub' -Description 'Configura bootstrap, branch protection, PR ruleset e secrets opcionais.'
-    if ($SkipGitHub) {
-        Write-InitItem 'Setup do GitHub pulado por parâmetro.' 'DarkGray'
-        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado por flag'
-    } else {
-    $confirm = Request-Step -Message "Deseja rodar o script de setup do GitHub (setup.js)?" -DefaultYes
-    if ($confirm -eq 'c') {
-        Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
-        return
-    }
-    if ($confirm -eq 's') {
-        $token = $null
-        if ($DryRun) {
-            Write-DryRunPlan "Não leria token do GitHub; setup.js rodará com --dry-run"
-        } else {
-            $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
-            $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
-            $keyringToken = Get-GhKeyringToken
-
-            if (($envHasGitHubToken -or $envHasGhToken) -and -not [string]::IsNullOrWhiteSpace($keyringToken)) {
-                Write-Warning "GITHUB_TOKEN/GH_TOKEN ativo pode sobrescrever o gh keyring. Usando token do gh keyring para esta etapa."
-                $token = $keyringToken
-            } elseif (-not [string]::IsNullOrWhiteSpace($keyringToken)) {
-                $token = $keyringToken
-            } elseif ($envHasGitHubToken) {
-                Write-Warning "Usando GITHUB_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
-                $token = $env:GITHUB_TOKEN
-            } elseif ($envHasGhToken) {
-                Write-Warning "Usando GH_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
-                $token = $env:GH_TOKEN
-            }
-
-            if ([string]::IsNullOrWhiteSpace($token)) {
-                $secureTokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)" -AsSecureString
-                if ($secureTokenInput.Length -gt 0) {
-                    $tokenInput = [System.Net.NetworkCredential]::new('', $secureTokenInput).Password
-                    if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
-                        $token = $tokenInput.Trim()
-                    }
-                }
-            }
-        }
-        
-        if ($DryRun -or -not [string]::IsNullOrWhiteSpace($token)) {
-            $setupArgs = @()
-            if ($Repo) {
-                $setupArgs += "--repo=$Repo"
-            }
-            if ($DryRun) {
-                $setupArgs += "--dry-run"
-            }
-            if (-not $Sonar) {
-                $setupArgs += "--skip-sonar"
-            } elseif (-not $DryRun) {
-                $sonarOrg = Read-Host "Insira a Organização do SonarCloud"
-                $secureSonarToken = Read-Host "Insira o Token do SonarCloud" -AsSecureString
-                $sonarToken = $null
-                if ($secureSonarToken.Length -gt 0) {
-                    $sonarToken = [System.Net.NetworkCredential]::new('', $secureSonarToken).Password
-                }
-                if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
-                if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
-            }
-            
-            $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
-            if (Test-Path $setupJs) {
-                Write-InitItem 'Executando setup.js...'
-                $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
-                $hadGhToken = Test-Path Env:\GH_TOKEN
-                $savedGitHubToken = $env:GITHUB_TOKEN
-                $savedGhToken = $env:GH_TOKEN
-                try {
-                    if (-not $DryRun) {
-                        $env:GITHUB_TOKEN = $token
-                        Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
-                    }
-                    & node $setupJs $setupArgs
-                    if ($LASTEXITCODE -ne 0) {
-                        Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
-                        Write-InitSummary
-                        Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
-                    } else {
-                        Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
-                        Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
-                    }
-                } finally {
-                    if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
-                    if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
-                }
-            } else {
-                Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'
-                Write-InitSummary
-                Write-Error "setup.js não foi encontrado no projeto!"
-            }
-        } else {
-            Write-Warning "Ignorando configuração do GitHub: GITHUB_TOKEN não fornecido."
-            Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'sem token'
-        }
-    } else {
-        Write-InitItem 'Setup do GitHub pulado.' 'DarkGray'
-        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado'
-    }
-    }
+    Invoke-GitHubSetupStep
 
     # Passo 4: Capturar baseline inicial
     Write-InitStep -Number 4 -Title 'Baseline' -Description 'Lê coverage do projeto (Jest ou pytest-cov) e grava scripts/baseline.json.'
@@ -656,6 +920,11 @@ if ($Init) {
     return
 }
 
+if ($Init) {
+    Invoke-Init
+    return
+}
+
 # ── Ações de rotina ───────────────────────────────────────
 $doctorJs = Join-Path $ProjectRoot "scripts\doctor.cjs"
 $gateJs   = Join-Path $ProjectRoot "scripts\quality-gate.js"
@@ -700,5 +969,5 @@ if ($Report) {
     return
 }
 
-# Se nenhuma flag de ação ou se -Help for passado, exibe a ajuda
-Show-Help
+# Se nenhuma flag de ação for passada, abre o menu interativo (Slice 7)
+Invoke-QgMenu
