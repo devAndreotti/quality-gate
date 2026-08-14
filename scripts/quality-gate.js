@@ -100,12 +100,12 @@ function collectPythonCoverage(root) {
   if (!Number.isFinite(linePct)) return null;
   const branchPct = Number(totals.num_branches) > 0
     ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
-    : linePct;
+    : null;
   return {
     lines: linePct,
-    statements: linePct,
-    functions: linePct,
-    branches: Number(branchPct.toFixed(2)),
+    statements: null,
+    functions: null,
+    branches: branchPct == null ? null : Number(branchPct.toFixed(2)),
   };
 }
 
@@ -183,14 +183,20 @@ function compareMetrics(current, baseline) {
 }
 
 function buildUpdatedBaseline({ current, existing, now = new Date().toISOString() }) {
+  const coverage = {};
+  for (const key of ['lines', 'statements', 'functions', 'branches']) {
+    const cur = current.coverage?.[key];
+    const base = existing.coverage?.[key];
+    if (typeof cur === 'number') {
+      coverage[key] = Math.max(cur, typeof base === 'number' ? base : 0);
+    } else if (typeof base === 'number') {
+      coverage[key] = base;
+    }
+  }
+
   return {
     ...existing,
-    coverage: {
-      lines: Math.max(current.coverage.lines, existing.coverage?.lines ?? 0),
-      statements: Math.max(current.coverage.statements, existing.coverage?.statements ?? 0),
-      functions: Math.max(current.coverage.functions, existing.coverage?.functions ?? 0),
-      branches: Math.max(current.coverage.branches, existing.coverage?.branches ?? 0),
-    },
+    coverage,
     lintErrors: current.lintErrors ?? existing.lintErrors,
     oversizedFiles: current.oversizedFiles ?? existing.oversizedFiles,
     updatedAt: now,

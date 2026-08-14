@@ -112,6 +112,26 @@ function Request-Step {
     return Confirm-Step -Message $Message -DefaultYes:$DefaultYes
 }
 
+function Get-GhKeyringToken {
+    $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
+    $hadGhToken = Test-Path Env:\GH_TOKEN
+    $savedGitHubToken = $env:GITHUB_TOKEN
+    $savedGhToken = $env:GH_TOKEN
+
+    try {
+        Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue
+        Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+        $token = (gh auth token 2>$null)
+        if ([string]::IsNullOrWhiteSpace($token)) { return $null }
+        return $token.Trim()
+    } catch {
+        return $null
+    } finally {
+        if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+    }
+}
+
 $script:QgInitSummary = @()
 
 function Write-InitBanner {
@@ -447,10 +467,21 @@ if ($Init) {
         if ($DryRun) {
             Write-DryRunPlan "Não leria token do GitHub; setup.js rodará com --dry-run"
         } else {
-            $token = (gh auth token 2>$null)
-            if ([string]::IsNullOrWhiteSpace($token)) {
-                Write-Warning "Aviso: Não logado no gh CLI ou gh não encontrado. Verificando GITHUB_TOKEN no ambiente."
+            $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
+            $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
+            $keyringToken = Get-GhKeyringToken
+
+            if (($envHasGitHubToken -or $envHasGhToken) -and -not [string]::IsNullOrWhiteSpace($keyringToken)) {
+                Write-Warning "GITHUB_TOKEN/GH_TOKEN ativo pode sobrescrever o gh keyring. Usando token do gh keyring para esta etapa."
+                $token = $keyringToken
+            } elseif (-not [string]::IsNullOrWhiteSpace($keyringToken)) {
+                $token = $keyringToken
+            } elseif ($envHasGitHubToken) {
+                Write-Warning "Usando GITHUB_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
                 $token = $env:GITHUB_TOKEN
+            } elseif ($envHasGhToken) {
+                Write-Warning "Usando GH_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
+                $token = $env:GH_TOKEN
             }
 
             if ([string]::IsNullOrWhiteSpace($token)) {
@@ -462,9 +493,6 @@ if ($Init) {
         }
         
         if ($DryRun -or -not [string]::IsNullOrWhiteSpace($token)) {
-            if (-not $DryRun) {
-                $env:GITHUB_TOKEN = $token
-            }
             $setupArgs = @()
             if ($Repo) {
                 $setupArgs += "--repo=$Repo"
@@ -484,14 +512,27 @@ if ($Init) {
             $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
             if (Test-Path $setupJs) {
                 Write-InitItem 'Executando setup.js...'
-                & node $setupJs $setupArgs
-                if ($LASTEXITCODE -ne 0) {
-                    Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
-                    Write-InitSummary
-                    Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
-                } else {
-                    Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
-                    Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
+                $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
+                $hadGhToken = Test-Path Env:\GH_TOKEN
+                $savedGitHubToken = $env:GITHUB_TOKEN
+                $savedGhToken = $env:GH_TOKEN
+                try {
+                    if (-not $DryRun) {
+                        $env:GITHUB_TOKEN = $token
+                        Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+                    }
+                    & node $setupJs $setupArgs
+                    if ($LASTEXITCODE -ne 0) {
+                        Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
+                        Write-InitSummary
+                        Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
+                    } else {
+                        Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
+                        Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
+                    }
+                } finally {
+                    if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
+                    if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
                 }
             } else {
                 Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'

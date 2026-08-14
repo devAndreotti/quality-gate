@@ -73,6 +73,15 @@ function diff(current, baseline) {
   return delta > 0 ? `▲ +${delta.toFixed(1)}` : `▼ ${delta.toFixed(1)}`;
 }
 
+function renderCoverageSummary(rows) {
+  const summaryRows = rows.filter(([metric, current]) => (
+    ['lines', 'branches'].includes(metric) && current != null
+  ));
+  if (summaryRows.length === 0) return '';
+
+  return `**Coverage:** ${summaryRows.map(([metric, current, base]) => `${metric} ${fmt(current)} (baseline ${fmt(base)}, ${diff(current, base) || 'n/a'})`).join(' | ')}`;
+}
+
 function displayPath(root, filePath) {
   const relative = path.isAbsolute(filePath) ? path.relative(root, filePath) : filePath;
   return relative.replaceAll('\\', '/');
@@ -109,13 +118,13 @@ function readPythonCoverage(root) {
   const linePct = totals.percent_covered;
   const branchPct = Number(totals.num_branches) > 0
     ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
-    : linePct;
+    : null;
 
   return {
     totals: {
       lines: linePct,
-      statements: linePct,
-      functions: linePct,
+      statements: null,
+      functions: null,
       branches: branchPct,
     },
     worst: Object.entries(coverage.files ?? {})
@@ -147,8 +156,11 @@ function readCoverageSection(options = {}) {
     ['functions', coverage.totals.functions, b.functions],
     ['branches', coverage.totals.branches, b.branches],
   ];
+  const summaryLine = renderCoverageSummary(rows);
 
   const table = [
+    '',
+    summaryLine,
     '',
     '<details>',
     '<summary><b>📊 Coverage</b></summary>',
@@ -179,6 +191,218 @@ function readCoverageSection(options = {}) {
   return table.join('\n');
 }
 
+function readSnapshot(options = {}) {
+  if (options.snapshot) return options.snapshot;
+
+  const env = options.env || process.env;
+  const root = path.resolve(options.root || process.cwd());
+  const snapshotPath = options.snapshotPath || env.SNAPSHOT_PATH;
+  if (!snapshotPath) return null;
+
+  const resolvedPath = path.isAbsolute(snapshotPath)
+    ? snapshotPath
+    : path.resolve(root, snapshotPath);
+  return readJson(resolvedPath);
+}
+
+function firstBlocker(snapshot) {
+  const blockers = snapshot?.merge?.blockers;
+  if (Array.isArray(blockers) && blockers.length > 0) return blockers[0];
+
+  const actions = snapshot?.actions;
+  if (Array.isArray(actions) && actions.length > 0) {
+    return { type: actions[0], action: actions[0], message: actions[0] };
+  }
+  return null;
+}
+
+function summarizeMergeState({ snapshot, allGreen, anyFail }) {
+  if (snapshot?.merge) {
+    const merge = snapshot.merge;
+    const status = merge.status || (merge.ready ? 'ready' : 'blocked');
+    const advisories = Array.isArray(merge.advisories) ? merge.advisories : [];
+
+    if (merge.ready) {
+      const advisory = status === 'ready_with_advisory' || advisories.length > 0;
+      return {
+        icon: advisory ? '⚠️' : '✅',
+        status: advisory ? 'ready with advisory' : 'ready',
+        canMerge: 'yes',
+        nextAction: advisory ? 'Review advisories before merge.' : 'Merge allowed by snapshot.',
+        blocker: null,
+        advisories,
+      };
+    }
+
+    const blocker = firstBlocker(snapshot);
+    const manual = status === 'review_threads_unknown' || status === 'unknown';
+    return {
+      icon: manual ? '⚠️' : '❌',
+      status: manual ? 'manual verification' : status,
+      canMerge: manual ? 'unknown' : 'no',
+      nextAction: blocker?.action || (manual
+        ? 'Verify GitHub mergeability and review threads manually.'
+        : 'Fix blocker before merge.'),
+      blocker,
+      advisories,
+    };
+  }
+
+  if (allGreen) {
+    return {
+      icon: '⚠️',
+      status: 'checks passed',
+      canMerge: 'unknown',
+      nextAction: 'Required checks passed; merge readiness not verified.',
+      blocker: null,
+      advisories: [],
+    };
+  }
+
+  if (anyFail) {
+    return {
+      icon: '❌',
+      status: 'blocked',
+      canMerge: 'no',
+      nextAction: 'Corrija os jobs requeridos com falha antes do merge.',
+      blocker: { type: 'required_check_failed', message: 'Required check failed.' },
+      advisories: [],
+    };
+  }
+
+  return {
+    icon: '⏳',
+    status: 'waiting',
+    canMerge: 'unknown',
+    nextAction: 'Aguardar conclusao dos jobs requeridos.',
+    blocker: null,
+    advisories: [],
+  };
+}
+
+function renderNextAction(summary) {
+  return `**Next action:** ${summary.nextAction}`;
+}
+
+function renderMergeSummary(summary) {
+  const lines = [
+    `**Can merge:** ${summary.canMerge}`,
+    renderNextAction(summary),
+  ];
+
+  if (summary.blocker) {
+    lines.push(`**Blocker:** \`${summary.blocker.type || 'unknown'}\` - ${summary.blocker.message || summary.blocker.action || 'Sem detalhes.'}`);
+  }
+
+  if (summary.advisories.length > 0) {
+    lines.push('', '**Advisories:**');
+    for (const advisory of summary.advisories.slice(0, 5)) {
+      const type = advisory.type || 'advisory';
+      const message = advisory.message || advisory.action || String(advisory);
+      lines.push(`- \`${type}\` - ${message}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function renderHeader(summary) {
+  return `${MARKER}
+## ${summary.icon} Quality Gate: ${summary.status}
+
+${renderMergeSummary(summary)}`;
+}
+
+function renderChecksTable(requiredJobKeys, jobs) {
+  const icon = (result) => ICONS[result] ?? '⏳';
+  const label = (result) => LABELS[result] ?? result;
+  const jobRows = requiredJobKeys
+    .map((key) => `| ${icon(jobs[key])} ${JOB_LABELS[key]} | ${label(jobs[key])} |`)
+    .join('\n');
+
+  return `| Job | Status |
+|-----|--------|
+${jobRows}`;
+}
+
+function renderFooter(runUrl, timestamp) {
+  return `<sub>[Ver run completo](${runUrl}) · Atualizado em ${timestamp}</sub>`;
+}
+
+function escapeWorkflowCommand(value) {
+  return String(value || '')
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+}
+
+function escapeWorkflowProperty(value) {
+  return escapeWorkflowCommand(value)
+    .replace(/:/g, '%3A')
+    .replace(/,/g, '%2C');
+}
+
+function workflowCommand(level, message, properties = {}) {
+  const props = Object.entries(properties)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${key}=${escapeWorkflowProperty(value)}`)
+    .join(',');
+  const propSegment = props ? ` ${props}` : '';
+  return `::${level}${propSegment}::${escapeWorkflowCommand(message)}`;
+}
+
+function renderAnnotations(input = {}, options = {}) {
+  const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : 5;
+  const annotations = [];
+  const blockers = input.snapshot?.merge?.blockers || [];
+
+  for (const blocker of blockers) {
+    annotations.push(workflowCommand(
+      'warning',
+      `\`${blocker.type || 'unknown'}\` - ${blocker.message || blocker.action || 'Sem detalhes.'}`,
+      { title: 'Quality Gate blocker' },
+    ));
+    if (annotations.length >= limit) return annotations;
+  }
+
+  for (const item of input.coverage?.worst || []) {
+    if (typeof item.pct !== 'number') continue;
+    annotations.push(workflowCommand(
+      'warning',
+      `${fmt(item.pct)} lines coverage in ${item.file}`,
+      { title: 'Low coverage', file: item.file },
+    ));
+    if (annotations.length >= limit) return annotations;
+  }
+
+  return annotations;
+}
+
+function handleCommentError(error, options = {}) {
+  const env = options.env || process.env;
+  const consoleImpl = options.consoleImpl || console;
+  const mode = env.COMMENT_FAILURE_MODE === 'fail' ? 'fail' : 'warn';
+  const message = `Erro no sticky comment: ${error.message}`;
+
+  if (mode === 'fail') {
+    consoleImpl.error(message);
+    return { mode, exitCode: 1 };
+  }
+
+  consoleImpl.error(`::warning title=Quality Gate sticky comment::${escapeWorkflowCommand(message)}`);
+  return { mode, exitCode: 0 };
+}
+
+function writeStepSummary(body, options = {}) {
+  const env = options.env || process.env;
+  const summaryPath = env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) return { status: 'skipped' };
+
+  fs.mkdirSync(path.dirname(summaryPath), { recursive: true });
+  fs.appendFileSync(summaryPath, `${String(body || '').trimEnd()}\n`);
+  return { status: 'written', path: summaryPath };
+}
+
 function buildBody(options = {}) {
   const env = options.env || process.env;
   const root = path.resolve(options.root || process.cwd());
@@ -194,29 +418,29 @@ function buildBody(options = {}) {
   const requiredResults = requiredJobKeys.map((key) => jobs[key] ?? 'skipped');
   const allGreen = requiredResults.length > 0 && requiredResults.every((result) => result === 'success');
   const anyFail = requiredResults.some((result) => result === 'failure');
-  const icon = (result) => ICONS[result] ?? '⏳';
-  const label = (result) => LABELS[result] ?? result;
+  const snapshot = readSnapshot({ ...options, env, root });
+  const summary = summarizeMergeState({ snapshot, allGreen, anyFail });
   const coverageSection = readCoverageSection({ root });
   const timestamp = new Date(options.now || Date.now()).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  const jobRows = requiredJobKeys
-    .map((key) => `| ${icon(jobs[key])} ${JOB_LABELS[key]} | ${label(jobs[key])} |`)
-    .join('\n');
 
-  return `${MARKER}
-## ${allGreen ? '✅' : anyFail ? '❌' : '⏳'} Quality Gate
+  return `${renderHeader(summary)}
 
-| Job | Status |
-|-----|--------|
-${jobRows}
+${renderChecksTable(requiredJobKeys, jobs)}
 ${coverageSection}
-${allGreen
-    ? '> ✅ Todos os checks passaram. Aguardando Copilot Review.'
-    : anyFail
-      ? '> ❌ **Ação necessária:** corrija os jobs com falha antes do merge.\n> O agente babysit-pr está monitorando e irá iterar automaticamente.'
-      : '> ⏳ Alguns jobs ainda estão em andamento...'}
 
-<sub>[Ver run completo](${runUrl}) · Atualizado em ${timestamp}</sub>
+${renderFooter(runUrl, timestamp)}
 `;
+}
+
+async function listIssueComments({ ghFetch, pr }) {
+  const comments = [];
+  for (let page = 1; ; page += 1) {
+    const pageComments = await ghFetch(`/issues/${pr}/comments?per_page=100&page=${page}`);
+    if (!Array.isArray(pageComments) || pageComments.length === 0) break;
+    comments.push(...pageComments);
+    if (pageComments.length < 100) break;
+  }
+  return comments;
 }
 
 async function postStickyComment(options = {}) {
@@ -250,7 +474,7 @@ async function postStickyComment(options = {}) {
     return response.json().catch(() => null);
   }
 
-  const comments = await ghFetch(`/issues/${pr}/comments?per_page=100`);
+  const comments = await listIssueComments({ ghFetch, pr });
   const existing = comments?.find((comment) => comment.body?.includes(MARKER));
 
   if (existing) {
@@ -272,10 +496,19 @@ async function postStickyComment(options = {}) {
 
 async function main() {
   try {
-    await postStickyComment();
+    const root = process.cwd();
+    const body = buildBody();
+    writeStepSummary(body);
+    for (const annotation of renderAnnotations({
+      snapshot: readSnapshot({ env: process.env, root }),
+      coverage: readCoverageMetrics({ root }),
+    })) {
+      console.log(annotation);
+    }
+    await postStickyComment({ body });
   } catch (error) {
-    console.error('Erro no sticky comment:', error.message);
-    process.exit(0);
+    const result = handleCommentError(error);
+    process.exit(result.exitCode);
   }
 }
 
@@ -285,8 +518,14 @@ if (require.main === module) {
 
 module.exports = {
   buildBody,
+  handleCommentError,
+  listIssueComments,
   parseRequiredChecks,
   postStickyComment,
   readCoverageMetrics,
   readCoverageSection,
+  readSnapshot,
+  renderAnnotations,
+  summarizeMergeState,
+  writeStepSummary,
 };

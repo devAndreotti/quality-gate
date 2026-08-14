@@ -92,9 +92,9 @@ cd pipeline
 uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
 
 cd ..
-qg-upd
-qg-chk
-qg-doc
+node scripts\quality-gate.js update
+node scripts\quality-gate.js check
+node scripts\doctor.cjs --dry-run
 ```
 
 Equivalent one-command validation for PR work:
@@ -104,7 +104,7 @@ node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --prof
 node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --json
 ```
 
-`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `qg-chk`, `qg-doc`, `git diff --check`, and `git status`. `qg-chk` only runs after successful pytest with fresh coverage.
+`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are Scriply conveniences, not local validation dependencies.
 
 ### Step 1 — Copy Files to Your Repository
 
@@ -141,6 +141,9 @@ node scripts/setup.js --repo=OWNER/REPO --skip-sonar
 # Preview what the script would do without executing it:
 node scripts/setup.js --repo=OWNER/REPO --dry-run
 
+# Preview managed workflow upgrades without overwriting custom workflows:
+node scripts/bootstrap-repo.cjs --project . --upgrade --dry-run
+
 # Skip optional local steps:
 node scripts/setup.js --repo=OWNER/REPO --skip-readme --skip-funding
 ```
@@ -153,6 +156,7 @@ GITHUB_TOKEN=ghp_xxx node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG --s
 
 The script automatically performs the following tasks:
 - Creates/updates the local deterministic bootstrap: `LICENSE`, `.github/FUNDING.yml`, `.github/dependabot.yml`, and a managed README block.
+- Upgrades `.github/workflows/quality-gate.yml` only when the workflow contains the `# quality-gate:managed-workflow` marker; unmarked workflows require manual review.
 - Adds `SONAR_TOKEN` as a repository secret.
 - Creates the repository PR ruleset used by Quality Gate. Copilot Review can still be requested by the babysit-pr workflow or enabled separately in GitHub when available for the account.
 - Configures branch protection on the `main` branch using `.quality-gate/policy.json`.
@@ -193,6 +197,9 @@ Now, the ratchet quality gate is active.
 ## PR Readiness Contract
 
 `pr-snapshot.cjs` separates required checks, advisory checks, GitHub merge state, and review-thread state. `babysit-loop.cjs` only returns terminal `ready` when `snapshot.merge.ready === true`.
+The PR report job also writes `.quality-gate/reports/pr-snapshot.json` and passes it to `pr-comment.js` through `SNAPSHOT_PATH`. If GitHub API or GraphQL access fails, the sticky comment stays conservative and reports manual verification instead of claiming the PR is ready.
+Because the sticky comment is posted through issue comments, the report job needs `issues: write` plus `pull-requests: write`.
+The report also writes `GITHUB_STEP_SUMMARY` when available and emits up to five GitHub Actions annotations for blockers or lowest-coverage files.
 
 Important states:
 

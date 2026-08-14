@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  buildSpawnInvocation,
   buildValidationPlan,
   parseArgs,
   runLocalValidation,
@@ -40,6 +41,31 @@ test('buildValidationPlan detects python uv and node UI surfaces', () => {
   assert.ok(plan.commands.some((command) => command.name === 'pytest'));
   assert.ok(plan.commands.some((command) => command.name === 'node:test' && command.cwd.endsWith(`${path.sep}UI`)));
   assert.ok(plan.commands.some((command) => command.name === 'node:build'));
+  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-check' && command.commandLine === 'node scripts/quality-gate.js check'));
+  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-doctor' && command.commandLine === 'node scripts/doctor.cjs --dry-run'));
+  assert.equal(plan.commands.some((command) => command.commandLine === 'qg-chk' || command.commandLine === 'qg-doc'), false);
+  assert.equal(
+    path.basename(plan.commands.find((command) => command.name === 'quality-gate-check').file),
+    path.basename(process.execPath),
+  );
+});
+
+test('buildSpawnInvocation routes Windows command shims through cmd.exe', () => {
+  const invocation = buildSpawnInvocation(
+    { file: 'npm', args: ['run', 'test', '--if-present'] },
+    'win32',
+    { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+  );
+
+  assert.equal(invocation.file, 'C:\\Windows\\System32\\cmd.exe');
+  assert.deepEqual(invocation.args, ['/d', '/s', '/c', 'npm.cmd', 'run', 'test', '--if-present']);
+});
+
+test('buildSpawnInvocation keeps non-Windows commands direct', () => {
+  const invocation = buildSpawnInvocation({ file: 'npm', args: ['ci'] }, 'linux', {});
+
+  assert.equal(invocation.file, 'npm');
+  assert.deepEqual(invocation.args, ['ci']);
 });
 
 test('dry-run returns command plan without executing commands', () => {
@@ -64,7 +90,24 @@ test('dry-run returns command plan without executing commands', () => {
   assert.ok(result.commands.length > 0);
 });
 
-test('pytest failure skips qg-chk and reports failure', () => {
+test('missing packaged scripts produce installation error', () => {
+  const project = tempProject();
+
+  const result = runLocalValidation({
+    projectRoot: project,
+    profile: 'pr',
+    now: '2026-05-26T00:00:00.000Z',
+  });
+  const qualityGate = result.commands.find((command) => command.name === 'quality-gate-check');
+  const log = fs.readFileSync(qualityGate.artifact, 'utf8');
+
+  assert.equal(result.status, 'failure');
+  assert.equal(qualityGate.exitCode, 1);
+  assert.match(log, /installation incomplete/i);
+  assert.match(log, /scripts[\\/]quality-gate\.js/);
+});
+
+test('pytest failure skips quality-gate-check and reports failure', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
   fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
@@ -86,8 +129,8 @@ test('pytest failure skips qg-chk and reports failure', () => {
 
   assert.equal(result.status, 'failure');
   assert.ok(executed.includes('pytest'));
-  assert.equal(executed.includes('qg-chk'), false);
-  assert.ok(result.commands.find((command) => command.name === 'qg-chk').skipped);
+  assert.equal(executed.includes('quality-gate-check'), false);
+  assert.ok(result.commands.find((command) => command.name === 'quality-gate-check').skipped);
 });
 
 test('pytest basetemp is unique per execution context', () => {
@@ -124,5 +167,5 @@ test('stale coverage after pytest success fails before qg-chk', () => {
 
   assert.equal(result.status, 'failure');
   assert.match(result.error, /coverage.*stale/i);
-  assert.ok(result.commands.find((command) => command.name === 'qg-chk').skipped);
+  assert.ok(result.commands.find((command) => command.name === 'quality-gate-check').skipped);
 });

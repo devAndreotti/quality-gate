@@ -177,6 +177,8 @@ Comportamento:
 - `bootstrap-repo.cjs` cria/atualiza LICENSE, FUNDING e Dependabot.
 - README ganha scaffold com markers para conteudo mecanico.
 - README existente sem markers nao e sobrescrito.
+- Workflow existente so e atualizado por `bootstrap-repo.cjs --upgrade` quando
+  contem `# quality-gate:managed-workflow`; sem marker vira manual review.
 - `setup.js` chama o bootstrap local antes de tocar GitHub API.
 - `--skip-readme`, `--skip-funding`, `--skip-license`,
   `--skip-dependabot`, `--skip-bootstrap`, `--dry-run`.
@@ -245,7 +247,10 @@ Comportamento:
   em uma unica entrada.
 - Detecta `pipeline/pyproject.toml` e surfaces Node via `package.json`.
 - Pytest usa `--basetemp .pytest-tmp-qg-<timestamp>-<pid>`.
-- `qg-chk` so roda depois de pytest verde e `coverage/coverage.json` fresco.
+- `node scripts/quality-gate.js check` so roda depois de pytest verde e
+  `coverage/coverage.json` fresco.
+- `node scripts/doctor.cjs --dry-run` e usado diretamente; aliases Scriply
+  (`qg-chk`, `qg-doc`) sao conveniencia humana, nao dependencia do validador.
 - Relatorio final vai para `.quality-gate/reports/local-validation.json`.
 
 Aceite:

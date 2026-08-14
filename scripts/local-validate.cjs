@@ -53,9 +53,35 @@ function command(name, cwd, commandLine, extra = {}) {
   };
 }
 
-function executable(name) {
-  if (process.platform !== 'win32') return name;
-  return ['npm', 'uv', 'uvx', 'qg-chk', 'qg-doc'].includes(name) ? `${name}.cmd` : name;
+function executable(name, platform = process.platform) {
+  if (platform !== 'win32') return name;
+  return ['npm', 'uv', 'uvx'].includes(name) ? `${name}.cmd` : name;
+}
+
+function isWindowsCommandShim(name, platform = process.platform) {
+  return platform === 'win32' && ['npm', 'uv', 'uvx'].includes(name);
+}
+
+function buildSpawnInvocation(step, platform = process.platform, env = process.env) {
+  if (!isWindowsCommandShim(step.file, platform)) {
+    return {
+      file: executable(step.file, platform),
+      args: step.args || [],
+    };
+  }
+
+  return {
+    file: env.ComSpec || 'cmd.exe',
+    args: ['/d', '/s', '/c', executable(step.file, platform), ...(step.args || [])],
+  };
+}
+
+function localScript(projectRoot, relativePath) {
+  return path.join(projectRoot, relativePath);
+}
+
+function displayPath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/');
 }
 
 function buildValidationPlan(options = {}) {
@@ -147,16 +173,18 @@ function buildValidationPlan(options = {}) {
   }
 
   commands.push(
-    command('qg-chk', projectRoot, 'qg-chk', {
-      artifact: path.join(reportsRoot, 'qg-chk.log'),
-      file: 'qg-chk',
-      args: [],
+    command('quality-gate-check', projectRoot, 'node scripts/quality-gate.js check', {
+      artifact: path.join(reportsRoot, 'quality-gate-check.log'),
+      file: process.execPath,
+      args: [localScript(projectRoot, path.join('scripts', 'quality-gate.js')), 'check'],
+      requiresFile: localScript(projectRoot, path.join('scripts', 'quality-gate.js')),
       requiresFreshCoverage: exists(path.join(pipelineRoot, 'pyproject.toml')),
     }),
-    command('qg-doc', projectRoot, 'qg-doc', {
-      artifact: path.join(reportsRoot, 'qg-doc.log'),
-      file: 'qg-doc',
-      args: [],
+    command('quality-gate-doctor', projectRoot, 'node scripts/doctor.cjs --dry-run', {
+      artifact: path.join(reportsRoot, 'quality-gate-doctor.log'),
+      file: process.execPath,
+      args: [localScript(projectRoot, path.join('scripts', 'doctor.cjs')), '--dry-run'],
+      requiresFile: localScript(projectRoot, path.join('scripts', 'doctor.cjs')),
     }),
     command('git-diff-check', projectRoot, 'git diff --check', {
       artifact: path.join(reportsRoot, 'git-diff-check.log'),
@@ -180,7 +208,17 @@ function buildValidationPlan(options = {}) {
 }
 
 function defaultExecutor(step) {
-  const result = childProcess.spawnSync(executable(step.file), step.args || [], {
+  if (step.requiresFile && !fs.existsSync(step.requiresFile)) {
+    const relative = path.relative(step.cwd, step.requiresFile) || step.requiresFile;
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: `Quality Gate installation incomplete: missing ${displayPath(relative)}. Reinstall or copy the packaged scripts before local validation.\n`,
+    };
+  }
+
+  const invocation = buildSpawnInvocation(step);
+  const result = childProcess.spawnSync(invocation.file, invocation.args, {
     cwd: step.cwd,
     shell: false,
     encoding: 'utf8',
@@ -337,6 +375,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildSpawnInvocation,
   buildValidationPlan,
   isCoverageFresh,
   parseArgs,
