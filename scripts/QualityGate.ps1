@@ -485,9 +485,12 @@ if ($Init) {
             }
 
             if ([string]::IsNullOrWhiteSpace($token)) {
-                $tokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)"
-                if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
-                    $token = $tokenInput.Trim()
+                $secureTokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)" -AsSecureString
+                if ($secureTokenInput.Length -gt 0) {
+                    $tokenInput = [System.Net.NetworkCredential]::new('', $secureTokenInput).Password
+                    if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
+                        $token = $tokenInput.Trim()
+                    }
                 }
             }
         }
@@ -504,7 +507,11 @@ if ($Init) {
                 $setupArgs += "--skip-sonar"
             } elseif (-not $DryRun) {
                 $sonarOrg = Read-Host "Insira a Organização do SonarCloud"
-                $sonarToken = Read-Host "Insira o Token do SonarCloud"
+                $secureSonarToken = Read-Host "Insira o Token do SonarCloud" -AsSecureString
+                $sonarToken = $null
+                if ($secureSonarToken.Length -gt 0) {
+                    $sonarToken = [System.Net.NetworkCredential]::new('', $secureSonarToken).Password
+                }
                 if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
                 if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
             }
