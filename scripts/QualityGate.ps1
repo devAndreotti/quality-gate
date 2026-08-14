@@ -545,19 +545,11 @@ function Invoke-QgMenu {
     switch ($selection) {
         'I' { Invoke-Init }
         'D' {
-            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\doctor.cjs"))) { Write-Error "doctor.cjs ausente."; return }
-            & node (Join-Path $ProjectRoot "scripts\doctor.cjs") --dry-run
+            Invoke-DoctorAction
             Show-QgAuthDiagnostic
         }
-        'V' {
-            $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
-            if (-not (Test-Path $localValidate)) { Write-Error "local-validate.cjs ausente."; return }
-            & node $localValidate --project $ProjectRoot --profile pr --json
-        }
-        'U' {
-            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\quality-gate.js"))) { Write-Error "quality-gate.js ausente."; return }
-            & node (Join-Path $ProjectRoot "scripts\quality-gate.js") update
-        }
+        'V' { Invoke-LocalValidateAction }
+        'U' { Invoke-UpdateAction }
         'G' {
             $script:QgInitSummary = @()
             Invoke-GitHubSetupStep
@@ -588,10 +580,7 @@ function Invoke-QgMenu {
             if (-not (Test-Path $babysitJs)) { Write-Error "babysit-loop.cjs ausente."; return }
             & node $babysitJs --pr $prNumber --once
         }
-        'R' {
-            if (-not (Test-Path (Join-Path $ProjectRoot "scripts\quality-gate.js"))) { Write-Error "quality-gate.js ausente."; return }
-            & node (Join-Path $ProjectRoot "scripts\quality-gate.js") report
-        }
+        'R' { Invoke-ReportAction }
         'H' { Show-Help }
         default { Write-Warning "Opção '$selection' inválida." }
     }
@@ -929,43 +918,59 @@ if ($Init) {
 $doctorJs = Join-Path $ProjectRoot "scripts\doctor.cjs"
 $gateJs   = Join-Path $ProjectRoot "scripts\quality-gate.js"
 
-if ($Doctor) {
+# Extraídas em funções para serem reusadas tanto pelas flags (-Doctor/-Check/-Update/-Report)
+# quanto pelo menu interativo (Invoke-QgMenu) sem duplicar o header colorido de cada ação.
+function Invoke-DoctorAction {
     if (-not (Test-Path $doctorJs)) {
         Write-Error "O Quality Gate não parece estar instalado na pasta atual (doctor.cjs ausente)."
         return
     }
     Write-Host "🔍 Executando diagnóstico (doctor.cjs --dry-run)..." -ForegroundColor Cyan
     & node $doctorJs --dry-run
-    return
 }
 
-if ($Check) {
+function Invoke-CheckAction {
     if (-not (Test-Path $gateJs)) {
         Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
         return
     }
     Write-Host "⚖️  Comparando métricas com o baseline..." -ForegroundColor Cyan
     & node $gateJs check
-    return
 }
 
-if ($Update) {
+function Invoke-UpdateAction {
     if (-not (Test-Path $gateJs)) {
         Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
         return
     }
     Write-Host "🔄 Atualizando baseline com métricas do projeto atual..." -ForegroundColor Cyan
     & node $gateJs update
-    return
 }
 
-if ($Report) {
+function Invoke-ReportAction {
     if (-not (Test-Path $gateJs)) {
         Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
         return
     }
     Write-Host "📊 Exibindo relatório de qualidade..." -ForegroundColor Cyan
     & node $gateJs report
+}
+
+function Invoke-LocalValidateAction {
+    $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
+    if (-not (Test-Path $localValidate)) {
+        Write-Error "O Quality Gate não parece estar instalado na pasta atual (local-validate.cjs ausente)."
+        return
+    }
+    Write-Host "🧪 Rodando validação local de PR (local-validate.cjs)..." -ForegroundColor Cyan
+    & node $localValidate --project $ProjectRoot --profile pr --json
+}
+
+if ($Doctor) { Invoke-DoctorAction; return }
+if ($Check) { Invoke-CheckAction; return }
+if ($Update) { Invoke-UpdateAction; return }
+if ($Report) {
+    Invoke-ReportAction
     return
 }
 
