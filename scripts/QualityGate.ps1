@@ -83,11 +83,30 @@ function Write-QgSection {
     Write-Host ("  {0}" -f ('─' * 60)) -ForegroundColor DarkGray
 }
 
-function Write-QgEntry {
-    param([string]$Command, [string]$Aliases = '-', [string]$Description, [string]$CommandColor = 'White')
-    Write-Host ("    {0,-24}" -f $Command) -NoNewline -ForegroundColor $CommandColor
-    Write-Host (" {0,-20}" -f $Aliases) -NoNewline -ForegroundColor DarkGray
-    Write-Host (" {0}" -f $Description) -ForegroundColor Gray
+function Write-QgEntryList {
+    # Larguras de coluna calculadas a partir do conteúdo real de cada seção (como o
+    # sres/ssh-ls fazem) em vez de uma largura fixa generosa — evita o espaço
+    # alargado entre comando/alias/descrição quando os textos são curtos.
+    param([Parameter(Mandatory=$true)][array]$Entries)
+    $cmdWidth = 0
+    $aliasWidth = 0
+    $anyAlias = $false
+    foreach ($entry in $Entries) {
+        if ($entry.Command.Length -gt $cmdWidth) { $cmdWidth = $entry.Command.Length }
+        $aliasValue = if ($entry.Aliases) { $entry.Aliases } else { '-' }
+        if ($aliasValue -ne '-') { $anyAlias = $true }
+        if ($aliasValue.Length -gt $aliasWidth) { $aliasWidth = $aliasValue.Length }
+    }
+    foreach ($entry in $Entries) {
+        $cmdText = $entry.Command.PadRight($cmdWidth)
+        if ($anyAlias) {
+            $aliasValue = if ($entry.Aliases) { $entry.Aliases } else { '-' }
+            $aliasText = $aliasValue.PadRight($aliasWidth)
+            Write-Host ("    {0}  {1}  {2}" -f $cmdText, $aliasText, $entry.Description) -ForegroundColor Gray
+        } else {
+            Write-Host ("    {0}  {1}" -f $cmdText, $entry.Description) -ForegroundColor Gray
+        }
+    }
 }
 
 function Write-QgKeyValue {
@@ -102,27 +121,31 @@ function Write-QgHint {
 
 # Função para exibir ajuda amigável
 function Show-Help {
-    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '🛡️'
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '◆'
 
     Write-QgSection -Title 'Comandos' -Color 'Blue' -Icon '▤'
-    Write-QgEntry -Command 'qg' -Description 'sem args: abre o menu interativo'
-    Write-QgEntry -Command 'qg-init' -Aliases 'qg -Init' -Description 'wizard interativo de instalação'
-    Write-QgEntry -Command 'qg-doc' -Aliases 'qg -Doctor' -Description 'diagnóstico das ferramentas'
-    Write-QgEntry -Command 'qg-chk' -Aliases 'qg -Check' -Description 'gate: falha (exit 1) se métricas regrediram'
-    Write-QgEntry -Command 'qg-upd' -Aliases 'qg -Update' -Description 'atualiza o baseline de métricas'
-    Write-QgEntry -Command 'qg-rpt' -Aliases 'qg -Report' -Description 'só consulta o relatório, nunca falha'
+    Write-QgEntryList -Entries @(
+        [pscustomobject]@{ Command = 'qg'; Description = 'sem args: abre o menu interativo' }
+        [pscustomobject]@{ Command = 'qg-init'; Aliases = 'qg -Init'; Description = 'wizard interativo de instalação' }
+        [pscustomobject]@{ Command = 'qg-doc'; Aliases = 'qg -Doctor'; Description = 'diagnóstico das ferramentas' }
+        [pscustomobject]@{ Command = 'qg-chk'; Aliases = 'qg -Check'; Description = 'gate: falha (exit 1) se métricas regrediram' }
+        [pscustomobject]@{ Command = 'qg-upd'; Aliases = 'qg -Update'; Description = 'atualiza o baseline de métricas' }
+        [pscustomobject]@{ Command = 'qg-rpt'; Aliases = 'qg -Report'; Description = 'só consulta o relatório, nunca falha' }
+    )
     Write-Host ''
 
     Write-QgSection -Title 'Flags do wizard (-Init)' -Color 'Blue' -Icon '◈'
-    Write-QgEntry -Command '-Sonar' -Description 'configura org/token do SonarCloud'
-    Write-QgEntry -Command '-SkipCodex' -Description 'pula a cópia da pasta .codex/'
-    Write-QgEntry -Command '-SkipBaseline' -Description 'pula a captura do baseline inicial'
-    Write-QgEntry -Command '-SkipCommit' -Description 'pula o commit automático no git'
-    Write-QgEntry -Command '-SkipGitHub' -Description 'pula branch protection e ruleset remoto'
-    Write-QgEntry -Command '-DryRun' -Description 'executa em modo demonstração'
-    Write-QgEntry -Command '-Yes' -Description 'confirma etapas com padrão seguro'
-    Write-QgEntry -Command '-Force' -Description 'permite instalar em stack não Node'
-    Write-QgEntry -Command '-Repo <owner/repo>' -Description 'força repositório específico'
+    Write-QgEntryList -Entries @(
+        [pscustomobject]@{ Command = '-Sonar'; Description = 'configura org/token do SonarCloud' }
+        [pscustomobject]@{ Command = '-SkipCodex'; Description = 'pula a cópia da pasta .codex/' }
+        [pscustomobject]@{ Command = '-SkipBaseline'; Description = 'pula a captura do baseline inicial' }
+        [pscustomobject]@{ Command = '-SkipCommit'; Description = 'pula o commit automático no git' }
+        [pscustomobject]@{ Command = '-SkipGitHub'; Description = 'pula branch protection e ruleset remoto' }
+        [pscustomobject]@{ Command = '-DryRun'; Description = 'executa em modo demonstração' }
+        [pscustomobject]@{ Command = '-Yes'; Description = 'confirma etapas com padrão seguro' }
+        [pscustomobject]@{ Command = '-Force'; Description = 'permite instalar em stack não Node' }
+        [pscustomobject]@{ Command = '-Repo <owner/repo>'; Description = 'força repositório específico' }
+    )
     Write-Host ''
 
     Write-QgHint -Text 'uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt'
@@ -530,7 +553,7 @@ function Get-QgMenuState {
 
 function Show-QgMenuState {
     param([Parameter(Mandatory=$true)]$State)
-    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '🛡️'
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '◆'
     Write-QgSection -Title 'Estado' -Color 'Cyan' -Icon '◉'
     Write-QgKeyValue -Label 'Perfil' -Value $State.Perfil
     Write-QgKeyValue -Label 'Repo remoto' -Value $State.RepoRemoto
