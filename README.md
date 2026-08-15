@@ -34,6 +34,7 @@ your-project/                        ← Root of YOUR repository
 │   ├── local-validate.cjs            ← One-command local PR validation
 │   ├── lib/                         ← Shared validation libraries
 │   ├── pr-snapshot.cjs              ← PR snapshot JSON generator for babysit-pr
+│   ├── menu-tui.mjs                 ← qg: rich ink/React menu (bundled, Node >=22)
 │   ├── quality-gate.js              ← Ratchet: check | update | report
 │   ├── pr-comment.js                ← Automatic sticky comment on PR
 │   └── setup.js                     ← Setup automation via GitHub API
@@ -71,11 +72,11 @@ qg-dash
 
 `qg-dash` (`qg -Dashboard`) opens a live-refreshing status panel — repo/branch/remote, ratchet metrics, last saved PR snapshot — polling local `git`/filesystem state every 5s (`r` to refresh now, `q` to quit). It never calls the GitHub API itself — the PR section only reads whatever `.quality-gate/reports/pr-snapshot.json` was last saved by the "PR snapshot" menu action, to avoid hammering the API on every refresh.
 
-Two rendering modes, chosen automatically, no flag needed:
-- **Rich (ink/React)** — real full-screen TUI (`scripts/dashboard-tui.mjs`), used when the bundle is present, the terminal has a real TTY, and Node is `>=22`.
-- **Plain text (`scripts/dashboard.cjs`)** — zero-dependency fallback (Node stdlib only), used otherwise (older Node, no TTY, or the bundle wasn't generated). This is also what ships to every project by default — `qg-init` copies whatever is in `scripts/`, same as any other file.
+Both the `qg` menu and `qg-dash` render in one of two modes, chosen automatically, no flag needed:
+- **Rich (ink/React)** — a real full-screen TUI (`scripts/menu-tui.mjs` for the menu, `scripts/dashboard-tui.mjs` for the dashboard), used when the matching bundle is present, the terminal has a real TTY, and Node is `>=22`. The menu is a proper arrow-key list (↑/↓ to move, Enter to pick, `q`/Esc to cancel) instead of the old `Out-ConsoleGridView` grid.
+- **Plain text** (`scripts/dashboard.cjs`, or the inline `Read-Host` list for the menu) — zero-dependency fallback (Node stdlib only), used otherwise (older Node, no TTY, or a bundle wasn't generated). This is also what ships to every project by default — `qg-init` copies whatever is in `scripts/`, same as any other file.
 
-The rich bundle is generated once here, in this source repo, via `npm install && npm run build:dashboard-tui` — it's a single self-contained `.mjs` file (~1.7 MB, ink + React inlined by `esbuild`), so **target projects never need `npm install`**: they just receive the already-built `scripts/dashboard-tui.mjs`, exactly like any other loose script. The root `package.json`/`node_modules` this creates are dev-only tooling for regenerating that bundle — never copied by `qg-init`, and `.gitignore`d for `node_modules`.
+The rich bundles are generated once here, in this source repo, via `npm install && npm run build:tui` — each is a single self-contained `.mjs` file (~1.7 MB, ink + React inlined by `esbuild`), so **target projects never need `npm install`**: they just receive the already-built `scripts/*-tui.mjs` files, exactly like any other loose script. The root `package.json`/`node_modules` this creates are dev-only tooling for regenerating those bundles — never copied by `qg-init`, and `.gitignore`d for `node_modules`.
 
 `qg-init` detects the project stack before writing. Version `1.0.0` supports:
 

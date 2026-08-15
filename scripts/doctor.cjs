@@ -292,28 +292,29 @@ function checkModuleMode(root) {
   };
 }
 
-function checkDashboardTui(root) {
-  const hasBundle = exists(root, 'scripts/dashboard-tui.mjs');
+function checkRichTui(root) {
+  const bundles = ['dashboard-tui.mjs', 'menu-tui.mjs'];
+  const missing = bundles.filter((file) => !exists(root, `scripts/${file}`));
   const hasFallback = exists(root, 'scripts/dashboard.cjs');
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   const nodeOk = nodeMajor >= 22;
 
   if (!hasFallback) {
-    return { level: 'warn', name: 'Dashboard (qg-dash)', detail: 'dashboard.cjs ausente' };
+    return { level: 'warn', name: 'TUI rico (ink)', detail: 'dashboard.cjs ausente' };
   }
-  if (!hasBundle) {
+  if (missing.length) {
     return {
       level: 'warn',
-      name: 'Dashboard (qg-dash)',
-      detail: 'modo texto apenas; rode "node scripts/build-dashboard-tui.mjs" pra gerar o TUI rico (ink)',
+      name: 'TUI rico (ink)',
+      detail: `modo texto apenas (${missing.join(', ')} ausente); rode "node scripts/build-tui.mjs" pra gerar`,
     };
   }
   return {
     level: nodeOk ? 'ok' : 'warn',
-    name: 'Dashboard (qg-dash)',
+    name: 'TUI rico (ink)',
     detail: nodeOk
-      ? `TUI rico disponivel (dashboard-tui.mjs, Node ${process.versions.node})`
-      : `dashboard-tui.mjs presente mas Node ${process.versions.node} < 22; cai pro modo texto`,
+      ? `qg-dash e o menu (qg) disponiveis em modo rico (Node ${process.versions.node})`
+      : `bundles presentes mas Node ${process.versions.node} < 22; cai pro modo texto`,
   };
 }
 
@@ -368,7 +369,7 @@ function analyzeQualityGate(options = {}) {
       checkBaseline(root),
       checkModuleMode(root),
       checkDryRunSupport(root),
-      checkDashboardTui(root),
+      checkRichTui(root),
     );
     if (options.release) {
       checks.push(checkReleaseReadiness(checks));

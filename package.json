@@ -3,7 +3,7 @@
   "private": true,
   "description": "Dev-only tooling for this repo's own build steps. Never copied into target projects by qg-init (see $folders in scripts/QualityGate.ps1) — target projects keep receiving loose files only, no package.json, no node_modules.",
   "scripts": {
-    "build:dashboard-tui": "node scripts/build-dashboard-tui.mjs"
+    "build:tui": "node scripts/build-tui.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
