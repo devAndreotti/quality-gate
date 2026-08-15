@@ -1,3 +1,4 @@
 .quality-gate/state.json
 .quality-gate/reports/
 coverage/
+node_modules/

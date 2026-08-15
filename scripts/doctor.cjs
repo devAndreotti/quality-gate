@@ -292,6 +292,31 @@ function checkModuleMode(root) {
   };
 }
 
+function checkDashboardTui(root) {
+  const hasBundle = exists(root, 'scripts/dashboard-tui.mjs');
+  const hasFallback = exists(root, 'scripts/dashboard.cjs');
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  const nodeOk = nodeMajor >= 22;
+
+  if (!hasFallback) {
+    return { level: 'warn', name: 'Dashboard (qg-dash)', detail: 'dashboard.cjs ausente' };
+  }
+  if (!hasBundle) {
+    return {
+      level: 'warn',
+      name: 'Dashboard (qg-dash)',
+      detail: 'modo texto apenas; rode "node scripts/build-dashboard-tui.mjs" pra gerar o TUI rico (ink)',
+    };
+  }
+  return {
+    level: nodeOk ? 'ok' : 'warn',
+    name: 'Dashboard (qg-dash)',
+    detail: nodeOk
+      ? `TUI rico disponivel (dashboard-tui.mjs, Node ${process.versions.node})`
+      : `dashboard-tui.mjs presente mas Node ${process.versions.node} < 22; cai pro modo texto`,
+  };
+}
+
 function checkDryRunSupport(root) {
   const setup = readText(root, 'scripts/setup.js');
   const qualityGate = readText(root, 'scripts/quality-gate.js');
@@ -343,6 +368,7 @@ function analyzeQualityGate(options = {}) {
       checkBaseline(root),
       checkModuleMode(root),
       checkDryRunSupport(root),
+      checkDashboardTui(root),
     );
     if (options.release) {
       checks.push(checkReleaseReadiness(checks));
