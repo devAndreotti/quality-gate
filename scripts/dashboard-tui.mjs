@@ -1,5 +1,5 @@
-// GERADO por scripts/build-dashboard-tui.mjs a partir de dashboard-src/app.jsx -- NAO EDITE A MAO.
-// Para regenerar: node scripts/build-dashboard-tui.mjs
+// GERADO por scripts/build-tui.mjs a partir de dashboard-src/app.jsx -- NAO EDITE A MAO.
+// Para regenerar: node scripts/build-tui.mjs
 import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;

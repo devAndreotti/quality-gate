@@ -593,25 +593,21 @@ function Invoke-QgMenu {
     }
 
     $selection = $null
-    $gridAvailable = $false
-    if (-not (Get-Module -ListAvailable -Name Microsoft.PowerShell.ConsoleGuiTools)) {
-        try {
-            Write-Host '  Instalando módulo Microsoft.PowerShell.ConsoleGuiTools (uma vez por máquina)...' -ForegroundColor DarkGray
-            Install-Module -Name Microsoft.PowerShell.ConsoleGuiTools -Scope CurrentUser -Force -AllowClobber -Confirm:$false -ErrorAction Stop
-        } catch {
-            Write-Warning "Não foi possível instalar Microsoft.PowerShell.ConsoleGuiTools ($($_.Exception.Message)). Usando menu de texto."
-        }
-    }
-    if (Get-Module -ListAvailable -Name Microsoft.PowerShell.ConsoleGuiTools) {
-        Import-Module Microsoft.PowerShell.ConsoleGuiTools -ErrorAction SilentlyContinue
-        if (Get-Command Out-ConsoleGridView -ErrorAction SilentlyContinue) {
-            $gridAvailable = $true
-        }
-    }
+    $menuTuiMjs = Join-Path $ProjectRoot "scripts\menu-tui.mjs"
+    $hasTty = -not [Console]::IsInputRedirected
+    $richMenuAvailable = (Test-Path $menuTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichTui)
 
-    if ($gridAvailable) {
-        $picked = $items | Out-ConsoleGridView -Title 'Quality Gate - escolha uma ação' -OutputMode Single
-        if ($picked) { $selection = $picked.Opcao }
+    if ($richMenuAvailable) {
+        $itemsJsonPath = [System.IO.Path]::GetTempFileName()
+        try {
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($itemsJsonPath, ($items | ConvertTo-Json), $utf8NoBom)
+            $raw = & node $menuTuiMjs $itemsJsonPath 'Quality Gate - escolha uma ação'
+            $selectedLine = $raw | Where-Object { $_ -match '^SELECTED:(.+)$' } | Select-Object -Last 1
+            if ($selectedLine -match '^SELECTED:(.+)$') { $selection = $Matches[1] }
+        } finally {
+            Remove-Item -LiteralPath $itemsJsonPath -Force -ErrorAction SilentlyContinue
+        }
     } else {
         Write-QgSection -Title 'Escolha uma ação' -Color 'Blue' -Icon '▤'
         foreach ($item in $items) {
@@ -1052,7 +1048,7 @@ function Invoke-LocalValidateAction {
     & node $localValidate --project $ProjectRoot --profile pr --json
 }
 
-function Test-QgNodeSupportsRichDashboard {
+function Test-QgNodeSupportsRichTui {
     try {
         $version = (& node --version) -replace '^v', ''
         $major = [int]($version -split '\.')[0]
@@ -1074,7 +1070,7 @@ function Invoke-DashboardAction {
     # cai pro modo texto de qualquer forma nesses casos, sem erro visivel ao usuario).
     $dashboardTuiMjs = Join-Path $ProjectRoot "scripts\dashboard-tui.mjs"
     $hasTty = -not [Console]::IsInputRedirected
-    if ((Test-Path $dashboardTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichDashboard)) {
+    if ((Test-Path $dashboardTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichTui)) {
         & node $dashboardTuiMjs $ProjectRoot
         return
     }
