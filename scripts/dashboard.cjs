@@ -7,8 +7,11 @@
  * a secao de PR le o ultimo snapshot salvo em disco, nao dispara request nova
  * a cada refresh (evitaria rate limit e deixaria o loop lento).
  *
- * Script administrativo: NAO e copiado para projetos-alvo pelo qg-init (ver
- * $cleanScripts em QualityGate.ps1), igual QualityGate.ps1/QualityGate.test.ps1.
+ * Copiado para projetos-alvo pelo qg-init como qualquer outro arquivo em
+ * scripts/ (nao esta em $cleanScripts do QualityGate.ps1). E o fallback
+ * garantido do dashboard: funciona em qualquer Node, com ou sem TTY. O modo
+ * rico (ink/React) fica em scripts/dashboard-tui.mjs, quando presente e o
+ * Node e >=22 -- ver Invoke-DashboardAction em QualityGate.ps1.
  */
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');

@@ -26,6 +26,8 @@ your-project/                        ← Root of YOUR repository
 │   ├── bootstrap-repo.cjs           ← LICENSE/FUNDING/Dependabot/README scaffold
 │   ├── ci-diagnose.cjs              ← Deterministic CI failure classifier
 │   ├── configure-project.cjs        ← Stack adapter: node or python-uv
+│   ├── dashboard.cjs                ← qg-dash: plain-text live panel (zero-dep fallback)
+│   ├── dashboard-tui.mjs            ← qg-dash: rich ink/React panel (bundled, Node >=22)
 │   ├── dependabot-consolidate.cjs    ← Dependabot PR consolidation planner
 │   ├── doctor.cjs                   ← Read-only package auditor
 │   ├── docker-gate.cjs              ← Docker gate + static fallback advisory
@@ -67,7 +69,13 @@ qg-dash
 
 `qg` with no flags is the primary local entry point: it opens an interactive menu (state summary + install/repair, doctor, local PR validation, update baseline, GitHub setup, PR snapshot, babysit PR once, show report, live dashboard). All the `qg-*` aliases and explicit flags keep working exactly as before — the menu never intercepts them, it only appears when `qg` is called with nothing else to do.
 
-`qg-dash` (`qg -Dashboard`) opens a live-refreshing status panel — repo/branch/remote, ratchet metrics, last saved PR snapshot — polling local `git`/filesystem state every 5s (`r` to refresh now, `q` to quit). Zero new dependency: `scripts/dashboard.cjs` is plain Node + the package's own scripts, no `package.json`/`node_modules` required. It never calls the GitHub API itself — the PR section only reads whatever `.quality-gate/reports/pr-snapshot.json` was last saved by the "PR snapshot" menu action, to avoid hammering the API on every refresh.
+`qg-dash` (`qg -Dashboard`) opens a live-refreshing status panel — repo/branch/remote, ratchet metrics, last saved PR snapshot — polling local `git`/filesystem state every 5s (`r` to refresh now, `q` to quit). It never calls the GitHub API itself — the PR section only reads whatever `.quality-gate/reports/pr-snapshot.json` was last saved by the "PR snapshot" menu action, to avoid hammering the API on every refresh.
+
+Two rendering modes, chosen automatically, no flag needed:
+- **Rich (ink/React)** — real full-screen TUI (`scripts/dashboard-tui.mjs`), used when the bundle is present, the terminal has a real TTY, and Node is `>=22`.
+- **Plain text (`scripts/dashboard.cjs`)** — zero-dependency fallback (Node stdlib only), used otherwise (older Node, no TTY, or the bundle wasn't generated). This is also what ships to every project by default — `qg-init` copies whatever is in `scripts/`, same as any other file.
+
+The rich bundle is generated once here, in this source repo, via `npm install && npm run build:dashboard-tui` — it's a single self-contained `.mjs` file (~1.7 MB, ink + React inlined by `esbuild`), so **target projects never need `npm install`**: they just receive the already-built `scripts/dashboard-tui.mjs`, exactly like any other loose script. The root `package.json`/`node_modules` this creates are dev-only tooling for regenerating that bundle — never copied by `qg-init`, and `.gitignore`d for `node_modules`.
 
 `qg-init` detects the project stack before writing. Version `1.0.0` supports:
 

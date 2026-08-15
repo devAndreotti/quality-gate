@@ -1052,12 +1052,33 @@ function Invoke-LocalValidateAction {
     & node $localValidate --project $ProjectRoot --profile pr --json
 }
 
+function Test-QgNodeSupportsRichDashboard {
+    try {
+        $version = (& node --version) -replace '^v', ''
+        $major = [int]($version -split '\.')[0]
+        return $major -ge 22
+    } catch {
+        return $false
+    }
+}
+
 function Invoke-DashboardAction {
     $dashboardJs = Join-Path $ProjectRoot "scripts\dashboard.cjs"
     if (-not (Test-Path $dashboardJs)) {
         Write-Error "O Quality Gate não parece estar instalado na pasta atual (dashboard.cjs ausente)."
         return
     }
+
+    # Modo rico (ink/React, ver dashboard-src/app.jsx) só quando o bundle existe, o Node
+    # é >=22 (exigencia do ink) e ha um TTY de verdade (raw mode nao funciona em pipe/CI —
+    # cai pro modo texto de qualquer forma nesses casos, sem erro visivel ao usuario).
+    $dashboardTuiMjs = Join-Path $ProjectRoot "scripts\dashboard-tui.mjs"
+    $hasTty = -not [Console]::IsInputRedirected
+    if ((Test-Path $dashboardTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichDashboard)) {
+        & node $dashboardTuiMjs $ProjectRoot
+        return
+    }
+
     # Sem -Cyan/Write-Host aqui: dashboard.cjs assume a tela (console.clear() a cada refresh),
     # uma linha de intro antes so ficaria visivel por um instante e some no primeiro clear.
     & node $dashboardJs $ProjectRoot

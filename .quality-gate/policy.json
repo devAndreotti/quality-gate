@@ -1,6 +1,15 @@
 {
   "schemaVersion": 1,
   "profile": "strict-node",
+  "project": {
+    "surfaces": [
+      {
+        "type": "node",
+        "root": ".",
+        "required": false
+      }
+    ]
+  },
   "ci": {
     "requiredChecks": [
       "Security audit",
