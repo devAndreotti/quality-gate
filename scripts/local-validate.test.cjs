@@ -42,7 +42,7 @@ test('buildValidationPlan detects python uv and node UI surfaces', () => {
   assert.ok(plan.commands.some((command) => command.name === 'node:test' && command.cwd.endsWith(`${path.sep}UI`)));
   assert.ok(plan.commands.some((command) => command.name === 'node:build'));
   assert.ok(plan.commands.some((command) => command.name === 'quality-gate-check' && command.commandLine === 'node scripts/quality-gate.js check'));
-  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-doctor' && command.commandLine === 'node scripts/doctor.cjs --dry-run'));
+  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-doctor' && command.commandLine === 'node scripts/doctor.cjs --dry-run --root .'));
   assert.equal(plan.commands.some((command) => command.commandLine === 'qg-chk' || command.commandLine === 'qg-doc'), false);
   assert.equal(
     path.basename(plan.commands.find((command) => command.name === 'quality-gate-check').file),
@@ -88,6 +88,32 @@ test('dry-run returns command plan without executing commands', () => {
   assert.equal(executed, 0);
   assert.equal(result.status, 'planned');
   assert.ok(result.commands.length > 0);
+});
+
+test('--scripts-root resolves quality-gate.js/doctor.cjs from an external scripts folder', () => {
+  const project = tempProject();
+  const scriptsRoot = tempProject();
+
+  const plan = buildValidationPlan({ projectRoot: project, scriptsRoot, now: '2026-05-26T00:00:00.000Z', pid: 123 });
+
+  const check = plan.commands.find((command) => command.name === 'quality-gate-check');
+  const doctor = plan.commands.find((command) => command.name === 'quality-gate-doctor');
+  assert.equal(check.requiresFile, path.join(scriptsRoot, 'quality-gate.js'));
+  assert.equal(doctor.requiresFile, path.join(scriptsRoot, 'doctor.cjs'));
+  assert.deepEqual(doctor.args, [path.join(scriptsRoot, 'doctor.cjs'), '--dry-run', '--root', project]);
+});
+
+test('company profile adds an optional jscpd duplication step, pr profile does not', () => {
+  const project = tempProject();
+
+  const companyPlan = buildValidationPlan({ projectRoot: project, profile: 'company', now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  const jscpd = companyPlan.commands.find((command) => command.name === 'jscpd');
+  assert.ok(jscpd);
+  assert.equal(jscpd.required, false);
+  assert.equal(jscpd.file, 'npx');
+
+  const prPlan = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  assert.equal(prPlan.commands.some((command) => command.name === 'jscpd'), false);
 });
 
 test('missing packaged scripts produce installation error', () => {

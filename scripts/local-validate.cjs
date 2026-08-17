@@ -7,6 +7,7 @@ function parseArgs(argv) {
   const args = {
     project: process.cwd(),
     profile: 'pr',
+    scriptsRoot: null,
     dryRun: false,
     json: false,
   };
@@ -16,6 +17,8 @@ function parseArgs(argv) {
     else if (arg.startsWith('--project=')) args.project = arg.slice('--project='.length);
     else if (arg === '--profile') args.profile = argv[++index];
     else if (arg.startsWith('--profile=')) args.profile = arg.slice('--profile='.length);
+    else if (arg === '--scripts-root') args.scriptsRoot = argv[++index];
+    else if (arg.startsWith('--scripts-root=')) args.scriptsRoot = arg.slice('--scripts-root='.length);
     else if (arg === '--dry-run') args.dryRun = true;
     else if (arg === '--json') args.json = true;
   }
@@ -76,10 +79,6 @@ function buildSpawnInvocation(step, platform = process.platform, env = process.e
   };
 }
 
-function localScript(projectRoot, relativePath) {
-  return path.join(projectRoot, relativePath);
-}
-
 function displayPath(filePath) {
   return String(filePath || '').replace(/\\/g, '/');
 }
@@ -87,6 +86,7 @@ function displayPath(filePath) {
 function buildValidationPlan(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
   const profile = options.profile || 'pr';
+  const scriptsRoot = path.resolve(options.scriptsRoot || path.join(projectRoot, 'scripts'));
   const startedAt = options.now || new Date().toISOString();
   const pid = options.pid || process.pid;
   const reportsRoot = path.join(projectRoot, '.quality-gate', 'reports', 'local');
@@ -176,15 +176,15 @@ function buildValidationPlan(options = {}) {
     command('quality-gate-check', projectRoot, 'node scripts/quality-gate.js check', {
       artifact: path.join(reportsRoot, 'quality-gate-check.log'),
       file: process.execPath,
-      args: [localScript(projectRoot, path.join('scripts', 'quality-gate.js')), 'check'],
-      requiresFile: localScript(projectRoot, path.join('scripts', 'quality-gate.js')),
+      args: [path.join(scriptsRoot, 'quality-gate.js'), 'check'],
+      requiresFile: path.join(scriptsRoot, 'quality-gate.js'),
       requiresFreshCoverage: exists(path.join(pipelineRoot, 'pyproject.toml')),
     }),
-    command('quality-gate-doctor', projectRoot, 'node scripts/doctor.cjs --dry-run', {
+    command('quality-gate-doctor', projectRoot, 'node scripts/doctor.cjs --dry-run --root .', {
       artifact: path.join(reportsRoot, 'quality-gate-doctor.log'),
       file: process.execPath,
-      args: [localScript(projectRoot, path.join('scripts', 'doctor.cjs')), '--dry-run'],
-      requiresFile: localScript(projectRoot, path.join('scripts', 'doctor.cjs')),
+      args: [path.join(scriptsRoot, 'doctor.cjs'), '--dry-run', '--root', projectRoot],
+      requiresFile: path.join(scriptsRoot, 'doctor.cjs'),
     }),
     command('git-diff-check', projectRoot, 'git diff --check', {
       artifact: path.join(reportsRoot, 'git-diff-check.log'),
@@ -198,9 +198,38 @@ function buildValidationPlan(options = {}) {
     }),
   );
 
+  if (profile === 'company') {
+    const jscpdOut = path.join(reportsRoot, 'jscpd');
+    commands.push(
+      command(
+        'jscpd',
+        projectRoot,
+        `npx jscpd . --threshold 1 --reporters json --output ${displayPath(jscpdOut)} --ignore "**/node_modules/**,**/dist/**,**/build/**,**/coverage/**"`,
+        {
+          artifact: path.join(reportsRoot, 'jscpd.log'),
+          required: false,
+          file: 'npx',
+          args: [
+            'jscpd',
+            '.',
+            '--threshold',
+            '1',
+            '--reporters',
+            'json',
+            '--output',
+            jscpdOut,
+            '--ignore',
+            '**/node_modules/**,**/dist/**,**/build/**,**/coverage/**',
+          ],
+        },
+      ),
+    );
+  }
+
   return {
     profile,
     project: projectRoot,
+    scriptsRoot,
     startedAt,
     reportsRoot,
     commands,
@@ -358,6 +387,7 @@ function main(argv = process.argv.slice(2)) {
   const result = runLocalValidation({
     projectRoot: args.project,
     profile: args.profile,
+    scriptsRoot: args.scriptsRoot,
     dryRun: args.dryRun,
   });
   if (args.json) console.log(JSON.stringify(result, null, 2));

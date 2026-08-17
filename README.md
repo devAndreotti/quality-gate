@@ -120,6 +120,12 @@ node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profil
 
 `local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are local conveniences, not local validation dependencies.
 
+**Company repos (no persistent install)**: pass `--scripts-root <path to this repo's scripts folder>` to run `quality-gate.js`/`doctor.cjs` against a real clone with zero files copied or committed into it — `qg-init` is never run there. Add `--profile company` to also run an advisory `jscpd` cross-file duplication scan (`npx jscpd`, no install, non-blocking) covering what Sonar's duplication metric used to. Complexity/code-smell coverage comes from adding `eslint-plugin-sonarjs` to the target's own ESLint config — it flows through the existing `node:lint` step automatically, no extra flag needed.
+
+```powershell
+node <caminho-do-quality-gate>\scripts\local-validate.cjs --project C:\caminho\repo-empresa --scripts-root <caminho-do-quality-gate>\scripts --profile company --json
+```
+
 ### Step 1 — Copy Files to Your Repository
 
 Extract the zip and copy all files (except the `.codex/` directory) to the root of your project:
