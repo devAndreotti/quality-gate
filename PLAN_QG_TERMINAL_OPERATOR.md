@@ -249,9 +249,9 @@ pwsh -NoProfile -File scripts\QualityGate.ps1 -Doctor
   - gh keyring disponivel;
   - repo remoto ausente;
   - repo remoto sem branch default.
-- [ ] push sem permissao — nao verificado ativamente por `Get-QgAuthDiagnostic` (exigiria uma
-  chamada de escrita de teste); hoje so aparece indiretamente quando `setup.js` falha durante
-  o setup do GitHub. Gap real, nao implementado.
+- [x] push sem permissao — verificado ativamente por `Get-QgAuthDiagnostic` via
+  `gh repo view --json viewerPermission` (leitura, sem chamada de escrita); WRITE/MAINTAIN/ADMIN
+  conta como permissao de push. Sem `gh` autenticado ou sem remoto, fica como "nao verificado".
 - [x] Mensagem sugere comando temporario seguro:
 
 ```powershell

@@ -442,12 +442,21 @@ function Get-QgAuthDiagnostic {
     if ($remoteUrl) {
         try { $remoteHeads = git ls-remote --heads origin 2>$null } catch {}
     }
+    $temAuth = $envHasGitHubToken -or $envHasGhToken -or (-not [string]::IsNullOrWhiteSpace($keyringToken))
+    $podeEmpurrar = $null
+    if ($temAuth -and $remoteUrl) {
+        try {
+            $permission = (gh repo view --json viewerPermission -q .viewerPermission 2>$null)
+            if ($permission) { $podeEmpurrar = $permission -in @('WRITE', 'MAINTAIN', 'ADMIN') }
+        } catch {}
+    }
     [pscustomobject]@{
         TokenEnvAtivo   = $envHasGitHubToken -or $envHasGhToken
         TokenEnvNome    = if ($envHasGitHubToken) { 'GITHUB_TOKEN' } elseif ($envHasGhToken) { 'GH_TOKEN' } else { $null }
         GhKeyringOk     = -not [string]::IsNullOrWhiteSpace($keyringToken)
         RemotoAusente   = [string]::IsNullOrWhiteSpace($remoteUrl)
         RemotoSemBranch = [bool]($remoteUrl -and -not $remoteHeads)
+        PushPermissao   = $podeEmpurrar
     }
 }
 
@@ -467,6 +476,15 @@ function Show-QgAuthDiagnostic {
         Write-InitItem 'Repo remoto: sem branch default (nenhum push ainda)' 'Yellow'
     } else {
         Write-InitItem 'Repo remoto: configurado' 'Green'
+    }
+    if ($null -ne $diag.PushPermissao) {
+        if ($diag.PushPermissao) {
+            Write-InitItem 'Permissão de push: confirmada (gh repo view)' 'Green'
+        } else {
+            Write-InitItem 'Permissão de push: ausente (viewerPermission não é WRITE/MAINTAIN/ADMIN)' 'Red'
+        }
+    } elseif (-not $diag.RemotoAusente) {
+        Write-InitItem 'Permissão de push: não verificada (gh indisponível ou sem auth)' 'DarkGray'
     }
     if ($diag.TokenEnvAtivo -and $diag.GhKeyringOk) {
         Write-InitItem 'Token de ambiente pode conflitar com o gh keyring. Para usar o keyring temporariamente:' 'DarkGray'
