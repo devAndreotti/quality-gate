@@ -658,7 +658,7 @@ function Invoke-QgMenu {
             $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
             if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
             $snapshotJs = Join-Path $ProjectRoot "scripts\pr-snapshot.cjs"
-            if (-not (Test-Path $snapshotJs)) { Write-Error "pr-snapshot.cjs ausente."; return }
+            if (-not (Test-Path $snapshotJs)) { Show-QgNotInstalled -MissingFile 'pr-snapshot.cjs'; return }
             $outputPath = Join-Path $ProjectRoot ".quality-gate\reports\pr-snapshot.json"
             $raw = & node $snapshotJs --pr $prNumber --json --output $outputPath
             if ($LASTEXITCODE -ne 0) {
@@ -676,7 +676,7 @@ function Invoke-QgMenu {
             $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
             if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
             $babysitJs = Join-Path $ProjectRoot "scripts\babysit-loop.cjs"
-            if (-not (Test-Path $babysitJs)) { Write-Error "babysit-loop.cjs ausente."; return }
+            if (-not (Test-Path $babysitJs)) { Show-QgNotInstalled -MissingFile 'babysit-loop.cjs'; return }
             & node $babysitJs --pr $prNumber --once
         }
         'R' { Invoke-ReportAction }
@@ -1031,11 +1031,24 @@ if ($Init) {
 $doctorJs = Join-Path $ProjectRoot "scripts\doctor.cjs"
 $gateJs   = Join-Path $ProjectRoot "scripts\quality-gate.js"
 
+# Write-Error sob $ErrorActionPreference = 'Stop' (topo do arquivo) não é um aviso —
+# vira exceção terminante e despeja stack trace completo no usuário. Esse indicativo
+# usa só Write-Host (não-terminante) com o mesmo kit visual do resto do qg.
+function Show-QgNotInstalled {
+    param([Parameter(Mandatory=$true)][string]$MissingFile)
+    Write-QgHeader -Title 'Quality Gate não encontrado aqui' -Color 'Yellow' -Icon '⚠'
+    Write-QgKeyValue -Label 'Pasta atual' -Value $ProjectRoot -Color 'Gray'
+    Write-QgKeyValue -Label 'Ausente' -Value ("scripts/{0}" -f $MissingFile) -Color 'DarkGray'
+    Write-Host ''
+    Write-QgHint -Text 'Rode qg-init aqui para instalar, ou cd até um projeto já instalado.' -Color 'Yellow'
+    Write-Host ''
+}
+
 # Extraídas em funções para serem reusadas tanto pelas flags (-Doctor/-Check/-Update/-Report)
 # quanto pelo menu interativo (Invoke-QgMenu) sem duplicar o header colorido de cada ação.
 function Invoke-DoctorAction {
     if (-not (Test-Path $doctorJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (doctor.cjs ausente)."
+        Show-QgNotInstalled -MissingFile 'doctor.cjs'
         return
     }
     Write-Host "🔍 Executando diagnóstico (doctor.cjs --dry-run)..." -ForegroundColor Cyan
@@ -1044,7 +1057,7 @@ function Invoke-DoctorAction {
 
 function Invoke-CheckAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "⚖️  Comparando métricas com o baseline..." -ForegroundColor Cyan
@@ -1053,7 +1066,7 @@ function Invoke-CheckAction {
 
 function Invoke-UpdateAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "🔄 Atualizando baseline com métricas do projeto atual..." -ForegroundColor Cyan
@@ -1062,7 +1075,7 @@ function Invoke-UpdateAction {
 
 function Invoke-ReportAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "📊 Exibindo relatório de qualidade..." -ForegroundColor Cyan
@@ -1072,7 +1085,7 @@ function Invoke-ReportAction {
 function Invoke-LocalValidateAction {
     $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
     if (-not (Test-Path $localValidate)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (local-validate.cjs ausente)."
+        Show-QgNotInstalled -MissingFile 'local-validate.cjs'
         return
     }
     Write-Host "🧪 Rodando validação local de PR (local-validate.cjs)..." -ForegroundColor Cyan
@@ -1092,7 +1105,7 @@ function Test-QgNodeSupportsRichTui {
 function Invoke-DashboardAction {
     $dashboardJs = Join-Path $ProjectRoot "scripts\dashboard.cjs"
     if (-not (Test-Path $dashboardJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (dashboard.cjs ausente)."
+        Show-QgNotInstalled -MissingFile 'dashboard.cjs'
         return
     }
 
