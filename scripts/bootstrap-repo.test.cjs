@@ -24,10 +24,12 @@ function loadPolicy() {
 test('buildProjectPolicy never propagates a machine-specific dockerImageDoctor.scriptPath to target repos', () => {
   const project = tempProject();
   const sourcePolicy = loadPolicy();
-  // policy.json deste repo carrega o path absoluto da maquina de quem mantem o
-  // quality-gate (ver .quality-gate/policy.json) -- confirma que a fonte de fato tem
-  // um path real antes de checar que buildProjectPolicy o neutraliza.
-  assert.ok(path.isAbsolute(sourcePolicy.dockerImageDoctor.scriptPath));
+  // policy.json deste repo carrega o path absoluto (Windows, drive-letter) da maquina de
+  // quem mantem o quality-gate (ver .quality-gate/policy.json) -- confirma que a fonte de
+  // fato tem um path real antes de checar que buildProjectPolicy o neutraliza. Nao usa
+  // path.isAbsolute: em runner Linux (Actions) o modulo path e POSIX e nao reconhece
+  // "D:\..." como absoluto, o que so quebrava em CI.
+  assert.match(sourcePolicy.dockerImageDoctor.scriptPath, /^[A-Za-z]:[\\/]/);
 
   const projectPolicy = buildProjectPolicy(sourcePolicy, project);
 
