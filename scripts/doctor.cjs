@@ -37,7 +37,6 @@ const REQUIRED_FILES = [
   '.github/dependabot.yml',
   '.github/FUNDING.yml',
   '.github/workflows/quality-gate.yml',
-  'LICENSE',
   'scripts/baseline.json',
   'scripts/babysit-loop.cjs',
   'scripts/bootstrap-repo.cjs',
@@ -53,22 +52,9 @@ const REQUIRED_FILES = [
   'scripts/test-coverage-ci.cjs',
   'scripts/pr-comment.js',
   'scripts/setup.js',
-  'scripts/babysit-loop.test.cjs',
-  'scripts/bootstrap-repo.test.cjs',
-  'scripts/check-syntax.test.cjs',
-  'scripts/ci-diagnose.test.cjs',
-  'scripts/configure-project.test.cjs',
-  'scripts/dependabot-consolidate.test.cjs',
-  'scripts/e2e-smoke.test.cjs',
-  'scripts/local-validate.test.cjs',
-  'scripts/pr-comment.test.cjs',
-  'scripts/quality-gate.test.cjs',
   'scripts/lib/docker-detect.cjs',
   'scripts/lib/policy.cjs',
   'scripts/lib/workflow.cjs',
-  'scripts/pr-snapshot.test.cjs',
-  'scripts/setup.test.cjs',
-  'scripts/test-coverage-ci.test.cjs',
   'sonar-project.properties',
   '.codex/skills/babysit-pr/SKILL.md',
   '.codex/skills/babysit-pr/references/pr-watcher.md',
@@ -346,6 +332,14 @@ function checkReleaseReadiness(checks) {
   };
 }
 
+function safeCheck(name, fn) {
+  try {
+    return fn();
+  } catch (error) {
+    return { level: 'fail', name, detail: `erro ao rodar checagem: ${error.message}` };
+  }
+}
+
 function analyzeQualityGate(options = {}) {
   const root = options.root || DEFAULT_ROOT;
   const checks = [];
@@ -353,27 +347,25 @@ function analyzeQualityGate(options = {}) {
 
   checks.push(checkRequiredFiles(root));
 
-  if (checks[0].level !== 'fail') {
-    const policyCheck = checkPolicy(root);
-    checks.push(policyCheck);
-    policy = policyCheck.data?.policy ?? null;
-    if (policy) {
-      checks.push(checkPolicyRequiredChecks(root, policy));
-      checks.push(checkPolicyBranchProtection(root, policy));
-      checks.push(checkProjectSurfaces(root, policy));
-      checks.push(checkWorkflowSurfaces(readText(root, '.github/workflows/quality-gate.yml'), policy));
-    }
-    checks.push(
-      checkSkillSize(root),
-      checkSonarConfigured(root, policy),
-      checkBaseline(root),
-      checkModuleMode(root),
-      checkDryRunSupport(root),
-      checkRichTui(root),
-    );
-    if (options.release) {
-      checks.push(checkReleaseReadiness(checks));
-    }
+  const policyCheck = safeCheck('Policy machine-readable', () => checkPolicy(root));
+  checks.push(policyCheck);
+  policy = policyCheck.data?.policy ?? null;
+  if (policy) {
+    checks.push(safeCheck('Policy vs workflow', () => checkPolicyRequiredChecks(root, policy)));
+    checks.push(safeCheck('Policy vs setup branch protection', () => checkPolicyBranchProtection(root, policy)));
+    checks.push(safeCheck('Project surfaces', () => checkProjectSurfaces(root, policy)));
+    checks.push(safeCheck('Workflow surfaces', () => checkWorkflowSurfaces(readText(root, '.github/workflows/quality-gate.yml'), policy)));
+  }
+  checks.push(
+    safeCheck('SKILL.md <= 500 linhas', () => checkSkillSize(root)),
+    safeCheck('SonarCloud configurado', () => checkSonarConfigured(root, policy)),
+    safeCheck('baseline.json real', () => checkBaseline(root)),
+    safeCheck('Modo de modulo Node', () => checkModuleMode(root)),
+    safeCheck('Dry-run de scripts mutaveis', () => checkDryRunSupport(root)),
+    safeCheck('TUI rico (ink)', () => checkRichTui(root)),
+  );
+  if (options.release) {
+    checks.push(checkReleaseReadiness(checks));
   }
 
   const summary = {

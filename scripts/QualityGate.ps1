@@ -799,6 +799,19 @@ function Invoke-Init {
                 }
             }
         }
+        # Testes internos do quality-gate (*.test.cjs) só fazem sentido no repo fonte;
+        # não pertencem ao projeto-alvo (ex: "release metadata == 1.0.0" checa o proprio pacote).
+        $scriptsDestDir = Join-Path $ProjectRoot "scripts"
+        if (Test-Path $scriptsDestDir) {
+            $internalTests = Get-ChildItem -Path $scriptsDestDir -Filter "*.test.cjs" -File -ErrorAction SilentlyContinue
+            foreach ($testFile in $internalTests) {
+                if ($DryRun) {
+                    Write-DryRunPlan "Removeria teste interno $($testFile.FullName)"
+                } else {
+                    Remove-Item -Path $testFile.FullName -Force
+                }
+            }
+        }
         
         if ($DryRun) {
             Write-Host '    ✓ DryRun: cópia de arquivos simulada.' -ForegroundColor Green
