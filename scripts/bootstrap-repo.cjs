@@ -292,6 +292,17 @@ function buildProjectPolicy(policy, projectRoot) {
   const surfaces = detectSurfaces(projectRoot);
   return {
     ...policy,
+    // dockerImageDoctor.scriptPath na policy de origem (deste repo) e um path absoluto
+    // da maquina de quem mantem o quality-gate -- nunca existe em outra maquina/repo.
+    // Propaga-lo verbatim vazava esse path em todo repo-alvo e degradava o gate
+    // silenciosamente pro fallback estatico mais fraco (fs.existsSync falha em outra
+    // maquina). 'never' e explicito e schema-valido (ver validatePolicy); quem quiser o
+    // check real ativa isso a mao, apontando pro proprio Docker Image Doctor local.
+    dockerImageDoctor: {
+      ...(policy.dockerImageDoctor || {}),
+      enabled: 'never',
+      scriptPath: '(configure-locally).ps1',
+    },
     project: {
       ...(policy.project || {}),
       surfaces,

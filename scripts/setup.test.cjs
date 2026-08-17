@@ -23,7 +23,6 @@ test('parseArgs supports v1 setup flags', () => {
     '--dry-run',
     '--skip-sonar',
     '--skip-bootstrap',
-    '--sonar-token=abc',
     '--sonar-org=my-org',
     '--repo=owner/repo',
     '--default-branch=trunk',
@@ -32,10 +31,28 @@ test('parseArgs supports v1 setup flags', () => {
   assert.equal(args.dryRun, true);
   assert.equal(args.skipSonar, true);
   assert.equal(args.skipBootstrap, true);
-  assert.equal(args.sonarToken, 'abc');
   assert.equal(args.sonarOrg, 'my-org');
   assert.equal(args.repo, 'owner/repo');
   assert.equal(args.defaultBranch, 'trunk');
+});
+
+test('parseArgs reads sonar token only from QG_SONAR_TOKEN env var, never from argv', () => {
+  const previous = process.env.QG_SONAR_TOKEN;
+  try {
+    process.env.QG_SONAR_TOKEN = 'from-env';
+    // --sonar-token= não deve mais existir: argumentos de processo ficam visiveis em
+    // claro pra qualquer observador local pela duracao da execucao (ps, logs de
+    // criacao de processo). Ver QualityGate.ps1 (setup: usa $env:QG_SONAR_TOKEN).
+    const args = parseArgs(['--sonar-token=leaked-via-argv']);
+    assert.equal(args.sonarToken, 'from-env');
+
+    delete process.env.QG_SONAR_TOKEN;
+    const argsWithoutEnv = parseArgs(['--sonar-token=leaked-via-argv']);
+    assert.equal(argsWithoutEnv.sonarToken, null);
+  } finally {
+    if (previous === undefined) delete process.env.QG_SONAR_TOKEN;
+    else process.env.QG_SONAR_TOKEN = previous;
+  }
 });
 
 test('detectRepoFromRemote supports https and ssh remotes', () => {
