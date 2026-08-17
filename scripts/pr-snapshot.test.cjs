@@ -138,12 +138,23 @@ test('buildSnapshot infers repo from git origin when repo is omitted', () => {
     '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: ['Lint'], checks: [] },
   });
 
-  const snapshot = buildSnapshot({
-    pr: 42,
-    ghJson,
-    githubApi,
-    execFileSync: () => 'https://github.com/owner/repo.git\n',
-  });
+  // resolveRepo() prioriza GITHUB_REPOSITORY sobre o fallback de git (intencional pro uso
+  // real em CI); em runners do Actions essa env var sempre existe e mascarava o
+  // execFileSync mockado abaixo, fazendo o teste bater na API real em vez do mock.
+  const previousRepoEnv = process.env.GITHUB_REPOSITORY;
+  delete process.env.GITHUB_REPOSITORY;
+  let snapshot;
+  try {
+    snapshot = buildSnapshot({
+      pr: 42,
+      ghJson,
+      githubApi,
+      execFileSync: () => 'https://github.com/owner/repo.git\n',
+    });
+  } finally {
+    if (previousRepoEnv === undefined) delete process.env.GITHUB_REPOSITORY;
+    else process.env.GITHUB_REPOSITORY = previousRepoEnv;
+  }
 
   assert.equal(snapshot.repo, 'owner/repo');
   assert.deepEqual(snapshot.branchProtection.requiredChecks, ['Lint']);
