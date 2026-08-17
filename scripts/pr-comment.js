@@ -385,7 +385,10 @@ function handleCommentError(error, options = {}) {
   const message = `Erro no sticky comment: ${error.message}`;
 
   if (mode === 'fail') {
-    consoleImpl.error(message);
+    // error.message pode carregar texto de resposta da API do GitHub (ex.: eco de
+    // titulo/corpo de PR); escapa CR/LF antes de logar pra nao permitir log forging
+    // (linhas de log falsas) via newline injetada em conteudo de fora.
+    consoleImpl.error(escapeWorkflowCommand(message));
     return { mode, exitCode: 1 };
   }
 
