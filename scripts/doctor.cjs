@@ -413,15 +413,17 @@ function printReport(result, options = {}) {
 }
 
 function main(argv = process.argv.slice(2)) {
+  const rootIndex = argv.indexOf('--root');
   const options = {
     dryRun: argv.includes('--dry-run'),
     json: argv.includes('--json'),
     strict: argv.includes('--strict'),
     release: argv.includes('--release'),
     writeState: argv.includes('--write-state'),
+    root: rootIndex !== -1 ? argv[rootIndex + 1] : null,
   };
 
-  const result = analyzeQualityGate({ release: options.release });
+  const result = analyzeQualityGate({ release: options.release, root: options.root ? path.resolve(options.root) : undefined });
   if (options.writeState && result.policy) {
     const state = buildState(result);
     result.statePath = path.relative(result.root, writeState(result.root, state));
