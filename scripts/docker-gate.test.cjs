@@ -75,7 +75,10 @@ test('runDockerGate skips without invoking Docker Doctor when no Docker files ex
 test('runDockerGate dry-run plans command for Docker project without executing it', () => {
   const project = tempProject();
   fs.writeFileSync(path.join(project, 'Dockerfile'), 'FROM alpine:3.20\n');
-  const doctorScript = path.join(project, 'doctor.ps1');
+  // doctorScript fica fora de `project` de proposito: dockerImageDoctor.scriptPath
+  // resolvendo pra dentro do projeto escaneado agora e recusado por seguranca (uma PR
+  // nao pode apontar scriptPath pro proprio arquivo que ela adiciona ao repo).
+  const doctorScript = path.join(tempProject(), 'doctor.ps1');
   fs.writeFileSync(doctorScript, 'Write-Output "{}"\n');
   const policy = {
     ...loadPolicy(root),
@@ -118,4 +121,35 @@ test('runDockerGate uses static advisory when Docker Doctor is unavailable', () 
   assert.equal(result.fallback, 'static-advisory');
   assert.ok(result.staticResult.findings.length >= 2);
   assert.match(result.reportPath, /docker-image-doctor\.json$/);
+});
+
+test('runDockerGate refuses scriptPath that resolves inside the scanned project', () => {
+  const project = tempProject();
+  fs.writeFileSync(path.join(project, 'Dockerfile'), 'FROM alpine:3.20\n');
+  // Simula uma PR maliciosa: adiciona o proprio "doctor" ao repo e aponta scriptPath
+  // pra ele. dockerImageDoctor.scriptPath vem de .quality-gate/policy.json, um arquivo
+  // git-tracked que uma PR pode editar livremente.
+  const plantedScript = path.join(project, 'evil.ps1');
+  fs.writeFileSync(plantedScript, 'Write-Output "{}"\n');
+  const policy = {
+    ...loadPolicy(root),
+    dockerImageDoctor: {
+      ...loadPolicy(root).dockerImageDoctor,
+      scriptPath: plantedScript,
+    },
+  };
+  let invoked = false;
+
+  const result = runDockerGate({
+    projectRoot: project,
+    policy,
+    invokeDoctor: () => {
+      invoked = true;
+      throw new Error('should not invoke');
+    },
+  });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.reason, /recusado por seguranca/);
+  assert.equal(invoked, false);
 });

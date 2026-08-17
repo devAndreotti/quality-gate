@@ -395,7 +395,6 @@ function Invoke-GitHubSetupStep {
             $sonarToken = [System.Net.NetworkCredential]::new('', $secureSonarToken).Password
         }
         if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
-        if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
     }
 
     $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
@@ -409,12 +408,18 @@ function Invoke-GitHubSetupStep {
     Write-InitItem 'Executando setup.js...'
     $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
     $hadGhToken = Test-Path Env:\GH_TOKEN
+    $hadSonarToken = Test-Path Env:\QG_SONAR_TOKEN
     $savedGitHubToken = $env:GITHUB_TOKEN
     $savedGhToken = $env:GH_TOKEN
+    $savedSonarToken = $env:QG_SONAR_TOKEN
     try {
         if (-not $DryRun) {
             $env:GITHUB_TOKEN = $token
             Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+            # env var em vez de --sonar-token=... no argv: argumentos de processo ficam
+            # visiveis em claro pra qualquer observador local (ps/Get-CimInstance/logs de
+            # criacao de processo) pela duracao inteira do `node setup.js`.
+            if ($sonarToken) { $env:QG_SONAR_TOKEN = $sonarToken }
         }
         & node $setupJs $setupArgs
         if ($LASTEXITCODE -ne 0) {
@@ -428,6 +433,7 @@ function Invoke-GitHubSetupStep {
     } finally {
         if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
         if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadSonarToken) { $env:QG_SONAR_TOKEN = $savedSonarToken } else { Remove-Item Env:\QG_SONAR_TOKEN -ErrorAction SilentlyContinue }
     }
 }
 
@@ -739,6 +745,16 @@ function Invoke-Init {
             $existingBaseline = Get-Content -Raw $existingBaselinePath
         }
         
+        # policy.json, reports/ e o workflow gerado (quality-gate.yml) ficam fora da copia
+        # bruta: bootstrap-repo.cjs (chamado logo depois via setup.js) e quem escreve esses
+        # 3 de forma consciente do que ja existe no projeto-alvo (le antes de escrever,
+        # tailora pra superficie detectada do projeto). Copiar aqui primeiro com -Force
+        # fazia esse passo "inteligente" sempre encontrar o arquivo que ele mesmo tinha
+        # acabado de receber e concluir "ja existe, mantendo" -- nunca gerava a versao
+        # tailorada pro projeto-alvo, e vazava .quality-gate/reports/*.json (dados locais
+        # deste projeto) e .quality-gate/policy.json (com path absoluto pessoal, ver
+        # buildProjectPolicy) pra todo repo em que o qg-init roda.
+        $rawCopyExclude = @('policy.json', 'reports', 'quality-gate.yml')
         foreach ($folder in $folders) {
             $src = Join-Path $TemplateRoot $folder
             $dst = Join-Path $ProjectRoot $folder
@@ -750,7 +766,7 @@ function Invoke-Init {
                     if (-not (Test-Path $dst)) {
                         New-Item -ItemType Directory -Path $dst -Force | Out-Null
                     }
-                    Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force
+                    Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force -Exclude $rawCopyExclude
                 }
             }
         }

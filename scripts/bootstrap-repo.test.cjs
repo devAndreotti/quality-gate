@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  buildProjectPolicy,
   buildReadmeScaffold,
   parseArgs,
   runBootstrap,
@@ -19,6 +20,22 @@ function tempProject() {
 function loadPolicy() {
   return JSON.parse(fs.readFileSync(path.join(root, '.quality-gate/policy.json'), 'utf8'));
 }
+
+test('buildProjectPolicy never propagates a machine-specific dockerImageDoctor.scriptPath to target repos', () => {
+  const project = tempProject();
+  const sourcePolicy = loadPolicy();
+  // policy.json deste repo carrega o path absoluto da maquina de quem mantem o
+  // quality-gate (ver .quality-gate/policy.json) -- confirma que a fonte de fato tem
+  // um path real antes de checar que buildProjectPolicy o neutraliza.
+  assert.ok(path.isAbsolute(sourcePolicy.dockerImageDoctor.scriptPath));
+
+  const projectPolicy = buildProjectPolicy(sourcePolicy, project);
+
+  assert.equal(projectPolicy.dockerImageDoctor.enabled, 'never');
+  assert.notEqual(projectPolicy.dockerImageDoctor.scriptPath, sourcePolicy.dockerImageDoctor.scriptPath);
+  assert.equal(typeof projectPolicy.dockerImageDoctor.scriptPath, 'string');
+  assert.ok(projectPolicy.dockerImageDoctor.scriptPath.length > 0);
+});
 
 test('parseArgs supports dry-run, project, json, and skip flags', () => {
   const args = parseArgs([
