@@ -26,10 +26,15 @@ your-project/                        ← Root of YOUR repository
 │   ├── bootstrap-repo.cjs           ← LICENSE/FUNDING/Dependabot/README scaffold
 │   ├── ci-diagnose.cjs              ← Deterministic CI failure classifier
 │   ├── configure-project.cjs        ← Stack adapter: node or python-uv
+│   ├── dashboard.cjs                ← qg-dash: plain-text live panel (zero-dep fallback)
+│   ├── dashboard-tui.mjs            ← qg-dash: rich ink/React panel (bundled, Node >=22)
+│   ├── dependabot-consolidate.cjs    ← Dependabot PR consolidation planner
 │   ├── doctor.cjs                   ← Read-only package auditor
 │   ├── docker-gate.cjs              ← Docker gate + static fallback advisory
+│   ├── local-validate.cjs            ← One-command local PR validation
 │   ├── lib/                         ← Shared validation libraries
 │   ├── pr-snapshot.cjs              ← PR snapshot JSON generator for babysit-pr
+│   ├── menu-tui.mjs                 ← qg: rich ink/React menu (bundled, Node >=22)
 │   ├── quality-gate.js              ← Ratchet: check | update | report
 │   ├── pr-comment.js                ← Automatic sticky comment on PR
 │   └── setup.js                     ← Setup automation via GitHub API
@@ -60,7 +65,18 @@ qg-doc
 qg-chk
 qg-upd
 qg-rpt
+qg-dash
 ```
+
+`qg` with no flags is the primary local entry point: it opens an interactive menu (state summary + install/repair, doctor, local PR validation, update baseline, GitHub setup, PR snapshot, babysit PR once, show report, live dashboard). All the `qg-*` aliases and explicit flags keep working exactly as before — the menu never intercepts them, it only appears when `qg` is called with nothing else to do.
+
+`qg-dash` (`qg -Dashboard`) opens a live-refreshing status panel — repo/branch/remote, ratchet metrics, last saved PR snapshot — polling local `git`/filesystem state every 5s (`r` to refresh now, `q` to quit). It never calls the GitHub API itself — the PR section only reads whatever `.quality-gate/reports/pr-snapshot.json` was last saved by the "PR snapshot" menu action, to avoid hammering the API on every refresh.
+
+Both the `qg` menu and `qg-dash` render in one of two modes, chosen automatically, no flag needed:
+- **Rich (ink/React)** — a real full-screen TUI (`scripts/menu-tui.mjs` for the menu, `scripts/dashboard-tui.mjs` for the dashboard), used when the matching bundle is present, the terminal has a real TTY, and Node is `>=22`. The menu is a proper arrow-key list (↑/↓ to move, Enter to pick, `q`/Esc to cancel) instead of the old `Out-ConsoleGridView` grid.
+- **Plain text** (`scripts/dashboard.cjs`, or the inline `Read-Host` list for the menu) — zero-dependency fallback (Node stdlib only), used otherwise (older Node, no TTY, or a bundle wasn't generated). This is also what ships to every project by default — `qg-init` copies whatever is in `scripts/`, same as any other file.
+
+The rich bundles are generated once here, in this source repo, via `npm install && npm run build:tui` — each is a single self-contained `.mjs` file (~1.7 MB, ink + React inlined by `esbuild`), so **target projects never need `npm install`**: they just receive the already-built `scripts/*-tui.mjs` files, exactly like any other loose script. The root `package.json`/`node_modules` this creates are dev-only tooling for regenerating those bundles — never copied by `qg-init`, and `.gitignore`d for `node_modules`.
 
 `qg-init` detects the project stack before writing. Version `1.0.0` supports:
 
@@ -90,9 +106,24 @@ cd pipeline
 uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
 
 cd ..
-qg-upd
-qg-chk
-qg-doc
+node scripts\quality-gate.js update
+node scripts\quality-gate.js check
+node scripts\doctor.cjs --dry-run
+```
+
+Equivalent one-command validation for PR work:
+
+```powershell
+node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --dry-run --json
+node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --json
+```
+
+`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are Scriply conveniences, not local validation dependencies.
+
+**Company repos (no persistent install)**: pass `--scripts-root <path to this repo's scripts folder>` to run `quality-gate.js`/`doctor.cjs` against a real clone with zero files copied or committed into it — `qg-init` is never run there. Add `--profile company` to also run an advisory `jscpd` cross-file duplication scan (`npx jscpd`, no install, non-blocking) covering what Sonar's duplication metric used to. Complexity/code-smell coverage comes from adding `eslint-plugin-sonarjs` to the target's own ESLint config — it flows through the existing `node:lint` step automatically, no extra flag needed.
+
+```powershell
+node D:\Dev\Tooling\quality-gate\scripts\local-validate.cjs --project D:\Work\company-repo --scripts-root D:\Dev\Tooling\quality-gate\scripts --profile company --json
 ```
 
 ### Step 1 — Copy Files to Your Repository
@@ -114,7 +145,7 @@ The `.codex/skills/babysit-pr/` folder should be placed in:
 Create a GitHub Personal Access Token (PAT) with admin permissions on the repository:
 → https://github.com/settings/tokens (Scopes: `repo`, `admin:repo_hook`)
 
-Edit `sonar-project.properties` (replace `YOUR_ORG` and `YOUR_REPO`), then run:
+Run `setup.js` to rewrite `sonar-project.properties` for the target repository, then configure SonarCloud when desired:
 
 ```bash
 # PowerShell — validate the package before configuring GitHub:
@@ -130,6 +161,9 @@ node scripts/setup.js --repo=OWNER/REPO --skip-sonar
 # Preview what the script would do without executing it:
 node scripts/setup.js --repo=OWNER/REPO --dry-run
 
+# Preview managed workflow upgrades without overwriting custom workflows:
+node scripts/bootstrap-repo.cjs --project . --upgrade --dry-run
+
 # Skip optional local steps:
 node scripts/setup.js --repo=OWNER/REPO --skip-readme --skip-funding
 ```
@@ -142,6 +176,7 @@ GITHUB_TOKEN=ghp_xxx node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG --s
 
 The script automatically performs the following tasks:
 - Creates/updates the local deterministic bootstrap: `LICENSE`, `.github/FUNDING.yml`, `.github/dependabot.yml`, and a managed README block.
+- Upgrades `.github/workflows/quality-gate.yml` only when the workflow contains the `# quality-gate:managed-workflow` marker; unmarked workflows require manual review.
 - Adds `SONAR_TOKEN` as a repository secret.
 - Creates the repository PR ruleset used by Quality Gate. Copilot Review can still be requested by the babysit-pr workflow or enabled separately in GitHub when available for the account.
 - Configures branch protection on the `main` branch using `.quality-gate/policy.json`.
@@ -176,6 +211,66 @@ git push
 ```
 
 Now, the ratchet quality gate is active.
+
+---
+
+## PR Readiness Contract
+
+`pr-snapshot.cjs` separates required checks, advisory checks, GitHub merge state, and review-thread state. `babysit-loop.cjs` only returns terminal `ready` when `snapshot.merge.ready === true`.
+The PR report job also writes `.quality-gate/reports/pr-snapshot.json` and passes it to `pr-comment.js` through `SNAPSHOT_PATH`. If GitHub API or GraphQL access fails, the sticky comment stays conservative and reports manual verification instead of claiming the PR is ready.
+Because the sticky comment is posted through issue comments, the report job needs `issues: write` plus `pull-requests: write`.
+The report also writes `GITHUB_STEP_SUMMARY` when available and emits up to five GitHub Actions annotations for blockers or lowest-coverage files.
+
+Important states:
+
+- `ready`: required checks green, merge policy allows merge, review threads known and resolved.
+- `ready_with_advisory`: merge is allowed, required checks green, optional check failed.
+- `wait_ci`: required check pending or missing.
+- `fix_required_check`: required check failed.
+- `resolve_review_threads`: GraphQL found unresolved review thread.
+- `verify_review_threads_manual`: GraphQL could not confirm review threads.
+- `blocked_by_policy`: GitHub reports merge blocked by branch policy.
+
+Sonar is advisory unless policy/branch protection makes it required.
+
+The GitHub-generated PR notification email itself is not customizable — GitHub controls its subject/body. What Quality Gate controls is the sticky PR comment, the job summary, and Actions annotations described above; that's the "email-friendly" surface, not the email itself.
+
+---
+
+## Mixed Projects
+
+`.quality-gate/policy.json` can declare surfaces:
+
+```json
+{
+  "project": {
+    "surfaces": [
+      { "type": "python-uv", "root": "pipeline", "required": true, "coverageJson": "../coverage/coverage.json" },
+      { "type": "node", "root": "UI", "required": true }
+    ]
+  },
+  "ci": {
+    "requiredChecks": ["Python validation", "UI validation", "Docker image gate"],
+    "advisoryChecks": ["SonarCloud Code Analysis"]
+  },
+  "localValidation": {
+    "untrackedAllowlist": ["samples/**"],
+    "pytestBasetempPattern": ".pytest-tmp-qg-${timestamp}-${pid}"
+  }
+}
+```
+
+Bootstrap detects `pipeline/pyproject.toml` and `package.json`, then generates matching workflow jobs. `doctor.cjs` warns about undeclared surfaces and fails when a required surface lacks a workflow job.
+
+---
+
+## Dependabot Consolidation
+
+```powershell
+node scripts\dependabot-consolidate.cjs --repo OWNER/REPO --dry-run --json
+```
+
+The helper lists open Dependabot PRs, touched files, probable conflicts, and whether to consolidate or merge independently.
 
 ---
 
@@ -233,7 +328,7 @@ You merge (or tell Codex: "merge the PR")
 # Audit if workflow/setup/baseline/Sonar are consistent
 node scripts/doctor.cjs --dry-run
 
-# Release v1 gate: fails if placeholders or zero baselines still exist
+# Release v1 gate: fails while release blockers such as zero baselines remain
 node scripts/doctor.cjs --release
 
 # Write detected state for the agent/CI to consume
@@ -271,7 +366,7 @@ node scripts/quality-gate.js report
 **SonarCloud does not appear in the PR**
 → Verify that `SONAR_TOKEN` is present in Settings → Secrets → Actions.
 → Confirm that `fetch-depth: 0` is set in the checkout step of the `sonar` job.
-→ Ensure that `YOUR_ORG` and `YOUR_REPO` in `sonar-project.properties` have been replaced.
+→ Run `node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG` to rewrite the Sonar project key/name for the target repo.
 
 **Copilot Review does not appear automatically**
 → The REST ruleset API currently rejects the automatic Copilot fields for some accounts/plans.

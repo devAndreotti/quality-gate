@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadPolicy } = require('./lib/policy.cjs');
+const { WORKFLOW_MARKER_PREFIX, renderQualityGateWorkflow } = require('./lib/workflow.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 const README_START = '<!-- quality-gate:readme:start -->';
@@ -42,6 +43,7 @@ function parseArgs(argv) {
     skipLicense: false,
     skipDependabot: false,
     noReport: false,
+    upgrade: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -55,6 +57,7 @@ function parseArgs(argv) {
     else if (arg === '--skip-license') args.skipLicense = true;
     else if (arg === '--skip-dependabot') args.skipDependabot = true;
     else if (arg === '--no-report') args.noReport = true;
+    else if (arg === '--upgrade') args.upgrade = true;
   }
 
   return args;
@@ -229,6 +232,145 @@ function ensureDependabot(context) {
     dryRun: context.dryRun,
     steps: context.steps,
     name: 'Dependabot',
+  });
+}
+
+function detectSurfaces(projectRoot) {
+  const surfaces = [];
+  if (fs.existsSync(path.join(projectRoot, 'pipeline', 'pyproject.toml'))) {
+    surfaces.push({
+      type: 'python-uv',
+      root: 'pipeline',
+      required: true,
+      coverageJson: '../coverage/coverage.json',
+    });
+  }
+  if (fs.existsSync(path.join(projectRoot, 'package.json'))) {
+    surfaces.push({
+      type: 'node',
+      root: '.',
+      required: true,
+      commands: {
+        install: 'npm ci',
+        test: 'npm run test --if-present',
+        lint: 'npm run lint --if-present',
+        build: 'npm run build --if-present',
+        audit: 'npm audit --audit-level=moderate',
+      },
+    });
+  }
+  for (const entry of fs.readdirSync(projectRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+    if (!fs.existsSync(path.join(projectRoot, entry.name, 'package.json'))) continue;
+    surfaces.push({
+      type: 'node',
+      root: entry.name,
+      required: true,
+      commands: {
+        install: 'npm ci',
+        test: 'npm run test --if-present',
+        lint: 'npm run lint --if-present',
+        build: 'npm run build --if-present',
+        audit: 'npm audit --audit-level=moderate',
+      },
+    });
+  }
+  return surfaces;
+}
+
+function requiredChecksForSurfaces(policy, surfaces) {
+  if (!surfaces.length) return policy.ci?.requiredChecks || [];
+  return [
+    surfaces.some((surface) => surface.type === 'python-uv') ? 'Python validation' : null,
+    surfaces.some((surface) => surface.type === 'node') ? 'UI validation' : null,
+    'Security audit',
+    'Docker image gate',
+  ].filter(Boolean);
+}
+
+function buildProjectPolicy(policy, projectRoot) {
+  const surfaces = detectSurfaces(projectRoot);
+  return {
+    ...policy,
+    // dockerImageDoctor.scriptPath na policy de origem (deste repo) e um path absoluto
+    // da maquina de quem mantem o quality-gate -- nunca existe em outra maquina/repo.
+    // Propaga-lo verbatim vazava esse path em todo repo-alvo e degradava o gate
+    // silenciosamente pro fallback estatico mais fraco (fs.existsSync falha em outra
+    // maquina). 'never' e explicito e schema-valido (ver validatePolicy); quem quiser o
+    // check real ativa isso a mao, apontando pro proprio Docker Image Doctor local.
+    dockerImageDoctor: {
+      ...(policy.dockerImageDoctor || {}),
+      enabled: 'never',
+      scriptPath: '(configure-locally).ps1',
+    },
+    project: {
+      ...(policy.project || {}),
+      surfaces,
+    },
+    ci: {
+      ...policy.ci,
+      requiredChecks: requiredChecksForSurfaces(policy, surfaces),
+      advisoryChecks: policy.ci?.advisoryChecks || [],
+    },
+    localValidation: {
+      untrackedAllowlist: ['samples/**'],
+      pytestBasetempPattern: '.pytest-tmp-qg-${timestamp}-${pid}',
+      ...(policy.localValidation || {}),
+    },
+  };
+}
+
+function ensureProjectPolicy(context) {
+  const relativePath = '.quality-gate/policy.json';
+  const target = path.join(context.projectRoot, relativePath);
+  if (fs.existsSync(target)) {
+    recordStep(context.steps, 'ok', 'Policy', 'existing policy kept', relativePath);
+    return;
+  }
+  writeFileIfChanged({
+    projectRoot: context.projectRoot,
+    relativePath,
+    content: `${JSON.stringify(buildProjectPolicy(context.policy, context.projectRoot), null, 2)}\n`,
+    dryRun: context.dryRun,
+    steps: context.steps,
+    name: 'Policy',
+  });
+}
+
+function ensureWorkflow(context) {
+  const relativePath = '.github/workflows/quality-gate.yml';
+  const target = path.join(context.projectRoot, relativePath);
+  const projectPolicy = buildProjectPolicy(context.policy, context.projectRoot);
+  const content = renderQualityGateWorkflow(projectPolicy);
+  if (fs.existsSync(target)) {
+    const current = fs.readFileSync(target, 'utf8');
+    if (current === content) {
+      recordStep(context.steps, 'ok', 'Workflow', 'already up to date', relativePath);
+      return;
+    }
+    if (context.upgrade) {
+      if (!current.includes(WORKFLOW_MARKER_PREFIX)) {
+        recordStep(context.steps, 'warn', 'Workflow', 'manual review required; existing workflow has no managed marker', relativePath);
+        return;
+      }
+      if (context.dryRun) {
+        recordStep(context.steps, 'planned', 'Workflow', 'would update managed workflow', relativePath);
+        return;
+      }
+      fs.writeFileSync(target, content);
+      recordStep(context.steps, 'updated', 'Workflow', 'updated managed workflow', relativePath);
+      return;
+    }
+    recordStep(context.steps, 'ok', 'Workflow', 'existing workflow kept', relativePath);
+    return;
+  }
+  writeFileIfChanged({
+    projectRoot: context.projectRoot,
+    relativePath,
+    content,
+    dryRun: context.dryRun,
+    steps: context.steps,
+    name: 'Workflow',
   });
 }
 
@@ -419,6 +561,7 @@ function runBootstrap(options = {}) {
     skipFunding: Boolean(options.skipFunding),
     skipLicense: Boolean(options.skipLicense),
     skipDependabot: Boolean(options.skipDependabot),
+    upgrade: Boolean(options.upgrade),
     info: detectProjectInfo(projectRoot),
   };
 
@@ -429,6 +572,8 @@ function runBootstrap(options = {}) {
   ensureLicense(context);
   ensureFunding(context);
   ensureDependabot(context);
+  ensureProjectPolicy(context);
+  ensureWorkflow(context);
   ensureReadme(context);
 
   const result = {
@@ -472,6 +617,7 @@ function main(argv = process.argv.slice(2)) {
     skipFunding: args.skipFunding,
     skipLicense: args.skipLicense,
     skipDependabot: args.skipDependabot,
+    upgrade: args.upgrade,
     noReport: args.noReport,
   });
   if (args.json) console.log(JSON.stringify(result, null, 2));
@@ -487,6 +633,8 @@ module.exports = {
   README_END,
   README_START,
   buildReadmeScaffold,
+  buildProjectPolicy,
+  detectSurfaces,
   parseArgs,
   runBootstrap,
 };

@@ -1,3 +1,4 @@
+# quality-gate:managed-workflow version 1
 name: Quality Gate
 
 on:
@@ -28,16 +29,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Instalação determinística
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts
+          else
+            echo "package-lock.json ausente; pulando npm ci"
+          fi
 
       - name: Vulnerabilidade crítica (bloqueia o CI)
-        run: npm audit --audit-level=critical
+        run: |
+          if [ -f package-lock.json ]; then
+            npm audit --audit-level=critical
+          else
+            echo "package-lock.json ausente; pulando npm audit"
+          fi
 
       - name: Vulnerabilidade alta (avisa, não bloqueia)
-        run: npm audit --audit-level=high || true
+        run: |
+          if [ -f package-lock.json ]; then
+            npm audit --audit-level=high || true
+          else
+            echo "package-lock.json ausente; pulando npm audit advisory"
+          fi
 
   # ───────────────────────────────────────────────────────────────────────────
   # JOB 2 — Lint
@@ -51,14 +66,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - run: npm ci
-
-      - name: ESLint — bloqueia e salva relatório JSON
-        run: |
-          npm run lint -- --format json --output-file coverage/eslint-report.json || \
-          npm run lint -- --format stylish; exit ${PIPESTATUS[0]}
+      - name: Node syntax check
+        run: node scripts/check-syntax.cjs
         continue-on-error: false
 
       - name: Upload ESLint report
@@ -83,12 +93,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - run: npm ci
-
-      - name: Jest — coverage completo
-        run: npm run test:coverage:ci
+      - name: Node tests — coverage completo
+        run: |
+          mkdir -p coverage
+          node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs
+          node scripts/test-coverage-ci.cjs
         env:
           CI: true
 
@@ -125,9 +135,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-
-      - run: npm ci
 
       - name: Baixar coverage do job anterior
         uses: actions/download-artifact@v4
@@ -135,7 +142,21 @@ jobs:
           name: coverage-report
           path: coverage/
 
+      - name: Detectar configuração do SonarCloud
+        id: sonar-config
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && ! grep -Eq 'YOUR_ORG|YOUR_REPO' sonar-project.properties; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SonarCloud não configurado; job tratado como advisory skip"
+          fi
+
       - name: SonarCloud scan
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -143,6 +164,7 @@ jobs:
 
       # Bloqueia o merge se o quality gate do Sonar falhar
       - name: SonarCloud quality gate check
+        if: steps.sonar-config.outputs.enabled == 'true'
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
@@ -185,6 +207,7 @@ jobs:
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
+      issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -192,15 +215,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-
-      - run: npm ci
 
       - name: Baixar coverage (para incluir métricas no comentário)
         uses: actions/download-artifact@v4
         with:
           name: coverage-report
           path: coverage/
+        continue-on-error: true
+
+      - name: Generate PR snapshot
+        run: node scripts/pr-snapshot.cjs --pr "$PR_NUMBER" --json --output .quality-gate/reports/pr-snapshot.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         continue-on-error: true
 
       - name: Postar sticky comment no PR
@@ -214,3 +243,5 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           SONAR_RESULT: ${{ needs.sonar.result }}
           DOCKER_RESULT: ${{ needs.docker.result }}
+          REQUIRED_CHECKS: 'Security audit,Lint,Tests & ratchet,Docker image gate'
+          SNAPSHOT_PATH: .quality-gate/reports/pr-snapshot.json

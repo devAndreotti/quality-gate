@@ -12,6 +12,7 @@ param(
     [switch]$Check,
     [switch]$Update,
     [switch]$Report,
+    [switch]$Dashboard,
     [switch]$Help,
 
     # Flags específicas para o -Init
@@ -28,36 +29,129 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# ── UI compartilhada (porte local do estilo Scriply/winh — sem depender do
+# profile em runtime, já que QualityGate.ps1 também pode rodar via -NoProfile
+# ou em CI) ─────────────────────────────────────────────────────────────
+function Get-QgDisplayWidth {
+    param([AllowNull()][string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return 0 }
+    $clean = [regex]::Replace($Text, [char]27 + '\[[\d;]*m', '')
+    $enumerator = [System.Globalization.StringInfo]::GetTextElementEnumerator($clean)
+    $width = 0
+    while ($enumerator.MoveNext()) {
+        $element = [string]$enumerator.Current
+        if ([string]::IsNullOrEmpty($element)) { continue }
+        $codePoint = [System.Char]::ConvertToUtf32($element, 0)
+        $hasEmojiVariation = ($element.IndexOf([char]0xFE0F) -ge 0)
+        if ($codePoint -eq 0xFE0F) { continue }
+        if ($codePoint -ge 0xE000 -and $codePoint -le 0xF8FF) { $width++; continue }
+        $isPictograph = $codePoint -ge 0x1F300 -and $codePoint -le 0x1FAFF
+        $isDingbat = $codePoint -ge 0x2600 -and $codePoint -le 0x27BF
+        $isMiscSymbolArrow = $codePoint -ge 0x2B00 -and $codePoint -le 0x2BFF
+        if ($isPictograph -or $isDingbat -or $isMiscSymbolArrow -or $hasEmojiVariation) { $width += 2; continue }
+        $width++
+    }
+    return $width
+}
+
+function Get-QgBoxLine {
+    param([string]$Left, [string]$Right = '', [int]$Width = 60)
+    $leftText = if ($null -eq $Left) { '' } else { $Left }
+    $rightText = if ($null -eq $Right) { '' } else { $Right }
+    $padding = [Math]::Max(1, $Width - (Get-QgDisplayWidth -Text $leftText) - (Get-QgDisplayWidth -Text $rightText))
+    $line = $leftText + (' ' * $padding) + $rightText
+    while ((Get-QgDisplayWidth -Text $line) -gt $Width -and $leftText.Length -gt 0) {
+        $leftText = $leftText.Substring(0, $leftText.Length - 1)
+        $padding = [Math]::Max(1, $Width - (Get-QgDisplayWidth -Text $leftText) - (Get-QgDisplayWidth -Text $rightText))
+        $line = $leftText + (' ' * $padding) + $rightText
+    }
+    $tailPadding = [Math]::Max(0, $Width - (Get-QgDisplayWidth -Text $line))
+    return $line + (' ' * $tailPadding)
+}
+
+function Write-QgHeader {
+    param([string]$Title, [string]$Version = '', [string]$Color = 'Blue', [string]$Icon = '◆')
+    Write-Host ''
+    Write-Host ("  ╭{0}╮" -f ('─' * 60)) -ForegroundColor $Color
+    Write-Host ("  │{0}│" -f (Get-QgBoxLine -Left (" {0} {1}" -f $Icon, $Title) -Right $Version)) -ForegroundColor $Color
+    Write-Host ("  ╰{0}╯" -f ('─' * 60)) -ForegroundColor $Color
+    Write-Host ''
+}
+
+function Write-QgSection {
+    param([string]$Title, [string]$Color = 'Yellow', [string]$Icon = '◆')
+    Write-Host ("  {0} {1}" -f $Icon, $Title.ToUpper()) -ForegroundColor $Color
+    Write-Host ("  {0}" -f ('─' * 60)) -ForegroundColor DarkGray
+}
+
+function Write-QgEntryList {
+    # Larguras de coluna calculadas a partir do conteúdo real de cada seção (como o
+    # sres/ssh-ls fazem) em vez de uma largura fixa generosa — evita o espaço
+    # alargado entre comando/alias/descrição quando os textos são curtos.
+    param([Parameter(Mandatory=$true)][array]$Entries)
+    $cmdWidth = 0
+    $aliasWidth = 0
+    $anyAlias = $false
+    foreach ($entry in $Entries) {
+        if ($entry.Command.Length -gt $cmdWidth) { $cmdWidth = $entry.Command.Length }
+        $aliasValue = if ($entry.Aliases) { $entry.Aliases } else { '-' }
+        if ($aliasValue -ne '-') { $anyAlias = $true }
+        if ($aliasValue.Length -gt $aliasWidth) { $aliasWidth = $aliasValue.Length }
+    }
+    foreach ($entry in $Entries) {
+        $cmdText = $entry.Command.PadRight($cmdWidth)
+        if ($anyAlias) {
+            $aliasValue = if ($entry.Aliases) { $entry.Aliases } else { '-' }
+            $aliasText = $aliasValue.PadRight($aliasWidth)
+            Write-Host ("    {0}  {1}  {2}" -f $cmdText, $aliasText, $entry.Description) -ForegroundColor Gray
+        } else {
+            Write-Host ("    {0}  {1}" -f $cmdText, $entry.Description) -ForegroundColor Gray
+        }
+    }
+}
+
+function Write-QgKeyValue {
+    param([string]$Label, [string]$Value, [string]$Color = 'Gray')
+    Write-Host ("    {0,-14} {1}" -f $Label, $Value) -ForegroundColor $Color
+}
+
+function Write-QgHint {
+    param([string]$Text, [string]$Color = 'DarkGray')
+    Write-Host ("  {0}" -f $Text) -ForegroundColor $Color
+}
+
 # Função para exibir ajuda amigável
 function Show-Help {
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '◆'
+
+    Write-QgSection -Title 'Comandos' -Color 'Blue' -Icon '▤'
+    Write-QgEntryList -Entries @(
+        [pscustomobject]@{ Command = 'qg'; Description = 'sem args: abre o menu interativo' }
+        [pscustomobject]@{ Command = 'qg-init'; Aliases = 'qg -Init'; Description = 'wizard interativo de instalação' }
+        [pscustomobject]@{ Command = 'qg-doc'; Aliases = 'qg -Doctor'; Description = 'diagnóstico das ferramentas' }
+        [pscustomobject]@{ Command = 'qg-chk'; Aliases = 'qg -Check'; Description = 'gate: falha (exit 1) se métricas regrediram' }
+        [pscustomobject]@{ Command = 'qg-upd'; Aliases = 'qg -Update'; Description = 'atualiza o baseline de métricas' }
+        [pscustomobject]@{ Command = 'qg-rpt'; Aliases = 'qg -Report'; Description = 'só consulta o relatório, nunca falha' }
+        [pscustomobject]@{ Command = 'qg-dash'; Aliases = 'qg -Dashboard'; Description = 'painel ao vivo, refresh a cada 5s ([q] sai)' }
+    )
     Write-Host ''
-    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Blue
-    Write-Host '  │  Quality Gate                                          v1.0│' -ForegroundColor Blue
-    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Blue
+
+    Write-QgSection -Title 'Flags do wizard (-Init)' -Color 'Blue' -Icon '◈'
+    Write-QgEntryList -Entries @(
+        [pscustomobject]@{ Command = '-Sonar'; Description = 'configura org/token do SonarCloud' }
+        [pscustomobject]@{ Command = '-SkipCodex'; Description = 'pula a cópia da pasta .codex/' }
+        [pscustomobject]@{ Command = '-SkipBaseline'; Description = 'pula a captura do baseline inicial' }
+        [pscustomobject]@{ Command = '-SkipCommit'; Description = 'pula o commit automático no git' }
+        [pscustomobject]@{ Command = '-SkipGitHub'; Description = 'pula branch protection e ruleset remoto' }
+        [pscustomobject]@{ Command = '-DryRun'; Description = 'executa em modo demonstração' }
+        [pscustomobject]@{ Command = '-Yes'; Description = 'confirma etapas com padrão seguro' }
+        [pscustomobject]@{ Command = '-Force'; Description = 'permite instalar em stack não Node' }
+        [pscustomobject]@{ Command = '-Repo <owner/repo>'; Description = 'força repositório específico' }
+    )
     Write-Host ''
-    Write-Host '   COMANDOS' -ForegroundColor Blue
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host '    qg                  -               exibe esta tela de ajuda' -ForegroundColor Gray
-    Write-Host '    qg-init             qg -Init        wizard interativo de instalacao' -ForegroundColor Gray
-    Write-Host '    qg-doc              qg -Doctor      diagnostico das ferramentas' -ForegroundColor Gray
-    Write-Host '    qg-chk              qg -Check       verifica regressao de metricas' -ForegroundColor Gray
-    Write-Host '    qg-upd              qg -Update      atualiza o baseline de metricas' -ForegroundColor Gray
-    Write-Host '    qg-rpt              qg -Report      exibe o relatorio de qualidade' -ForegroundColor Gray
-    Write-Host ''
-    Write-Host '   FLAGS DO WIZARD (-Init)' -ForegroundColor Blue
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host '    -Sonar              -               configura org/token do SonarCloud' -ForegroundColor Gray
-    Write-Host '    -SkipCodex          -               pula a copia da pasta .codex/' -ForegroundColor Gray
-    Write-Host '    -SkipBaseline       -               pula a captura do baseline inicial' -ForegroundColor Gray
-    Write-Host '    -SkipCommit         -               pula o commit automatico no git' -ForegroundColor Gray
-    Write-Host '    -SkipGitHub         -               pula branch protection e ruleset remoto' -ForegroundColor Gray
-    Write-Host '    -DryRun             -               executa em modo demonstracao' -ForegroundColor Gray
-    Write-Host '    -Yes                -               confirma etapas com padrao seguro' -ForegroundColor Gray
-    Write-Host '    -Force              -               permite instalar em stack nao Node' -ForegroundColor Gray
-    Write-Host '    -Repo <owner/repo>  -               forca repositorio especifico' -ForegroundColor Gray
-    Write-Host ''
-    Write-Host '  uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt' -ForegroundColor DarkGray
-    Write-Host '  atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]' -ForegroundColor DarkGray
+
+    Write-QgHint -Text 'uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt'
+    Write-QgHint -Text 'atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]'
     Write-Host ''
 }
 
@@ -112,6 +206,26 @@ function Request-Step {
     return Confirm-Step -Message $Message -DefaultYes:$DefaultYes
 }
 
+function Get-GhKeyringToken {
+    $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
+    $hadGhToken = Test-Path Env:\GH_TOKEN
+    $savedGitHubToken = $env:GITHUB_TOKEN
+    $savedGhToken = $env:GH_TOKEN
+
+    try {
+        Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue
+        Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+        $token = (gh auth token 2>$null)
+        if ([string]::IsNullOrWhiteSpace($token)) { return $null }
+        return $token.Trim()
+    } catch {
+        return $null
+    } finally {
+        if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+    }
+}
+
 $script:QgInitSummary = @()
 
 function Write-InitBanner {
@@ -123,16 +237,11 @@ function Write-InitBanner {
         [Parameter(Mandatory=$true)]
         [string]$Mode
     )
-    Write-Host ''
-    Write-Host '  ╭────────────────────────────────────────────────────────────╮' -ForegroundColor Cyan
-    Write-Host '  │  Quality Gate Init                                     v1.0│' -ForegroundColor Cyan
-    Write-Host '  ╰────────────────────────────────────────────────────────────╯' -ForegroundColor Cyan
-    Write-Host ''
-    Write-Host '   CONTEXTO' -ForegroundColor Cyan
-    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
-    Write-Host ("    Projeto   {0}" -f $ProjectRoot) -ForegroundColor Gray
-    Write-Host ("    Template  {0}" -f $TemplateRoot) -ForegroundColor Gray
-    Write-Host ("    Modo      {0}" -f $Mode) -ForegroundColor Gray
+    Write-QgHeader -Title 'Quality Gate Init' -Version 'v1.0' -Color 'Cyan' -Icon '◈'
+    Write-QgSection -Title 'Contexto' -Color 'Cyan' -Icon '◉'
+    Write-QgKeyValue -Label 'Projeto' -Value $ProjectRoot
+    Write-QgKeyValue -Label 'Template' -Value $TemplateRoot
+    Write-QgKeyValue -Label 'Modo' -Value $Mode
     Write-Host ''
 }
 
@@ -212,6 +321,377 @@ function Test-ProjectProfileSupported {
     return $Profile -in @('node', 'python-uv')
 }
 
+# Passo 3 do wizard (GitHub via setup.js), extraído para função porque também
+# é chamado isoladamente pelo menu interativo (opção "Setup GitHub remote policy").
+function Invoke-GitHubSetupStep {
+    if ($SkipGitHub) {
+        Write-InitItem 'Setup do GitHub pulado por parâmetro.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado por flag'
+        return
+    }
+    $confirm = Request-Step -Message "Deseja rodar o script de setup do GitHub (setup.js)?" -DefaultYes
+    if ($confirm -eq 'c') {
+        Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
+        return
+    }
+    if ($confirm -ne 's') {
+        Write-InitItem 'Setup do GitHub pulado.' 'DarkGray'
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado'
+        return
+    }
+
+    $token = $null
+    if ($DryRun) {
+        Write-DryRunPlan "Não leria token do GitHub; setup.js rodará com --dry-run"
+    } else {
+        $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
+        $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
+        $keyringToken = Get-GhKeyringToken
+
+        if (($envHasGitHubToken -or $envHasGhToken) -and -not [string]::IsNullOrWhiteSpace($keyringToken)) {
+            Write-Warning "GITHUB_TOKEN/GH_TOKEN ativo pode sobrescrever o gh keyring. Usando token do gh keyring para esta etapa."
+            $token = $keyringToken
+        } elseif (-not [string]::IsNullOrWhiteSpace($keyringToken)) {
+            $token = $keyringToken
+        } elseif ($envHasGitHubToken) {
+            Write-Warning "Usando GITHUB_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
+            $token = $env:GITHUB_TOKEN
+        } elseif ($envHasGhToken) {
+            Write-Warning "Usando GH_TOKEN do ambiente. Se der 403, rode 'gh auth login' ou limpe GITHUB_TOKEN/GH_TOKEN."
+            $token = $env:GH_TOKEN
+        }
+
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            $secureTokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)" -AsSecureString
+            if ($secureTokenInput.Length -gt 0) {
+                $tokenInput = [System.Net.NetworkCredential]::new('', $secureTokenInput).Password
+                if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
+                    $token = $tokenInput.Trim()
+                }
+            }
+        }
+    }
+
+    if (-not $DryRun -and [string]::IsNullOrWhiteSpace($token)) {
+        Write-Warning "Ignorando configuração do GitHub: GITHUB_TOKEN não fornecido."
+        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'sem token'
+        return
+    }
+
+    $setupArgs = @()
+    if ($Repo) {
+        $setupArgs += "--repo=$Repo"
+    }
+    if ($DryRun) {
+        $setupArgs += "--dry-run"
+    }
+    if (-not $Sonar) {
+        $setupArgs += "--skip-sonar"
+    } elseif (-not $DryRun) {
+        $sonarOrg = Read-Host "Insira a Organização do SonarCloud"
+        $secureSonarToken = Read-Host "Insira o Token do SonarCloud" -AsSecureString
+        $sonarToken = $null
+        if ($secureSonarToken.Length -gt 0) {
+            $sonarToken = [System.Net.NetworkCredential]::new('', $secureSonarToken).Password
+        }
+        if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
+    }
+
+    $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
+    if (-not (Test-Path $setupJs)) {
+        Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'
+        Write-InitSummary
+        Write-Error "setup.js não foi encontrado no projeto!"
+        return
+    }
+
+    Write-InitItem 'Executando setup.js...'
+    $hadGitHubToken = Test-Path Env:\GITHUB_TOKEN
+    $hadGhToken = Test-Path Env:\GH_TOKEN
+    $hadSonarToken = Test-Path Env:\QG_SONAR_TOKEN
+    $savedGitHubToken = $env:GITHUB_TOKEN
+    $savedGhToken = $env:GH_TOKEN
+    $savedSonarToken = $env:QG_SONAR_TOKEN
+    try {
+        if (-not $DryRun) {
+            $env:GITHUB_TOKEN = $token
+            Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+            # env var em vez de --sonar-token=... no argv: argumentos de processo ficam
+            # visiveis em claro pra qualquer observador local (ps/Get-CimInstance/logs de
+            # criacao de processo) pela duracao inteira do `node setup.js`.
+            if ($sonarToken) { $env:QG_SONAR_TOKEN = $sonarToken }
+        }
+        & node $setupJs $setupArgs
+        if ($LASTEXITCODE -ne 0) {
+            Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
+            Write-InitSummary
+            Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
+        } else {
+            Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
+            Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
+        }
+    } finally {
+        if ($hadGitHubToken) { $env:GITHUB_TOKEN = $savedGitHubToken } else { Remove-Item Env:\GITHUB_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadGhToken) { $env:GH_TOKEN = $savedGhToken } else { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+        if ($hadSonarToken) { $env:QG_SONAR_TOKEN = $savedSonarToken } else { Remove-Item Env:\QG_SONAR_TOKEN -ErrorAction SilentlyContinue }
+    }
+}
+
+# ── Slice 8: diagnóstico de auth e remoto ──────────────────
+function Get-QgAuthDiagnostic {
+    $envHasGitHubToken = -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
+    $envHasGhToken = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)
+    $keyringToken = Get-GhKeyringToken
+    $remoteUrl = $null
+    try { $remoteUrl = (git remote get-url origin 2>$null) } catch {}
+    $remoteHeads = $null
+    if ($remoteUrl) {
+        try { $remoteHeads = git ls-remote --heads origin 2>$null } catch {}
+    }
+    $temAuth = $envHasGitHubToken -or $envHasGhToken -or (-not [string]::IsNullOrWhiteSpace($keyringToken))
+    $podeEmpurrar = $null
+    if ($temAuth -and $remoteUrl) {
+        try {
+            $permission = (gh repo view --json viewerPermission -q .viewerPermission 2>$null)
+            if ($permission) { $podeEmpurrar = $permission -in @('WRITE', 'MAINTAIN', 'ADMIN') }
+        } catch {}
+    }
+    [pscustomobject]@{
+        TokenEnvAtivo   = $envHasGitHubToken -or $envHasGhToken
+        TokenEnvNome    = if ($envHasGitHubToken) { 'GITHUB_TOKEN' } elseif ($envHasGhToken) { 'GH_TOKEN' } else { $null }
+        GhKeyringOk     = -not [string]::IsNullOrWhiteSpace($keyringToken)
+        RemotoAusente   = [string]::IsNullOrWhiteSpace($remoteUrl)
+        RemotoSemBranch = [bool]($remoteUrl -and -not $remoteHeads)
+        PushPermissao   = $podeEmpurrar
+    }
+}
+
+function Show-QgAuthDiagnostic {
+    $diag = Get-QgAuthDiagnostic
+    Write-Host ''
+    Write-QgSection -Title 'Auth / Remoto' -Color 'Cyan' -Icon '◇'
+    if ($diag.TokenEnvAtivo) {
+        Write-InitItem "Token de ambiente ativo: $($diag.TokenEnvNome)" 'Yellow'
+    } else {
+        Write-InitItem 'Token de ambiente: nenhum' 'DarkGray'
+    }
+    Write-InitItem ("gh keyring: {0}" -f $(if ($diag.GhKeyringOk) { 'disponivel' } else { 'indisponivel' })) $(if ($diag.GhKeyringOk) { 'Green' } else { 'DarkGray' })
+    if ($diag.RemotoAusente) {
+        Write-InitItem 'Repo remoto: ausente (git remote origin não configurado)' 'Yellow'
+    } elseif ($diag.RemotoSemBranch) {
+        Write-InitItem 'Repo remoto: sem branch default (nenhum push ainda)' 'Yellow'
+    } else {
+        Write-InitItem 'Repo remoto: configurado' 'Green'
+    }
+    if ($null -ne $diag.PushPermissao) {
+        if ($diag.PushPermissao) {
+            Write-InitItem 'Permissão de push: confirmada (gh repo view)' 'Green'
+        } else {
+            Write-InitItem 'Permissão de push: ausente (viewerPermission não é WRITE/MAINTAIN/ADMIN)' 'Red'
+        }
+    } elseif (-not $diag.RemotoAusente) {
+        Write-InitItem 'Permissão de push: não verificada (gh indisponível ou sem auth)' 'DarkGray'
+    }
+    if ($diag.TokenEnvAtivo -and $diag.GhKeyringOk) {
+        Write-InitItem 'Token de ambiente pode conflitar com o gh keyring. Para usar o keyring temporariamente:' 'DarkGray'
+        Write-InitItem '$env:GITHUB_TOKEN=$null; $env:GH_TOKEN=$null; git push' 'DarkGray'
+    }
+    Write-Host ''
+}
+
+# ── Slice 9: fluxo de PR integrado ao menu ─────────────────
+function Resolve-QgPrNumber {
+    $inferred = $null
+    try { $inferred = (gh pr view --json number -q .number 2>$null) } catch {}
+    if ($inferred -match '^\d+$') { return [int]$inferred }
+    $manual = Read-Host 'Número do PR (não foi possível inferir da branch atual)'
+    if ($manual -match '^\d+$') { return [int]$manual }
+    return $null
+}
+
+function Show-QgPrSnapshotSummary {
+    param([Parameter(Mandatory=$true)]$Snapshot)
+
+    $status = $Snapshot.merge.status
+    $label = switch ($status) {
+        'ready' { 'ready' }
+        'ready_with_advisory' { 'advisory' }
+        default { if ($Snapshot.ci.overall -eq 'pending') { 'waiting' } else { 'blocked' } }
+    }
+    $color = switch ($label) {
+        'ready' { 'Green' }
+        'advisory' { 'Yellow' }
+        'waiting' { 'DarkGray' }
+        default { 'Red' }
+    }
+    $blockers = @($Snapshot.merge.blockers)
+    $actions = @($Snapshot.actions)
+
+    Write-Host ''
+    Write-Host ("   PR #{0} — {1}" -f $Snapshot.pr.number, $Snapshot.pr.title) -ForegroundColor Cyan
+    Write-Host '  ────────────────────────────────────────────────────────────' -ForegroundColor DarkGray
+    Write-InitItem ("Status: {0}" -f $label) $color
+    if ($blockers.Count -gt 0) {
+        Write-InitItem 'Blockers:' 'Yellow'
+        foreach ($blocker in $blockers) {
+            Write-InitItem ("  - {0}" -f $blocker.message) 'Yellow'
+        }
+    }
+    if ($actions.Count -gt 0) {
+        Write-InitItem ("Next: {0}" -f $actions[0]) 'Gray'
+    }
+    Write-InitItem ("Link: {0}" -f $Snapshot.pr.url) 'DarkGray'
+    Write-Host ''
+}
+
+# ── Slice 7: menu interativo (`qg` sem flags) ──────────────
+function Get-QgMenuState {
+    $projectProfile = Get-ProjectProfile -Root $ProjectRoot
+    $branch = $null
+    try { $branch = (git rev-parse --abbrev-ref HEAD 2>$null) } catch {}
+    $remoteUrl = $null
+    try { $remoteUrl = (git remote get-url origin 2>$null) } catch {}
+    $auth = Get-QgAuthDiagnostic
+    $lastReport = $null
+    $reportPath = Join-Path $ProjectRoot ".quality-gate\reports\pr-snapshot.json"
+    if (Test-Path $reportPath) {
+        $lastReport = (Get-Item $reportPath).LastWriteTime
+    }
+    $prNumber = $null
+    try {
+        $hasUpstream = git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+        if ($hasUpstream) {
+            $inferred = (gh pr view --json number -q .number 2>$null)
+            if ($inferred -match '^\d+$') { $prNumber = [int]$inferred }
+        }
+    } catch {}
+
+    [pscustomobject]@{
+        Instalado    = Test-Path (Join-Path $ProjectRoot "scripts\doctor.cjs")
+        Perfil       = $projectProfile.Name
+        RepoRemoto   = if ($remoteUrl) { $remoteUrl } else { 'não configurado' }
+        Branch       = if ($branch) { $branch } else { 'desconhecida' }
+        TokenAtivo   = $auth.TokenEnvAtivo
+        UltimoReport = $lastReport
+        PrDetectado  = $prNumber
+    }
+}
+
+function Show-QgMenuState {
+    param([Parameter(Mandatory=$true)]$State)
+    Write-QgHeader -Title 'Quality Gate' -Version 'v1.0' -Color 'Blue' -Icon '◆'
+    Write-QgSection -Title 'Estado' -Color 'Cyan' -Icon '◉'
+    Write-QgKeyValue -Label 'Perfil' -Value $State.Perfil
+    Write-QgKeyValue -Label 'Repo remoto' -Value $State.RepoRemoto
+    Write-QgKeyValue -Label 'Branch' -Value $State.Branch
+    Write-QgKeyValue -Label 'Token ativo' -Value $(if ($State.TokenAtivo) { 'sim' } else { 'não' })
+    Write-QgKeyValue -Label 'Último report' -Value $(if ($State.UltimoReport) { $State.UltimoReport } else { 'nenhum' })
+    Write-QgKeyValue -Label 'PR detectado' -Value $(if ($State.PrDetectado) { "#$($State.PrDetectado)" } else { 'nenhum' })
+    Write-Host ''
+}
+
+function Invoke-QgMenu {
+    $state = Get-QgMenuState
+    Show-QgMenuState -State $state
+
+    if (-not $state.Instalado) {
+        Write-Host '  Quality Gate não está instalado nesta pasta.' -ForegroundColor Yellow
+        Write-Host ''
+        $items = @(
+            [pscustomobject]@{ Opcao = 'I'; Acao = 'Install/repair Quality Gate' }
+            [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
+        )
+    } else {
+        $items = @(
+            [pscustomobject]@{ Opcao = 'I'; Acao = 'Install/repair Quality Gate' }
+            [pscustomobject]@{ Opcao = 'D'; Acao = 'Doctor (diagnóstico)' }
+            [pscustomobject]@{ Opcao = 'V'; Acao = 'Run local PR validation' }
+            [pscustomobject]@{ Opcao = 'U'; Acao = 'Update baseline' }
+            [pscustomobject]@{ Opcao = 'G'; Acao = 'Setup GitHub remote policy' }
+            [pscustomobject]@{ Opcao = 'S'; Acao = 'PR snapshot' }
+            [pscustomobject]@{ Opcao = 'B'; Acao = 'Babysit PR once' }
+            [pscustomobject]@{ Opcao = 'R'; Acao = 'Show report' }
+            [pscustomobject]@{ Opcao = 'P'; Acao = 'Painel ao vivo (dashboard)' }
+            [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
+        )
+    }
+
+    $selection = $null
+    $menuTuiMjs = Join-Path $ProjectRoot "scripts\menu-tui.mjs"
+    $hasTty = -not [Console]::IsInputRedirected
+    $richMenuAvailable = (Test-Path $menuTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichTui)
+
+    if ($richMenuAvailable) {
+        $itemsJsonPath = [System.IO.Path]::GetTempFileName()
+        try {
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($itemsJsonPath, ($items | ConvertTo-Json), $utf8NoBom)
+            $raw = & node $menuTuiMjs $itemsJsonPath 'Quality Gate - escolha uma ação'
+            $selectedLine = $raw | Where-Object { $_ -match '^SELECTED:(.+)$' } | Select-Object -Last 1
+            if ($selectedLine -match '^SELECTED:(.+)$') { $selection = $Matches[1] }
+        } finally {
+            Remove-Item -LiteralPath $itemsJsonPath -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-QgSection -Title 'Escolha uma ação' -Color 'Blue' -Icon '▤'
+        foreach ($item in $items) {
+            Write-Host ("    [{0}] {1}" -f $item.Opcao, $item.Acao) -ForegroundColor Gray
+        }
+        Write-Host ''
+        $response = Read-Host 'Opção'
+        if ($response) { $selection = $response.ToUpper().Trim() }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($selection)) {
+        Write-Host '  Nenhuma opção selecionada.' -ForegroundColor DarkGray
+        return
+    }
+
+    switch ($selection) {
+        'I' { Invoke-Init }
+        'D' {
+            Invoke-DoctorAction
+            Show-QgAuthDiagnostic
+        }
+        'V' { Invoke-LocalValidateAction }
+        'U' { Invoke-UpdateAction }
+        'G' {
+            $script:QgInitSummary = @()
+            Invoke-GitHubSetupStep
+            Write-InitSummary
+        }
+        'S' {
+            $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
+            if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
+            $snapshotJs = Join-Path $ProjectRoot "scripts\pr-snapshot.cjs"
+            if (-not (Test-Path $snapshotJs)) { Show-QgNotInstalled -MissingFile 'pr-snapshot.cjs'; return }
+            $outputPath = Join-Path $ProjectRoot ".quality-gate\reports\pr-snapshot.json"
+            $raw = & node $snapshotJs --pr $prNumber --json --output $outputPath
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "pr-snapshot.cjs retornou $LASTEXITCODE"
+                return
+            }
+            try {
+                $snapshot = ($raw -join "`n") | ConvertFrom-Json
+                Show-QgPrSnapshotSummary -Snapshot $snapshot
+            } catch {
+                Write-Host ($raw -join "`n")
+            }
+        }
+        'B' {
+            $prNumber = if ($state.PrDetectado) { $state.PrDetectado } else { Resolve-QgPrNumber }
+            if (-not $prNumber) { Write-Warning 'Número do PR não informado.'; return }
+            $babysitJs = Join-Path $ProjectRoot "scripts\babysit-loop.cjs"
+            if (-not (Test-Path $babysitJs)) { Show-QgNotInstalled -MissingFile 'babysit-loop.cjs'; return }
+            & node $babysitJs --pr $prNumber --once
+        }
+        'R' { Invoke-ReportAction }
+        'P' { Invoke-DashboardAction }
+        'H' { Show-Help }
+        default { Write-Warning "Opção '$selection' inválida." }
+    }
+}
+
 # Resolve os caminhos importantes
 # $PSScriptRoot é d:\Dev\Tooling\quality-gate\scripts. O pai é a raiz do template.
 $TemplateRoot = Split-Path -Parent $PSScriptRoot
@@ -228,7 +708,7 @@ if ($Help) {
 }
 
 # ── Modo Init (Wizard) ────────────────────────────────────
-if ($Init) {
+function Invoke-Init {
     $script:QgInitSummary = @()
     $mode = if ($DryRun) { 'DryRun (sem escrita, commit ou chamada mutável)' } elseif ($Yes) { 'Execução real (-Yes)' } else { 'Execução real' }
     $projectProfile = Get-ProjectProfile -Root $ProjectRoot
@@ -265,6 +745,16 @@ if ($Init) {
             $existingBaseline = Get-Content -Raw $existingBaselinePath
         }
         
+        # policy.json, reports/ e o workflow gerado (quality-gate.yml) ficam fora da copia
+        # bruta: bootstrap-repo.cjs (chamado logo depois via setup.js) e quem escreve esses
+        # 3 de forma consciente do que ja existe no projeto-alvo (le antes de escrever,
+        # tailora pra superficie detectada do projeto). Copiar aqui primeiro com -Force
+        # fazia esse passo "inteligente" sempre encontrar o arquivo que ele mesmo tinha
+        # acabado de receber e concluir "ja existe, mantendo" -- nunca gerava a versao
+        # tailorada pro projeto-alvo, e vazava .quality-gate/reports/*.json (dados locais
+        # deste projeto) e .quality-gate/policy.json (com path absoluto pessoal, ver
+        # buildProjectPolicy) pra todo repo em que o qg-init roda.
+        $rawCopyExclude = @('policy.json', 'reports', 'quality-gate.yml')
         foreach ($folder in $folders) {
             $src = Join-Path $TemplateRoot $folder
             $dst = Join-Path $ProjectRoot $folder
@@ -276,7 +766,7 @@ if ($Init) {
                     if (-not (Test-Path $dst)) {
                         New-Item -ItemType Directory -Path $dst -Force | Out-Null
                     }
-                    Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force
+                    Copy-Item -Path "$src\*" -Destination $dst -Recurse -Force -Exclude $rawCopyExclude
                 }
             }
         }
@@ -322,6 +812,19 @@ if ($Init) {
                     Write-DryRunPlan "Removeria script administrativo $unwanted"
                 } else {
                     Remove-Item -Path $unwanted -Force
+                }
+            }
+        }
+        # Testes internos do quality-gate (*.test.cjs) só fazem sentido no repo fonte;
+        # não pertencem ao projeto-alvo (ex: "release metadata == 1.0.0" checa o proprio pacote).
+        $scriptsDestDir = Join-Path $ProjectRoot "scripts"
+        if (Test-Path $scriptsDestDir) {
+            $internalTests = Get-ChildItem -Path $scriptsDestDir -Filter "*.test.cjs" -File -ErrorAction SilentlyContinue
+            foreach ($testFile in $internalTests) {
+                if ($DryRun) {
+                    Write-DryRunPlan "Removeria teste interno $($testFile.FullName)"
+                } else {
+                    Remove-Item -Path $testFile.FullName -Force
                 }
             }
         }
@@ -433,80 +936,7 @@ if ($Init) {
 
     # Passo 3: Configurar GitHub via setup.js
     Write-InitStep -Number 3 -Title 'GitHub' -Description 'Configura bootstrap, branch protection, PR ruleset e secrets opcionais.'
-    if ($SkipGitHub) {
-        Write-InitItem 'Setup do GitHub pulado por parâmetro.' 'DarkGray'
-        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado por flag'
-    } else {
-    $confirm = Request-Step -Message "Deseja rodar o script de setup do GitHub (setup.js)?" -DefaultYes
-    if ($confirm -eq 'c') {
-        Write-Host "Setup cancelado pelo usuário." -ForegroundColor Red
-        return
-    }
-    if ($confirm -eq 's') {
-        $token = $null
-        if ($DryRun) {
-            Write-DryRunPlan "Não leria token do GitHub; setup.js rodará com --dry-run"
-        } else {
-            $token = (gh auth token 2>$null)
-            if ([string]::IsNullOrWhiteSpace($token)) {
-                Write-Warning "Aviso: Não logado no gh CLI ou gh não encontrado. Verificando GITHUB_TOKEN no ambiente."
-                $token = $env:GITHUB_TOKEN
-            }
-
-            if ([string]::IsNullOrWhiteSpace($token)) {
-                $tokenInput = Read-Host "Insira o token do GitHub manualmente (ou dê Enter para pular esta etapa)"
-                if (-not [string]::IsNullOrWhiteSpace($tokenInput)) {
-                    $token = $tokenInput.Trim()
-                }
-            }
-        }
-        
-        if ($DryRun -or -not [string]::IsNullOrWhiteSpace($token)) {
-            if (-not $DryRun) {
-                $env:GITHUB_TOKEN = $token
-            }
-            $setupArgs = @()
-            if ($Repo) {
-                $setupArgs += "--repo=$Repo"
-            }
-            if ($DryRun) {
-                $setupArgs += "--dry-run"
-            }
-            if (-not $Sonar) {
-                $setupArgs += "--skip-sonar"
-            } elseif (-not $DryRun) {
-                $sonarOrg = Read-Host "Insira a Organização do SonarCloud"
-                $sonarToken = Read-Host "Insira o Token do SonarCloud"
-                if ($sonarOrg) { $setupArgs += "--sonar-org=$sonarOrg" }
-                if ($sonarToken) { $setupArgs += "--sonar-token=$sonarToken" }
-            }
-            
-            $setupJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\setup.js" } else { Join-Path $ProjectRoot "scripts\setup.js" }
-            if (Test-Path $setupJs) {
-                Write-InitItem 'Executando setup.js...'
-                & node $setupJs $setupArgs
-                if ($LASTEXITCODE -ne 0) {
-                    Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail "setup.js retornou $LASTEXITCODE"
-                    Write-InitSummary
-                    Write-Error "Falha ao executar o setup.js (código de retorno: $LASTEXITCODE)."
-                } else {
-                    Write-Host '    ✓ GitHub configurado com sucesso.' -ForegroundColor Green
-                    Add-InitSummary -Step 'GitHub' -Status 'ok' -Detail 'configurado'
-                }
-            } else {
-                Add-InitSummary -Step 'GitHub' -Status 'fail' -Detail 'setup.js ausente'
-                Write-InitSummary
-                Write-Error "setup.js não foi encontrado no projeto!"
-            }
-        } else {
-            Write-Warning "Ignorando configuração do GitHub: GITHUB_TOKEN não fornecido."
-            Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'sem token'
-        }
-    } else {
-        Write-InitItem 'Setup do GitHub pulado.' 'DarkGray'
-        Add-InitSummary -Step 'GitHub' -Status 'skip' -Detail 'pulado'
-    }
-    }
+    Invoke-GitHubSetupStep
 
     # Passo 4: Capturar baseline inicial
     Write-InitStep -Number 4 -Title 'Baseline' -Description 'Lê coverage do projeto (Jest ou pytest-cov) e grava scripts/baseline.json.'
@@ -608,49 +1038,116 @@ if ($Init) {
     return
 }
 
+if ($Init) {
+    Invoke-Init
+    return
+}
+
 # ── Ações de rotina ───────────────────────────────────────
 $doctorJs = Join-Path $ProjectRoot "scripts\doctor.cjs"
 $gateJs   = Join-Path $ProjectRoot "scripts\quality-gate.js"
 
-if ($Doctor) {
+# Write-Error sob $ErrorActionPreference = 'Stop' (topo do arquivo) não é um aviso —
+# vira exceção terminante e despeja stack trace completo no usuário. Esse indicativo
+# usa só Write-Host (não-terminante) com o mesmo kit visual do resto do qg.
+function Show-QgNotInstalled {
+    param([Parameter(Mandatory=$true)][string]$MissingFile)
+    Write-QgHeader -Title 'Quality Gate não encontrado aqui' -Color 'Yellow' -Icon '⚠'
+    Write-QgKeyValue -Label 'Pasta atual' -Value $ProjectRoot -Color 'Gray'
+    Write-QgKeyValue -Label 'Ausente' -Value ("scripts/{0}" -f $MissingFile) -Color 'DarkGray'
+    Write-Host ''
+    Write-QgHint -Text 'Rode qg-init aqui para instalar, ou cd até um projeto já instalado.' -Color 'Yellow'
+    Write-Host ''
+}
+
+# Extraídas em funções para serem reusadas tanto pelas flags (-Doctor/-Check/-Update/-Report)
+# quanto pelo menu interativo (Invoke-QgMenu) sem duplicar o header colorido de cada ação.
+function Invoke-DoctorAction {
     if (-not (Test-Path $doctorJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (doctor.cjs ausente)."
+        Show-QgNotInstalled -MissingFile 'doctor.cjs'
         return
     }
     Write-Host "🔍 Executando diagnóstico (doctor.cjs --dry-run)..." -ForegroundColor Cyan
     & node $doctorJs --dry-run
-    return
 }
 
-if ($Check) {
+function Invoke-CheckAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "⚖️  Comparando métricas com o baseline..." -ForegroundColor Cyan
     & node $gateJs check
-    return
 }
 
-if ($Update) {
+function Invoke-UpdateAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "🔄 Atualizando baseline com métricas do projeto atual..." -ForegroundColor Cyan
     & node $gateJs update
-    return
 }
 
-if ($Report) {
+function Invoke-ReportAction {
     if (-not (Test-Path $gateJs)) {
-        Write-Error "O Quality Gate não parece estar instalado na pasta atual (quality-gate.js ausente)."
+        Show-QgNotInstalled -MissingFile 'quality-gate.js'
         return
     }
     Write-Host "📊 Exibindo relatório de qualidade..." -ForegroundColor Cyan
     & node $gateJs report
+}
+
+function Invoke-LocalValidateAction {
+    $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
+    if (-not (Test-Path $localValidate)) {
+        Show-QgNotInstalled -MissingFile 'local-validate.cjs'
+        return
+    }
+    Write-Host "🧪 Rodando validação local de PR (local-validate.cjs)..." -ForegroundColor Cyan
+    & node $localValidate --project $ProjectRoot --profile pr --json
+}
+
+function Test-QgNodeSupportsRichTui {
+    try {
+        $version = (& node --version) -replace '^v', ''
+        $major = [int]($version -split '\.')[0]
+        return $major -ge 22
+    } catch {
+        return $false
+    }
+}
+
+function Invoke-DashboardAction {
+    $dashboardJs = Join-Path $ProjectRoot "scripts\dashboard.cjs"
+    if (-not (Test-Path $dashboardJs)) {
+        Show-QgNotInstalled -MissingFile 'dashboard.cjs'
+        return
+    }
+
+    # Modo rico (ink/React, ver dashboard-src/app.jsx) só quando o bundle existe, o Node
+    # é >=22 (exigencia do ink) e ha um TTY de verdade (raw mode nao funciona em pipe/CI —
+    # cai pro modo texto de qualquer forma nesses casos, sem erro visivel ao usuario).
+    $dashboardTuiMjs = Join-Path $ProjectRoot "scripts\dashboard-tui.mjs"
+    $hasTty = -not [Console]::IsInputRedirected
+    if ((Test-Path $dashboardTuiMjs) -and $hasTty -and (Test-QgNodeSupportsRichTui)) {
+        & node $dashboardTuiMjs $ProjectRoot
+        return
+    }
+
+    # Sem -Cyan/Write-Host aqui: dashboard.cjs assume a tela (console.clear() a cada refresh),
+    # uma linha de intro antes so ficaria visivel por um instante e some no primeiro clear.
+    & node $dashboardJs $ProjectRoot
+}
+
+if ($Doctor) { Invoke-DoctorAction; return }
+if ($Check) { Invoke-CheckAction; return }
+if ($Update) { Invoke-UpdateAction; return }
+if ($Dashboard) { Invoke-DashboardAction; return }
+if ($Report) {
+    Invoke-ReportAction
     return
 }
 
-# Se nenhuma flag de ação ou se -Help for passado, exibe a ajuda
-Show-Help
+# Se nenhuma flag de ação for passada, abre o menu interativo (Slice 7)
+Invoke-QgMenu
