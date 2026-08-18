@@ -4,8 +4,12 @@
  *
  * Uso:
  *   node scripts/setup.js --repo=OWNER/REPO --dry-run
- *   node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG --sonar-token=TOKEN
+ *   QG_SONAR_TOKEN=TOKEN node scripts/setup.js --repo=OWNER/REPO --sonar-org=ORG
  *   node scripts/setup.js --repo=OWNER/REPO --skip-sonar
+ *
+ * O token do SonarCloud vem só de QG_SONAR_TOKEN (env var), nunca de argv —
+ * argumentos de processo ficam visiveis em claro pra qualquer observador local
+ * (ps/Get-CimInstance/logs de criacao de processo) pela duracao da execucao.
  *
  * Faz bootstrap local, configura Sonar, PR ruleset, branch protection e
  * secret SONAR_TOKEN. CommonJS para rodar sem package.json type=module.
@@ -30,7 +34,7 @@ const REPO_SEGMENT_PATTERN = /^[A-Za-z0-9_.-]+$/;
 function parseArgs(argv) {
   const args = {
     dryRun: false,
-    sonarToken: null,
+    sonarToken: process.env.QG_SONAR_TOKEN || null,
     sonarOrg: null,
     skipSonar: false,
     skipBootstrap: false,
@@ -52,7 +56,6 @@ function parseArgs(argv) {
     else if (arg === '--skip-license') args.skipLicense = true;
     else if (arg === '--skip-dependabot') args.skipDependabot = true;
     else if (arg === '--verbose') args.verbose = true;
-    else if (arg.startsWith('--sonar-token=')) args.sonarToken = arg.slice('--sonar-token='.length);
     else if (arg.startsWith('--sonar-org=')) args.sonarOrg = arg.slice('--sonar-org='.length);
     else if (arg.startsWith('--repo=')) args.repo = arg.slice('--repo='.length);
     else if (arg.startsWith('--default-branch=')) args.defaultBranch = arg.slice('--default-branch='.length);
@@ -356,6 +359,12 @@ function plannedStepStatus(mode) {
   return 'planned';
 }
 
+function isBranchNotFoundForProtection(error, repoInfo, branch) {
+  return error?.statusCode === 404
+    && error?.apiPath === branchProtectionApiPath(repoInfo, branch)
+    && /branch not found/i.test(error.message || '');
+}
+
 async function runSetup(options = {}) {
   const args = options.args || parseArgs(process.argv.slice(2));
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
@@ -419,12 +428,22 @@ async function runSetup(options = {}) {
     ghApi,
   })) });
 
-  await ghApi(
-    'PUT',
-    branchProtectionApiPath(plan.repo, result.defaultBranch),
-    branchProtectionBody(plan.requiredStatusChecks),
-  );
-  result.steps.push({ name: 'branch-protection', status: 'updated', branch: result.defaultBranch });
+  try {
+    await ghApi(
+      'PUT',
+      branchProtectionApiPath(plan.repo, result.defaultBranch),
+      branchProtectionBody(plan.requiredStatusChecks),
+    );
+    result.steps.push({ name: 'branch-protection', status: 'updated', branch: result.defaultBranch });
+  } catch (error) {
+    if (!isBranchNotFoundForProtection(error, plan.repo, result.defaultBranch)) throw error;
+    result.steps.push({
+      name: 'branch-protection',
+      status: 'skipped',
+      branch: result.defaultBranch,
+      detail: `branch ${result.defaultBranch} not found on GitHub; push it first, then rerun setup.js`,
+    });
+  }
 
   return result;
 }

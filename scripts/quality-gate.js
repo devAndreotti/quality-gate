@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { renderTable } = require('./lib/console-ui.cjs');
 
 function parseArgs(argv) {
   return {
@@ -33,6 +34,33 @@ function readMaxFileLines(root) {
   const policy = readJSON(path.join(root, '.quality-gate', 'policy.json'));
   const value = policy?.ci?.maxFileLines;
   return Number.isInteger(value) && value > 0 ? value : 300;
+}
+
+function patternToRegExp(pattern) {
+  const escaped = String(pattern)
+    .replace(/\\/g, '/')
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '::DOUBLE_STAR::')
+    .replace(/\*/g, '[^/]*')
+    .replace(/::DOUBLE_STAR::/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function isPathAllowedByPattern(filePath, pattern) {
+  const normalized = String(filePath || '').replace(/\\/g, '/');
+  return patternToRegExp(pattern).test(normalized);
+}
+
+function parseGitStatusPath(line) {
+  return String(line || '').slice(3).trim().replace(/^"|"$/g, '');
+}
+
+function filterGitStatusEntries(lines, allowlist = []) {
+  return (lines || []).filter((line) => {
+    if (!String(line).startsWith('?? ')) return true;
+    const filePath = parseGitStatusPath(line);
+    return !allowlist.some((pattern) => isPathAllowedByPattern(filePath, pattern));
+  });
 }
 
 function pct(value) {
@@ -73,12 +101,12 @@ function collectPythonCoverage(root) {
   if (!Number.isFinite(linePct)) return null;
   const branchPct = Number(totals.num_branches) > 0
     ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
-    : linePct;
+    : null;
   return {
     lines: linePct,
-    statements: linePct,
-    functions: linePct,
-    branches: Number(branchPct.toFixed(2)),
+    statements: null,
+    functions: null,
+    branches: branchPct == null ? null : Number(branchPct.toFixed(2)),
   };
 }
 
@@ -156,14 +184,20 @@ function compareMetrics(current, baseline) {
 }
 
 function buildUpdatedBaseline({ current, existing, now = new Date().toISOString() }) {
+  const coverage = {};
+  for (const key of ['lines', 'statements', 'functions', 'branches']) {
+    const cur = current.coverage?.[key];
+    const base = existing.coverage?.[key];
+    if (typeof cur === 'number') {
+      coverage[key] = Math.max(cur, typeof base === 'number' ? base : 0);
+    } else if (typeof base === 'number') {
+      coverage[key] = base;
+    }
+  }
+
   return {
     ...existing,
-    coverage: {
-      lines: Math.max(current.coverage.lines, existing.coverage?.lines ?? 0),
-      statements: Math.max(current.coverage.statements, existing.coverage?.statements ?? 0),
-      functions: Math.max(current.coverage.functions, existing.coverage?.functions ?? 0),
-      branches: Math.max(current.coverage.branches, existing.coverage?.branches ?? 0),
-    },
+    coverage,
     lintErrors: current.lintErrors ?? existing.lintErrors,
     oversizedFiles: current.oversizedFiles ?? existing.oversizedFiles,
     updatedAt: now,
@@ -207,13 +241,35 @@ function runQualityGate(options = {}) {
   throw new Error(`Comando desconhecido: "${command}". Use: check | update | init | report`);
 }
 
+function toMetricsTableRows(rows) {
+  return rows.map((row) => [
+    row.passed ? '✅' : '❌',
+    row.group,
+    row.metric,
+    row.baseline,
+    row.current,
+    row.delta,
+  ]);
+}
+
 function printReport(result) {
-  console.log('\nQuality Gate — Ratchet');
-  for (const row of result.rows || []) {
-    const icon = row.passed ? '✅' : '❌';
-    console.log(`${icon} ${row.group}/${row.metric}: ${row.baseline} -> ${row.current} (${row.delta})`);
+  console.log('\nQuality Gate — Ratchet\n');
+  if ((result.rows || []).length > 0) {
+    console.log(renderTable(['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'], toMetricsTableRows(result.rows)));
+  }
+  // check e report leem o mesmo compareMetrics; a unica diferenca real e o exit code
+  // (main() abaixo). Essa linha final deixa isso visivel pra quem so olha o terminal.
+  if (result.command === 'check') {
+    console.log('');
+    console.log(result.status === 'failed'
+      ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`
+      : '✅ GATE PASSOU — nenhuma métrica regrediu');
+  } else if (result.command === 'report') {
+    console.log('');
+    console.log('ℹ️  modo consulta — nunca falha o build (use "qg-chk" para o gate real de CI)');
   }
   if (result.updated) {
+    console.log('');
     console.log(`${result.status === 'planned' ? '⚠️ ' : '✅'} baseline.json ${result.status}`);
     console.log(JSON.stringify(result.updated, null, 2));
   }
@@ -239,6 +295,8 @@ if (require.main === module) {
 module.exports = {
   buildUpdatedBaseline,
   compareMetrics,
+  filterGitStatusEntries,
+  isPathAllowedByPattern,
   parseArgs,
   runQualityGate,
 };

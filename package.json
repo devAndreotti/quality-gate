@@ -1,0 +1,13 @@
+{
+  "name": "quality-gate-dev",
+  "private": true,
+  "description": "Dev-only tooling for this repo's own build steps. Never copied into target projects by qg-init (see $folders in scripts/QualityGate.ps1) — target projects keep receiving loose files only, no package.json, no node_modules.",
+  "scripts": {
+    "build:tui": "node scripts/build-tui.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "ink": "^7.1.1",
+    "react": "^19.2.0"
+  }
+}

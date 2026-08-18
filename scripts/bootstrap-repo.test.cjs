@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  buildProjectPolicy,
   buildReadmeScaffold,
   parseArgs,
   runBootstrap,
@@ -20,6 +21,24 @@ function loadPolicy() {
   return JSON.parse(fs.readFileSync(path.join(root, '.quality-gate/policy.json'), 'utf8'));
 }
 
+test('buildProjectPolicy never propagates a machine-specific dockerImageDoctor.scriptPath to target repos', () => {
+  const project = tempProject();
+  const sourcePolicy = loadPolicy();
+  // policy.json deste repo carrega o path absoluto (Windows, drive-letter) da maquina de
+  // quem mantem o quality-gate (ver .quality-gate/policy.json) -- confirma que a fonte de
+  // fato tem um path real antes de checar que buildProjectPolicy o neutraliza. Nao usa
+  // path.isAbsolute: em runner Linux (Actions) o modulo path e POSIX e nao reconhece
+  // "D:\..." como absoluto, o que so quebrava em CI.
+  assert.match(sourcePolicy.dockerImageDoctor.scriptPath, /^[A-Za-z]:[\\/]/);
+
+  const projectPolicy = buildProjectPolicy(sourcePolicy, project);
+
+  assert.equal(projectPolicy.dockerImageDoctor.enabled, 'never');
+  assert.notEqual(projectPolicy.dockerImageDoctor.scriptPath, sourcePolicy.dockerImageDoctor.scriptPath);
+  assert.equal(typeof projectPolicy.dockerImageDoctor.scriptPath, 'string');
+  assert.ok(projectPolicy.dockerImageDoctor.scriptPath.length > 0);
+});
+
 test('parseArgs supports dry-run, project, json, and skip flags', () => {
   const args = parseArgs([
     '--project',
@@ -30,6 +49,7 @@ test('parseArgs supports dry-run, project, json, and skip flags', () => {
     '--skip-funding',
     '--skip-license',
     '--skip-dependabot',
+    '--upgrade',
   ]);
 
   assert.equal(args.project, 'C:\\repo\\sample');
@@ -39,6 +59,7 @@ test('parseArgs supports dry-run, project, json, and skip flags', () => {
   assert.equal(args.skipFunding, true);
   assert.equal(args.skipLicense, true);
   assert.equal(args.skipDependabot, true);
+  assert.equal(args.upgrade, true);
 });
 
 test('runBootstrap creates deterministic bootstrap files', () => {
@@ -59,13 +80,64 @@ test('runBootstrap creates deterministic bootstrap files', () => {
   assert.equal(fs.existsSync(path.join(project, 'LICENSE')), true);
   assert.equal(fs.existsSync(path.join(project, '.github/FUNDING.yml')), true);
   assert.equal(fs.existsSync(path.join(project, '.github/dependabot.yml')), true);
+  assert.equal(fs.existsSync(path.join(project, '.github/workflows/quality-gate.yml')), true);
   assert.equal(fs.existsSync(path.join(project, 'README.md')), true);
+  assert.equal(fs.existsSync(path.join(project, '.quality-gate/policy.json')), true);
   assert.equal(fs.existsSync(path.join(project, '.quality-gate/reports/bootstrap-repo.json')), true);
 
   const readme = fs.readFileSync(path.join(project, 'README.md'), 'utf8');
   assert.match(readme, /<!-- quality-gate:readme:start -->/);
   assert.match(readme, /sample-app/);
   assert.match(readme, /npm test/);
+});
+
+test('runBootstrap detects mixed project surfaces in generated policy', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
+  fs.mkdirSync(path.join(project, 'UI'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'UI', 'package.json'), '{"scripts":{"test":"vitest"}}\n');
+
+  runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+  });
+
+  const policy = JSON.parse(fs.readFileSync(path.join(project, '.quality-gate/policy.json'), 'utf8'));
+  const workflow = fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8');
+  assert.deepEqual(policy.project.surfaces.map((surface) => `${surface.type}:${surface.root}`).sort(), [
+    'node:UI',
+    'python-uv:pipeline',
+  ]);
+  assert.deepEqual(policy.ci.requiredChecks, [
+    'Python validation',
+    'UI validation',
+    'Security audit',
+    'Docker image gate',
+  ]);
+  assert.match(workflow, /name: UI validation/);
+  assert.match(workflow, /working-directory: UI/);
+  assert.match(workflow, /mkdir -p \.\.\/coverage/);
+  assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(workflow, /SNAPSHOT_PATH: \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(workflow, /PYTHON_RESULT: \$\{\{ needs\['python-validation'\]\.result \}\}/);
+  assert.match(workflow, /UI_RESULT: \$\{\{ needs\['ui-validation'\]\.result \}\}/);
+});
+
+test('runBootstrap does not generate UI job for python-only project', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
+
+  runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+  });
+
+  const workflow = fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8');
+  assert.match(workflow, /name: Python validation/);
+  assert.doesNotMatch(workflow, /name: UI validation/);
 });
 
 test('runBootstrap dry-run reports planned changes without writing files', () => {
@@ -159,6 +231,57 @@ test('runBootstrap replaces only managed README block', () => {
   assert.match(readme, /^# Existing/);
   assert.doesNotMatch(readme, /old generated content/);
   assert.match(readme, /Manual tail\./);
+});
+
+test('runBootstrap upgrade dry-run plans managed workflow update without writing', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
+  const oldWorkflow = [
+    '# quality-gate:managed-workflow version 0',
+    'name: Quality Gate',
+    'jobs:',
+    '  report:',
+    '    steps:',
+    '      - run: node scripts/pr-comment.js',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), oldWorkflow);
+
+  const result = runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+    dryRun: true,
+    upgrade: true,
+  });
+  const workflowStep = result.steps.find((step) => step.name === 'Workflow');
+
+  assert.equal(workflowStep.status, 'planned');
+  assert.equal(workflowStep.detail, 'would update managed workflow');
+  assert.equal(fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8'), oldWorkflow);
+});
+
+test('runBootstrap upgrade requires manual review for unmarked custom workflow', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), [
+    'name: Custom CI',
+    'jobs:',
+    '  custom:',
+    '    steps:',
+    '      - run: echo custom',
+    '',
+  ].join('\n'));
+
+  const result = runBootstrap({
+    projectRoot: project,
+    policy: loadPolicy(),
+    dryRun: true,
+    upgrade: true,
+  });
+  const workflowStep = result.steps.find((step) => step.name === 'Workflow');
+
+  assert.equal(workflowStep.status, 'warn');
+  assert.match(workflowStep.detail, /manual review required/);
 });
 
 test('buildReadmeScaffold includes machine-readable managed markers', () => {

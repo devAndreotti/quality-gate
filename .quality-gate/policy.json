@@ -1,13 +1,25 @@
 {
   "schemaVersion": 1,
   "profile": "strict-node",
+  "project": {
+    "surfaces": [
+      {
+        "type": "node",
+        "root": ".",
+        "required": false
+      }
+    ]
+  },
   "ci": {
     "requiredChecks": [
       "Security audit",
       "Lint",
       "Tests & ratchet",
-      "SonarCloud",
       "Docker image gate"
+    ],
+    "advisoryChecks": [
+      "SonarCloud",
+      "SonarCloud Code Analysis"
     ],
     "coverageRatchet": true,
     "maxFileLines": 300
@@ -55,5 +67,11 @@
       "Medium"
     ],
     "fallbackWhenUnavailable": "static-advisory"
+  },
+  "localValidation": {
+    "untrackedAllowlist": [
+      "samples/**"
+    ],
+    "pytestBasetempPattern": ".pytest-tmp-qg-${timestamp}-${pid}"
   }
 }

@@ -234,6 +234,24 @@ function runDockerGate(options = {}) {
 
   const command = buildDockerDoctorCommand({ policy, projectRoot });
   const scriptPath = policy.dockerImageDoctor.scriptPath;
+
+  // dockerImageDoctor existe pra rodar uma ferramenta externa e confiavel (fora do repo
+  // sendo escaneado). policy.json e um arquivo git-tracked -- uma PR pode editar
+  // scriptPath pra apontar pro proprio arquivo que ela mesma adiciona no repo. Recusar
+  // qualquer scriptPath que resolva pra dentro do projeto sendo escaneado fecha essa via
+  // de execucao arbitraria sem quebrar o uso legitimo (a ferramenta real sempre vive
+  // fora do repo). Falha fechado (status failed, nao skipped/fallback) de proposito: e
+  // um controle de seguranca, nao uma indisponibilidade.
+  const resolvedScriptPath = path.resolve(scriptPath);
+  if (resolvedScriptPath === projectRoot || resolvedScriptPath.startsWith(`${projectRoot}${path.sep}`)) {
+    return {
+      status: 'failed',
+      reason: 'dockerImageDoctor.scriptPath resolve para dentro do projeto sendo escaneado (recusado por seguranca)',
+      detection,
+      command,
+    };
+  }
+
   if (!fs.existsSync(scriptPath)) {
     const result = handleUnavailableDoctor({ policy, detection, command });
     if (result.status !== 'skipped') {

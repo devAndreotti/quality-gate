@@ -24,6 +24,8 @@ const {
   parseWorkflowJobNames,
 } = require('./lib/workflow.cjs');
 
+const { displayWidth, padEnd, renderHeaderBox, renderSection } = require('./lib/console-ui.cjs');
+
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
 const REQUIRED_FILES = [
@@ -35,30 +37,24 @@ const REQUIRED_FILES = [
   '.github/dependabot.yml',
   '.github/FUNDING.yml',
   '.github/workflows/quality-gate.yml',
-  'LICENSE',
   'scripts/baseline.json',
   'scripts/babysit-loop.cjs',
   'scripts/bootstrap-repo.cjs',
+  'scripts/check-syntax.cjs',
   'scripts/ci-diagnose.cjs',
   'scripts/configure-project.cjs',
+  'scripts/dependabot-consolidate.cjs',
   'scripts/doctor.cjs',
   'scripts/docker-gate.cjs',
+  'scripts/local-validate.cjs',
   'scripts/pr-snapshot.cjs',
   'scripts/quality-gate.js',
+  'scripts/test-coverage-ci.cjs',
   'scripts/pr-comment.js',
   'scripts/setup.js',
-  'scripts/babysit-loop.test.cjs',
-  'scripts/bootstrap-repo.test.cjs',
-  'scripts/ci-diagnose.test.cjs',
-  'scripts/configure-project.test.cjs',
-  'scripts/e2e-smoke.test.cjs',
-  'scripts/pr-comment.test.cjs',
-  'scripts/quality-gate.test.cjs',
   'scripts/lib/docker-detect.cjs',
   'scripts/lib/policy.cjs',
   'scripts/lib/workflow.cjs',
-  'scripts/pr-snapshot.test.cjs',
-  'scripts/setup.test.cjs',
   'sonar-project.properties',
   '.codex/skills/babysit-pr/SKILL.md',
   '.codex/skills/babysit-pr/references/pr-watcher.md',
@@ -118,6 +114,57 @@ function checkPolicy(root) {
       detail: error.message,
     };
   }
+}
+
+function detectProjectSurfaces(root) {
+  const surfaces = [];
+  if (exists(root, 'pipeline/pyproject.toml')) surfaces.push({ type: 'python-uv', root: 'pipeline' });
+  if (exists(root, 'package.json')) surfaces.push({ type: 'node', root: '.' });
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+    if (exists(root, `${entry.name}/package.json`)) surfaces.push({ type: 'node', root: entry.name });
+  }
+  return surfaces;
+}
+
+function checkProjectSurfaces(root, policy) {
+  const detected = detectProjectSurfaces(root);
+  const declared = policy?.project?.surfaces || [];
+  const declaredKeys = new Set(declared.map((surface) => `${surface.type}:${surface.root.replace(/\\/g, '/')}`));
+  const missing = detected
+    .map((surface) => `${surface.type}:${surface.root}`)
+    .filter((key) => !declaredKeys.has(key));
+
+  return {
+    level: missing.length ? 'warn' : 'ok',
+    name: 'Project surfaces',
+    detail: missing.length
+      ? `surfaces detectadas sem declaracao na policy: ${missing.join(', ')}`
+      : detected.length
+        ? 'surfaces detectadas estao declaradas'
+        : 'nenhuma surface Python/Node detectada',
+    data: { detected, declared },
+  };
+}
+
+function checkWorkflowSurfaces(workflowText, policy) {
+  const names = parseWorkflowJobNames(workflowText);
+  const surfaces = policy?.project?.surfaces || [];
+  const missing = [];
+  if (surfaces.some((surface) => surface.type === 'python-uv' && surface.required) && !names.includes('Python validation')) {
+    missing.push('Python validation');
+  }
+  const hasNodeWorkflow = names.includes('UI validation') || names.includes('Tests & ratchet');
+  if (surfaces.some((surface) => surface.type === 'node' && surface.required) && !hasNodeWorkflow) {
+    missing.push('UI validation');
+  }
+  return {
+    level: missing.length ? 'fail' : 'ok',
+    name: 'Workflow surfaces',
+    detail: missing.length
+      ? `workflow sem job requerido: ${missing.join(', ')}`
+      : 'workflow cobre surfaces requeridas',
+  };
 }
 
 function checkPolicyRequiredChecks(root, policy) {
@@ -231,6 +278,32 @@ function checkModuleMode(root) {
   };
 }
 
+function checkRichTui(root) {
+  const bundles = ['dashboard-tui.mjs', 'menu-tui.mjs'];
+  const missing = bundles.filter((file) => !exists(root, `scripts/${file}`));
+  const hasFallback = exists(root, 'scripts/dashboard.cjs');
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  const nodeOk = nodeMajor >= 22;
+
+  if (!hasFallback) {
+    return { level: 'warn', name: 'TUI rico (ink)', detail: 'dashboard.cjs ausente' };
+  }
+  if (missing.length) {
+    return {
+      level: 'warn',
+      name: 'TUI rico (ink)',
+      detail: `modo texto apenas (${missing.join(', ')} ausente); rode "node scripts/build-tui.mjs" pra gerar`,
+    };
+  }
+  return {
+    level: nodeOk ? 'ok' : 'warn',
+    name: 'TUI rico (ink)',
+    detail: nodeOk
+      ? `qg-dash e o menu (qg) disponiveis em modo rico (Node ${process.versions.node})`
+      : `bundles presentes mas Node ${process.versions.node} < 22; cai pro modo texto`,
+  };
+}
+
 function checkDryRunSupport(root) {
   const setup = readText(root, 'scripts/setup.js');
   const qualityGate = readText(root, 'scripts/quality-gate.js');
@@ -259,6 +332,14 @@ function checkReleaseReadiness(checks) {
   };
 }
 
+function safeCheck(name, fn) {
+  try {
+    return fn();
+  } catch (error) {
+    return { level: 'fail', name, detail: `erro ao rodar checagem: ${error.message}` };
+  }
+}
+
 function analyzeQualityGate(options = {}) {
   const root = options.root || DEFAULT_ROOT;
   const checks = [];
@@ -266,24 +347,25 @@ function analyzeQualityGate(options = {}) {
 
   checks.push(checkRequiredFiles(root));
 
-  if (checks[0].level !== 'fail') {
-    const policyCheck = checkPolicy(root);
-    checks.push(policyCheck);
-    policy = policyCheck.data?.policy ?? null;
-    if (policy) {
-      checks.push(checkPolicyRequiredChecks(root, policy));
-      checks.push(checkPolicyBranchProtection(root, policy));
-    }
-    checks.push(
-      checkSkillSize(root),
-      checkSonarConfigured(root, policy),
-      checkBaseline(root),
-      checkModuleMode(root),
-      checkDryRunSupport(root),
-    );
-    if (options.release) {
-      checks.push(checkReleaseReadiness(checks));
-    }
+  const policyCheck = safeCheck('Policy machine-readable', () => checkPolicy(root));
+  checks.push(policyCheck);
+  policy = policyCheck.data?.policy ?? null;
+  if (policy) {
+    checks.push(safeCheck('Policy vs workflow', () => checkPolicyRequiredChecks(root, policy)));
+    checks.push(safeCheck('Policy vs setup branch protection', () => checkPolicyBranchProtection(root, policy)));
+    checks.push(safeCheck('Project surfaces', () => checkProjectSurfaces(root, policy)));
+    checks.push(safeCheck('Workflow surfaces', () => checkWorkflowSurfaces(readText(root, '.github/workflows/quality-gate.yml'), policy)));
+  }
+  checks.push(
+    safeCheck('SKILL.md <= 500 linhas', () => checkSkillSize(root)),
+    safeCheck('SonarCloud configurado', () => checkSonarConfigured(root, policy)),
+    safeCheck('baseline.json real', () => checkBaseline(root)),
+    safeCheck('Modo de modulo Node', () => checkModuleMode(root)),
+    safeCheck('Dry-run de scripts mutaveis', () => checkDryRunSupport(root)),
+    safeCheck('TUI rico (ink)', () => checkRichTui(root)),
+  );
+  if (options.release) {
+    checks.push(checkReleaseReadiness(checks));
   }
 
   const summary = {
@@ -302,31 +384,38 @@ function statusIcon(level) {
 }
 
 function printReport(result, options = {}) {
-  console.log('\n🔒 Quality Gate Doctor');
-  console.log('════════════════════════\n');
+  console.log('');
+  console.log(renderHeaderBox('Quality Gate Doctor', { icon: '◆' }));
+  console.log('');
 
   if (options.dryRun) {
-    console.log(' ⚠️  --dry-run ativo: auditoria read-only; nenhuma alteracao seria feita de qualquer forma.\n');
+    console.log(' ⚠️  --dry-run ativo: auditoria read-only; nenhuma alteracao seria feita de qualquer forma.');
+    console.log('');
   }
 
+  console.log(renderSection('Checks', '▤'));
+  const nameWidth = Math.max(0, ...result.checks.map((check) => displayWidth(check.name)));
   for (const check of result.checks) {
-    console.log(` ${statusIcon(check.level)} ${check.name}: ${check.detail}`);
+    console.log(`    ${statusIcon(check.level)} ${padEnd(check.name, nameWidth)}  ${check.detail}`);
   }
 
   console.log('');
-  console.log(` Resultado: ${result.summary.ok} ok, ${result.summary.warn} avisos, ${result.summary.fail} falhas`);
+  const summaryIcon = result.summary.fail > 0 ? '❌' : result.summary.warn > 0 ? '⚠️ ' : '✅';
+  console.log(` ${summaryIcon} Resultado: ${result.summary.ok} ok, ${result.summary.warn} avisos, ${result.summary.fail} falhas`);
 }
 
 function main(argv = process.argv.slice(2)) {
+  const rootIndex = argv.indexOf('--root');
   const options = {
     dryRun: argv.includes('--dry-run'),
     json: argv.includes('--json'),
     strict: argv.includes('--strict'),
     release: argv.includes('--release'),
     writeState: argv.includes('--write-state'),
+    root: rootIndex !== -1 ? argv[rootIndex + 1] : null,
   };
 
-  const result = analyzeQualityGate({ release: options.release });
+  const result = analyzeQualityGate({ release: options.release, root: options.root ? path.resolve(options.root) : undefined });
   if (options.writeState && result.policy) {
     const state = buildState(result);
     result.statePath = path.relative(result.root, writeState(result.root, state));
@@ -347,6 +436,9 @@ if (require.main === module) {
 
 module.exports = {
   analyzeQualityGate,
+  checkProjectSurfaces,
+  checkWorkflowSurfaces,
+  detectProjectSurfaces,
   findMissingRequiredContexts,
   parseSetupRequiredContexts,
   parseWorkflowJobNames,
