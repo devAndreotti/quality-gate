@@ -295,3 +295,17 @@ test('buildReadmeScaffold includes machine-readable managed markers', () => {
   assert.match(scaffold, /<!-- quality-gate:readme:start -->/);
   assert.match(scaffold, /<!-- quality-gate:readme:end -->/);
 });
+
+test('runBootstrap detects monorepo surfaces in packages, apps and services', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'apps/web'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'apps/web/package.json'), '{}');
+  fs.mkdirSync(path.join(project, 'services/api'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'services/api/pyproject.toml'), '[project]\nname="api"');
+
+  runBootstrap({ projectRoot: project, policy: loadPolicy() });
+  const policy = JSON.parse(fs.readFileSync(path.join(project, '.quality-gate/policy.json'), 'utf8'));
+  const roots = policy.project.surfaces.map((s) => s.root);
+  assert.ok(roots.includes('apps/web'));
+  assert.ok(roots.includes('services/api'));
+});

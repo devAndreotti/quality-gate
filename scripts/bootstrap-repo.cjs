@@ -237,16 +237,26 @@ function ensureDependabot(context) {
 
 function detectSurfaces(projectRoot) {
   const surfaces = [];
+  const seenRoots = new Set();
+
+  function addSurface(surface) {
+    const normalized = surface.root.replace(/\\/g, '/');
+    if (seenRoots.has(normalized)) return;
+    seenRoots.add(normalized);
+    surfaces.push(surface);
+  }
+
   if (fs.existsSync(path.join(projectRoot, 'pipeline', 'pyproject.toml'))) {
-    surfaces.push({
+    addSurface({
       type: 'python-uv',
       root: 'pipeline',
       required: true,
       coverageJson: '../coverage/coverage.json',
     });
   }
+
   if (fs.existsSync(path.join(projectRoot, 'package.json'))) {
-    surfaces.push({
+    addSurface({
       type: 'node',
       root: '.',
       required: true,
@@ -259,22 +269,40 @@ function detectSurfaces(projectRoot) {
       },
     });
   }
-  for (const entry of fs.readdirSync(projectRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-    if (!fs.existsSync(path.join(projectRoot, entry.name, 'package.json'))) continue;
-    surfaces.push({
-      type: 'node',
-      root: entry.name,
-      required: true,
-      commands: {
-        install: 'npm ci',
-        test: 'npm run test --if-present',
-        lint: 'npm run lint --if-present',
-        build: 'npm run build --if-present',
-        audit: 'npm audit --audit-level=moderate',
-      },
-    });
+
+  // Monorepos: apps/*, packages/*, services/* e pastas de primeiro nivel
+  const scanPrefixes = ['.', 'apps', 'packages', 'services'];
+  for (const prefix of scanPrefixes) {
+    const scanDir = prefix === '.' ? projectRoot : path.join(projectRoot, prefix);
+    if (!fs.existsSync(scanDir) || !fs.statSync(scanDir).isDirectory()) continue;
+    for (const entry of fs.readdirSync(scanDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const relRoot = prefix === '.' ? entry.name : `${prefix}/${entry.name}`;
+      const subDir = path.join(projectRoot, relRoot);
+      if (fs.existsSync(path.join(subDir, 'package.json'))) {
+        addSurface({
+          type: 'node',
+          root: relRoot,
+          required: true,
+          commands: {
+            install: 'npm ci',
+            test: 'npm run test --if-present',
+            lint: 'npm run lint --if-present',
+            build: 'npm run build --if-present',
+            audit: 'npm audit --audit-level=moderate',
+          },
+        });
+      } else if (fs.existsSync(path.join(subDir, 'pyproject.toml'))) {
+        addSurface({
+          type: 'python-uv',
+          root: relRoot,
+          required: true,
+          coverageJson: '../coverage/coverage.json',
+        });
+      }
+    }
   }
+
   return surfaces;
 }
 

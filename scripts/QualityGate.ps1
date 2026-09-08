@@ -13,6 +13,8 @@ param(
     [switch]$Update,
     [switch]$Report,
     [switch]$Dashboard,
+    [switch]$Fix,
+    [string]$Hook,
     [switch]$Help,
 
     # Flags específicas para o -Init
@@ -1098,6 +1100,28 @@ function Invoke-ReportAction {
     & node $gateJs report
 }
 
+function Invoke-HookAction {
+    param([string]$Action = 'install')
+    $hookJs = Join-Path $ProjectRoot 'scripts\git-hooks.cjs'
+    if (-not (Test-Path $hookJs)) {
+        Show-QgNotInstalled -MissingFile 'git-hooks.cjs'
+        return
+    }
+    Write-Host "🪝 Gerenciando git hook pre-push ($Action)..." -ForegroundColor Cyan
+    $forceFlag = if ($Force) { '--force' } else { '' }
+    & node $hookJs $Action --root $ProjectRoot $forceFlag
+}
+
+function Invoke-FixAction {
+    $localValidate = Join-Path $ProjectRoot 'scripts\local-validate.cjs'
+    if (-not (Test-Path $localValidate)) {
+        Show-QgNotInstalled -MissingFile 'local-validate.cjs'
+        return
+    }
+    Write-Host "🛠️  Executando auto-remediation (qg fix)..." -ForegroundColor Cyan
+    & node $localValidate --project $ProjectRoot --fix
+}
+
 function Invoke-LocalValidateAction {
     $localValidate = Join-Path $ProjectRoot "scripts\local-validate.cjs"
     if (-not (Test-Path $localValidate)) {
@@ -1140,6 +1164,8 @@ function Invoke-DashboardAction {
     & node $dashboardJs $ProjectRoot
 }
 
+if ($Fix) { Invoke-FixAction; return }
+if ($Hook) { Invoke-HookAction -Action $Hook; return }
 if ($Doctor) { Invoke-DoctorAction; return }
 if ($Check) { Invoke-CheckAction; return }
 if ($Update) { Invoke-UpdateAction; return }

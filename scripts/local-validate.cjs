@@ -9,6 +9,7 @@ function parseArgs(argv) {
     profile: 'pr',
     scriptsRoot: null,
     dryRun: false,
+    fix: false,
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -20,6 +21,7 @@ function parseArgs(argv) {
     else if (arg === '--scripts-root') args.scriptsRoot = argv[++index];
     else if (arg.startsWith('--scripts-root=')) args.scriptsRoot = arg.slice('--scripts-root='.length);
     else if (arg === '--dry-run') args.dryRun = true;
+    else if (arg === '--fix' || arg === 'fix') args.fix = true;
     else if (arg === '--json') args.json = true;
   }
   return args;
@@ -81,6 +83,72 @@ function buildSpawnInvocation(step, platform = process.platform, env = process.e
 
 function displayPath(filePath) {
   return String(filePath || '').replace(/\\/g, '/');
+}
+
+function buildFixPlan(options = {}) {
+  const projectRoot = path.resolve(options.projectRoot || process.cwd());
+  const pipelineRoot = path.join(projectRoot, 'pipeline');
+  const commands = [];
+
+  if (exists(path.join(pipelineRoot, 'pyproject.toml'))) {
+    commands.push(
+      command('ruff-fix', pipelineRoot, 'uvx ruff check --fix src tests', {
+        file: 'uvx',
+        args: ['ruff', 'check', '--fix', 'src', 'tests'],
+      }),
+      command('ruff-format', pipelineRoot, 'uvx ruff format src tests', {
+        file: 'uvx',
+        args: ['ruff', 'format', 'src', 'tests'],
+      }),
+    );
+  }
+
+  for (const surface of detectNodeSurfaces(projectRoot)) {
+    const pkgPath = path.join(surface.root, 'package.json');
+    if (exists(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (pkg.scripts && pkg.scripts.lint) {
+        commands.push(
+          command('node:lint-fix', surface.root, 'npm run lint -- --fix', {
+            file: 'npm',
+            args: ['run', 'lint', '--', '--fix'],
+          }),
+        );
+      }
+      if (pkg.scripts && pkg.scripts.format) {
+        commands.push(
+          command('node:format', surface.root, 'npm run format', {
+            file: 'npm',
+            args: ['run', 'format'],
+          }),
+        );
+      }
+    }
+  }
+
+  return { project: projectRoot, commands };
+}
+
+function runAutoFix(options = {}) {
+  const plan = buildFixPlan(options);
+  const executor = options.executor || defaultExecutor;
+  const results = [];
+
+  for (const step of plan.commands) {
+    if (options.dryRun) {
+      results.push({ name: step.name, commandLine: step.commandLine, status: 'planned' });
+    } else {
+      const execResult = executor(step);
+      results.push({
+        name: step.name,
+        commandLine: step.commandLine,
+        exitCode: execResult.exitCode,
+        status: execResult.exitCode === 0 ? 'fixed' : 'failed',
+      });
+    }
+  }
+
+  return { project: plan.project, actions: results };
 }
 
 function buildValidationPlan(options = {}) {
@@ -384,6 +452,18 @@ function printHuman(result) {
 
 function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
+  if (args.fix) {
+    const fixResult = runAutoFix({ projectRoot: args.project, dryRun: args.dryRun });
+    if (args.json) console.log(JSON.stringify(fixResult, null, 2));
+    else {
+      console.log('\nQuality Gate Auto-Fix');
+      console.log('=====================\n');
+      for (const a of fixResult.actions) {
+        console.log(`[${a.status.toUpperCase()}] ${a.name}: ${a.commandLine}`);
+      }
+    }
+    return;
+  }
   const result = runLocalValidation({
     projectRoot: args.project,
     profile: args.profile,
@@ -405,6 +485,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildFixPlan,
+  runAutoFix,
   buildSpawnInvocation,
   buildValidationPlan,
   isCoverageFresh,

@@ -6,8 +6,10 @@ const test = require('node:test');
 
 const {
   buildSpawnInvocation,
+  buildFixPlan,
   buildValidationPlan,
   parseArgs,
+  runAutoFix,
   runLocalValidation,
 } = require('./local-validate.cjs');
 
@@ -194,4 +196,31 @@ test('stale coverage after pytest success fails before qg-chk', () => {
   assert.equal(result.status, 'failure');
   assert.match(result.error, /coverage.*stale/i);
   assert.ok(result.commands.find((command) => command.name === 'quality-gate-check').skipped);
+});
+
+test('buildFixPlan detects fixers for python and node surfaces', () => {
+  const root = tempProject();
+  fs.mkdirSync(path.join(root, 'pipeline'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'pipeline/pyproject.toml'), '[project]\nname = "app"');
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    scripts: { lint: 'eslint .', format: 'prettier --write .' }
+  }));
+
+  const plan = buildFixPlan({ projectRoot: root });
+  assert.equal(plan.commands.length, 4);
+  assert.deepEqual(plan.commands.map((c) => c.name), ['ruff-fix', 'ruff-format', 'node:lint-fix', 'node:format']);
+});
+
+test('runAutoFix executes fix commands or plans dry-run', () => {
+  const root = tempProject();
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    scripts: { lint: 'eslint .' }
+  }));
+
+  const dryRun = runAutoFix({ projectRoot: root, dryRun: true });
+  assert.equal(dryRun.actions[0].status, 'planned');
+
+  const mockExecutor = () => ({ exitCode: 0, stdout: 'fixed', stderr: '' });
+  const executed = runAutoFix({ projectRoot: root, dryRun: false, executor: mockExecutor });
+  assert.equal(executed.actions[0].status, 'fixed');
 });
