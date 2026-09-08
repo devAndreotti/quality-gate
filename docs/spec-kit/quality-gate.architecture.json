@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Quality Gate — Deterministic Quality Orchestration & CI Gatekeeper",
+    "subtitle": "PowerShell Operator, Dual-Mode Terminal TUI, Multi-Stack Ratchet Battery, PR Babysit Loop & GitHub Actions",
+    "output": "docs/spec-kit/quality-gate.architecture.html",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "local-workflow",
+        "label": "Local Validation & TUI Flow",
+        "focus": ["qg_cli", "rich_tui", "local_validator", "ratchet_engine", "docker_gate"],
+        "note": "Local developer flow executing pre-push validation and upward-only coverage ratchet."
+      },
+      {
+        "id": "babysit-pipeline",
+        "label": "PR Snapshot & Babysit-PR Loop",
+        "focus": ["pr_snapshot", "ci_diagnose", "babysit_loop", "github_actions", "sticky_reporter"],
+        "note": "Autonomous PR babysit loop diagnosing CI failures and posting sticky reports."
+      },
+      {
+        "id": "cloud-governance",
+        "label": "Cloud CI & SonarCloud Governance",
+        "focus": ["policy_engine", "github_actions", "sonar_copilot", "sticky_reporter"],
+        "note": "Automated 6-job CI matrix enforcing policy rulesets and cloud quality gates."
+      }
+    ]
+  },
+  "components": [
+    { "id": "qg_cli", "type": "backend", "label": "QualityGate CLI", "sublabel": "PowerShell 7+ / Aliases", "pos": [60, 100], "size": [160, 64], "tag": "cli" },
+    { "id": "policy_engine", "type": "backend", "label": "Policy & Scaffolder", "sublabel": "policy.json / bootstrap", "pos": [60, 300], "size": [160, 64], "tag": "policy" },
+    { "id": "doctor_service", "type": "security", "label": "Doctor & Audit", "sublabel": "doctor.cjs / compliance", "pos": [60, 500], "size": [160, 64], "tag": "audit" },
+    
+    { "id": "rich_tui", "type": "frontend", "label": "Rich Ink/React TUI", "sublabel": "menu & dashboard bundles", "pos": [320, 100], "size": [160, 64], "tag": "tui" },
+    { "id": "fallback_tui", "type": "frontend", "label": "Zero-Dep Plain TUI", "sublabel": "dashboard.cjs / stdlib", "pos": [320, 300], "size": [160, 64], "tag": "tui" },
+
+    { "id": "local_validator", "type": "backend", "label": "Local Validator", "sublabel": "local-validate.cjs", "pos": [600, 100], "size": [160, 64], "tag": "validation" },
+    { "id": "ratchet_engine", "type": "backend", "label": "Ratchet Engine", "sublabel": "quality-gate.js / baseline", "pos": [600, 300], "size": [160, 64], "tag": "ratchet" },
+    { "id": "docker_gate", "type": "security", "label": "Docker Gate", "sublabel": "Docker Image Doctor", "pos": [600, 500], "size": [160, 64], "tag": "docker" },
+
+    { "id": "pr_snapshot", "type": "backend", "label": "PR Snapshot", "sublabel": "pr-snapshot.cjs / GraphQL", "pos": [880, 100], "size": [160, 64], "tag": "pr" },
+    { "id": "ci_diagnose", "type": "backend", "label": "CI Classifier", "sublabel": "ci-diagnose.cjs / recipes", "pos": [880, 300], "size": [160, 64], "tag": "diagnosis" },
+    { "id": "babysit_loop", "type": "backend", "label": "Babysit-PR Loop", "sublabel": "babysit-loop / Codex", "pos": [880, 500], "size": [160, 64], "tag": "loop" },
+
+    { "id": "github_actions", "type": "cloud", "label": "GitHub Actions", "sublabel": "6 Parallel CI Jobs", "pos": [1160, 100], "size": [160, 64], "tag": "ci" },
+    { "id": "sticky_reporter", "type": "external", "label": "Sticky Reporter", "sublabel": "pr-comment.js / report", "pos": [1160, 300], "size": [160, 64], "tag": "github" },
+    { "id": "sonar_copilot", "type": "cloud", "label": "Sonar & Copilot", "sublabel": "Cloud Scans & Review", "pos": [1160, 500], "size": [160, 64], "tag": "quality" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Local Operator & Policy Core", "wraps": ["qg_cli", "policy_engine", "doctor_service"] },
+    { "kind": "security-group", "label": "Terminal Presentation Layer", "wraps": ["rich_tui", "fallback_tui"] },
+    { "kind": "region", "label": "Local Ratchet & Validation Battery", "wraps": ["local_validator", "ratchet_engine", "docker_gate"] },
+    { "kind": "region", "label": "PR Snapshot & Babysit Engine", "wraps": ["pr_snapshot", "ci_diagnose", "babysit_loop"] },
+    { "kind": "region", "label": "External Cloud & CI Services", "wraps": ["github_actions", "sticky_reporter", "sonar_copilot"] }
+  ],
+  "connections": [
+    { "from": "qg_cli", "to": "rich_tui", "label": "interactive TUI", "variant": "emphasis", "labelAt": [270, 120] },
+    { "from": "qg_cli", "to": "fallback_tui", "label": "fallback mode", "variant": "dashed", "labelAt": [270, 240] },
+    { "from": "qg_cli", "to": "policy_engine", "label": "load contract", "route": "straight", "labelAt": [140, 230] },
+    { "from": "policy_engine", "to": "doctor_service", "label": "audit policy", "route": "straight", "labelAt": [140, 430] },
+    { "from": "rich_tui", "to": "local_validator", "label": "run validation", "variant": "emphasis", "labelAt": [540, 120] },
+    { "from": "local_validator", "to": "ratchet_engine", "label": "ratchet coverage", "route": "straight", "labelAt": [680, 230] },
+    { "from": "ratchet_engine", "to": "docker_gate", "label": "audit Docker", "route": "straight", "variant": "dashed", "labelAt": [680, 430] },
+    { "from": "local_validator", "to": "pr_snapshot", "label": "snapshot branch", "variant": "emphasis", "labelAt": [820, 120] },
+    { "from": "pr_snapshot", "to": "ci_diagnose", "label": "parse failures", "route": "straight", "labelAt": [960, 230] },
+    { "from": "ci_diagnose", "to": "babysit_loop", "label": "remediation recipes", "route": "straight", "variant": "emphasis", "labelAt": [960, 430] },
+    { "from": "pr_snapshot", "to": "github_actions", "label": "query check runs", "variant": "emphasis", "labelAt": [1100, 120] },
+    { "from": "github_actions", "to": "sticky_reporter", "label": "post summary", "route": "straight", "labelAt": [1240, 230] },
+    { "from": "sticky_reporter", "to": "sonar_copilot", "label": "quality scans", "route": "straight", "labelAt": [1240, 430] }
+  ]
+}

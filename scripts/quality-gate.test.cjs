@@ -9,6 +9,7 @@ const {
   filterGitStatusEntries,
   isPathAllowedByPattern,
   parseArgs,
+  renderWorkflowAnnotations,
   runQualityGate,
 } = require('./quality-gate.js');
 
@@ -164,4 +165,19 @@ test('untracked allowlist ignores samples without hiding tracked modifications',
   ], ['samples/**']);
 
   assert.deepEqual(filtered, [' M samples/tracked.json', '?? scratch.txt']);
+});
+
+test('renderWorkflowAnnotations outputs GitHub Actions ::error commands when in CI', () => {
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (msg) => logs.push(msg);
+  process.env.GITHUB_ACTIONS = 'true';
+  try {
+    renderWorkflowAnnotations([{ group: 'Coverage', metric: 'lines', baseline: 80, current: 75 }]);
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /^::error title=Quality Gate: Coverage - lines::/);
+  } finally {
+    console.log = originalLog;
+    delete process.env.GITHUB_ACTIONS;
+  }
 });

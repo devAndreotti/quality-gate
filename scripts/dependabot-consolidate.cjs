@@ -15,11 +15,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function splitRepo(repo) {
-  const [owner, name] = String(repo || '').split('/');
-  if (!owner || !name) throw new Error('--repo precisa estar no formato owner/repo');
-  return { owner, name };
-}
+const { splitRepo } = require('./lib/github.cjs');
 
 async function githubJson(apiPath, env = process.env) {
   const token = env.GITHUB_TOKEN || env.GH_TOKEN || '';

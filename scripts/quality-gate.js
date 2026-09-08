@@ -252,6 +252,15 @@ function toMetricsTableRows(rows) {
   ]);
 }
 
+function renderWorkflowAnnotations(failures = []) {
+  if (!process.env.GITHUB_ACTIONS && !process.env.CI) return;
+  for (const failure of failures) {
+    const title = `Quality Gate: ${failure.group} - ${failure.metric}`;
+    const message = `Regressao detectada: baseline ${failure.baseline} vs atual ${failure.current}`;
+    console.log(`::error title=${title}::${message}`);
+  }
+}
+
 function printReport(result) {
   console.log('\nQuality Gate — Ratchet\n');
   if ((result.rows || []).length > 0) {
@@ -260,6 +269,7 @@ function printReport(result) {
   // check e report leem o mesmo compareMetrics; a unica diferenca real e o exit code
   // (main() abaixo). Essa linha final deixa isso visivel pra quem so olha o terminal.
   if (result.command === 'check') {
+    if (result.status === 'failed') renderWorkflowAnnotations(result.failures);
     console.log('');
     console.log(result.status === 'failed'
       ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`
@@ -293,6 +303,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  renderWorkflowAnnotations,
   buildUpdatedBaseline,
   compareMetrics,
   filterGitStatusEntries,

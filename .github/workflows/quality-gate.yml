@@ -24,9 +24,9 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -61,9 +61,9 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -72,7 +72,7 @@ jobs:
         continue-on-error: false
 
       - name: Upload ESLint report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: eslint-report
@@ -86,11 +86,11 @@ jobs:
     name: Tests & ratchet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # histórico completo para diff de cobertura
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -110,7 +110,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload coverage (agente babysit lê daqui)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
@@ -128,16 +128,16 @@ jobs:
     # Pula em push direto na main (sem PR) para não gastar créditos
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # SonarCloud precisa do histórico completo
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Baixar coverage do job anterior
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: coverage-report
           path: coverage/
@@ -157,7 +157,7 @@ jobs:
 
       - name: SonarCloud scan
         if: steps.sonar-config.outputs.enabled == 'true'
-        uses: SonarSource/sonarqube-scan-action@v8
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,9 +178,9 @@ jobs:
     name: Docker image gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -188,7 +188,7 @@ jobs:
         run: node scripts/docker-gate.cjs --project . --json
 
       - name: Upload Docker gate report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: docker-gate-report
@@ -210,14 +210,14 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Baixar coverage (para incluir métricas no comentário)
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: coverage-report
           path: coverage/
