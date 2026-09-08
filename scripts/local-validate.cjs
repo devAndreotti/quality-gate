@@ -241,6 +241,12 @@ function buildValidationPlan(options = {}) {
   }
 
   commands.push(
+        command('secret-scan', projectRoot, 'node scripts/secret-scan.cjs --all', {
+      artifact: path.join(reportsRoot, 'secret-scan.log'),
+      file: process.execPath,
+      args: [path.join(scriptsRoot, 'secret-scan.cjs'), '--all'],
+      requiresFile: path.join(scriptsRoot, 'secret-scan.cjs'),
+    }),
     command('quality-gate-check', projectRoot, 'node scripts/quality-gate.js check', {
       artifact: path.join(reportsRoot, 'quality-gate-check.log'),
       file: process.execPath,

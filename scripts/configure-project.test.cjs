@@ -154,3 +154,13 @@ test('configureProject writes node workflow for consumer project commands', () =
   assert.match(sonar, /sonar\.javascript\.lcov\.reportPaths=coverage\/lcov\.info/);
   assert.match(sonar, /sonar\.exclusions=.*scripts\/\*\*/);
 });
+
+test('detectProjectProfile detects rust Cargo.toml and go go.mod', () => {
+  const rustDir = tempProject();
+  fs.writeFileSync(path.join(rustDir, 'Cargo.toml'), '[package]\nname="sample"');
+  assert.equal(detectProjectProfile(rustDir).name, 'rust');
+
+  const goDir = tempProject();
+  fs.writeFileSync(path.join(goDir, 'go.mod'), 'module sample');
+  assert.equal(detectProjectProfile(goDir).name, 'go');
+});

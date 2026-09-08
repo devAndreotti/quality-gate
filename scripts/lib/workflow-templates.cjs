@@ -445,6 +445,9 @@ function pythonSonarProperties(current, projectDir) {
 
 
 module.exports = {
+  dotnetWorkflow,
+  goWorkflow,
+  rustWorkflow,
   REQUIRED_CHECKS,
   requiredChecks,
   nodeSonarProperties,
@@ -453,3 +456,107 @@ module.exports = {
   pythonSonarProperties,
   pythonWorkflow,
 };
+
+
+function rustWorkflow(projectDir = '.') {
+  const wd = projectDir === '.' ? '.' : projectDir;
+  return [
+    '# quality-gate:managed-workflow version 1',
+    'name: Quality Gate (Rust)',
+    '',
+    'on:',
+    '  pull_request:',
+    '    types: [opened, synchronize, reopened]',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'permissions:',
+    '  contents: read',
+    '',
+    'jobs:',
+    '  test:',
+    '    name: Tests & ratchet',
+    '    runs-on: ubuntu-latest',
+    '    defaults:',
+    '      run:',
+    `        working-directory: ${wd}`,
+    '    steps:',
+    '      - uses: actions/checkout@v4',
+    '      - uses: dtolnay/rust-toolchain@stable',
+    '        with:',
+    '          components: clippy, llvm-tools-preview',
+    '      - name: Rust tests',
+    '        run: cargo test --all',
+    '      - name: Clippy linter',
+    '        run: cargo clippy --all-targets -- -D warnings',
+    '',
+  ].join('\n');
+}
+
+function goWorkflow(projectDir = '.') {
+  const wd = projectDir === '.' ? '.' : projectDir;
+  return [
+    '# quality-gate:managed-workflow version 1',
+    'name: Quality Gate (Go)',
+    '',
+    'on:',
+    '  pull_request:',
+    '    types: [opened, synchronize, reopened]',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'permissions:',
+    '  contents: read',
+    '',
+    'jobs:',
+    '  test:',
+    '    name: Tests & ratchet',
+    '    runs-on: ubuntu-latest',
+    '    defaults:',
+    '      run:',
+    `        working-directory: ${wd}`,
+    '    steps:',
+    '      - uses: actions/checkout@v4',
+    '      - uses: actions/setup-go@v5',
+    '        with:',
+    '          go-version: "1.22"',
+    '      - name: Go tests & coverage',
+    '        run: go test -v -coverprofile=coverage.out ./...',
+    '',
+  ].join('\n');
+}
+
+function dotnetWorkflow(projectDir = '.') {
+  const wd = projectDir === '.' ? '.' : projectDir;
+  return [
+    '# quality-gate:managed-workflow version 1',
+    'name: Quality Gate (.NET)',
+    '',
+    'on:',
+    '  pull_request:',
+    '    types: [opened, synchronize, reopened]',
+    '  push:',
+    '    branches: [main]',
+    '',
+    'permissions:',
+    '  contents: read',
+    '',
+    'jobs:',
+    '  test:',
+    '    name: Tests & ratchet',
+    '    runs-on: ubuntu-latest',
+    '    defaults:',
+    '      run:',
+    `        working-directory: ${wd}`,
+    '    steps:',
+    '      - uses: actions/checkout@v4',
+    '      - uses: actions/setup-dotnet@v4',
+    '        with:',
+    '          dotnet-version: "8.0.x"',
+    '      - name: .NET test',
+    '        run: dotnet test',
+    '      - name: .NET format check',
+    '        run: dotnet format --verify-no-changes',
+    '',
+  ].join('\n');
+}
