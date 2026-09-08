@@ -52,6 +52,12 @@ function detectProjectProfile(projectRoot) {
   if (exists(projectRoot, 'pipeline/pyproject.toml')) {
     return { name: 'python-uv', projectDir: 'pipeline', detail: 'pipeline/pyproject.toml' };
   }
+  if (exists(projectRoot, 'Cargo.toml')) {
+    return { name: 'rust', projectDir: '.', detail: 'Cargo.toml' };
+  }
+  if (exists(projectRoot, 'go.mod')) {
+    return { name: 'go', projectDir: '.', detail: 'go.mod' };
+  }
   return { name: 'unknown', projectDir: '.', detail: 'stack nao detectada' };
 }
 
