@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Quality Gate Architecture",
+    "subtitle": "Deterministic gating, multi-surface policies, baseline ratcheting and local PR validation",
+    "quality_profile": "showcase",
+    "views": [
+      { "id": "cli-flow", "label": "CLI to Validation", "focus": ["cli", "doctor", "policy", "local_runner"], "note": "Developer interface to policy and validation" },
+      { "id": "ratchet-flow", "label": "Ratchet and CI", "focus": ["local_runner", "ratchet", "baseline_db", "github_ci"], "note": "Metrics evaluation and CI enforcement" }
+    ]
+  },
+  "components": [
+    { "id": "cli", "type": "frontend", "label": "QualityGate CLI", "sublabel": "PowerShell & Rich Ink TUI", "pos": [40, 260], "size": [150, 60] },
+    { "id": "doctor", "type": "backend", "label": "Doctor Engine", "sublabel": "doctor.cjs", "pos": [270, 130], "size": [150, 60] },
+    { "id": "local_runner", "type": "backend", "label": "Local PR Runner", "sublabel": "local-validate.cjs", "pos": [270, 260], "size": [150, 60] },
+    { "id": "policy", "type": "backend", "label": "Policy Validator", "sublabel": "lib/policy.cjs", "pos": [500, 130], "size": [150, 60] },
+    { "id": "docker_gate", "type": "security", "label": "Docker Gate", "sublabel": "docker-gate.cjs", "pos": [500, 260], "size": [150, 60] },
+    { "id": "ratchet", "type": "backend", "label": "Ratchet Evaluator", "sublabel": "quality-gate.js", "pos": [730, 260], "size": [150, 60] },
+    { "id": "baseline_db", "type": "database", "label": "Baseline Store", "sublabel": "baseline.json", "pos": [730, 130], "size": [150, 60] },
+    { "id": "github_ci", "type": "cloud", "label": "GitHub Actions", "sublabel": "PR Snapshot & Comment", "pos": [960, 260], "size": [150, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Quality Gate Runtime", "wraps": ["doctor", "local_runner", "policy", "docker_gate", "ratchet", "baseline_db"] }
+  ],
+  "connections": [
+    { "id": "cli-to-doc", "from": "cli", "to": "doctor", "label": "qg-doc", "fromSide": "top", "toSide": "left" },
+    { "id": "cli-to-val", "from": "cli", "to": "local_runner", "label": "validate", "variant": "emphasis" },
+    { "id": "doc-to-pol", "from": "doctor", "to": "policy", "label": "audit" },
+    { "id": "val-to-dock", "from": "local_runner", "to": "docker_gate", "label": "scan" },
+    { "id": "dock-to-ratch", "from": "docker_gate", "to": "ratchet", "label": "metrics" },
+    { "id": "ratch-to-base", "from": "ratchet", "to": "baseline_db", "label": "ratchet", "fromSide": "top", "toSide": "bottom" },
+    { "id": "ratch-to-gh", "from": "ratchet", "to": "github_ci", "label": "CI report", "variant": "emphasis", "labelDy": -20 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Developer Tooling", "items": ["Interactive CLI and rich terminal dashboard", "Automated pre-flight doctor diagnostics"] },
+    { "dot": "emerald", "title": "Ratchet Assurance", "items": ["Monotonically increasing coverage baseline", "Strict policy validation for multi-surface repos"] },
+    { "dot": "rose", "title": "Security & Gate", "items": ["Isolated non-interactive Docker audits", "Deterministic PR status and sticky comments"] }
+  ]
+}
