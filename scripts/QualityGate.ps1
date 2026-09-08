@@ -135,6 +135,8 @@ function Show-Help {
         [pscustomobject]@{ Command = 'qg-upd'; Aliases = 'qg -Update'; Description = 'atualiza o baseline de métricas' }
         [pscustomobject]@{ Command = 'qg-rpt'; Aliases = 'qg -Report'; Description = 'só consulta o relatório, nunca falha' }
         [pscustomobject]@{ Command = 'qg-dash'; Aliases = 'qg -Dashboard'; Description = 'painel ao vivo, refresh a cada 5s ([q] sai)' }
+        [pscustomobject]@{ Command = 'qg-fix'; Aliases = 'qg -Fix'; Description = 'auto-remediation: executa linters/formatters em modo fix' }
+        [pscustomobject]@{ Command = 'qg-hook'; Aliases = 'qg -Hook <install|uninstall>'; Description = 'gerencia hook pre-push do git' }
     )
     Write-Host ''
 
@@ -152,7 +154,7 @@ function Show-Help {
     )
     Write-Host ''
 
-    Write-QgHint -Text 'uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt'
+    Write-QgHint -Text 'uso: qg-init | qg-chk | qg-upd | qg-doc | qg-rpt | qg-fix | qg-hook'
     Write-QgHint -Text 'atalhos: qg-init [-Yes] [-Sonar] [-SkipCodex] [-SkipBaseline] [-SkipCommit] [-SkipGitHub] [-DryRun] [-Force] [-Repo <slug>]'
     Write-Host ''
 }
@@ -612,6 +614,8 @@ function Invoke-QgMenu {
             [pscustomobject]@{ Opcao = 'G'; Acao = 'Setup GitHub remote policy' }
             [pscustomobject]@{ Opcao = 'S'; Acao = 'PR snapshot' }
             [pscustomobject]@{ Opcao = 'B'; Acao = 'Babysit PR once' }
+            [pscustomobject]@{ Opcao = 'F'; Acao = 'Auto-fix (remediação automática)' }
+            [pscustomobject]@{ Opcao = 'K'; Acao = 'Git hook pre-push (install/status)' }
             [pscustomobject]@{ Opcao = 'R'; Acao = 'Show report' }
             [pscustomobject]@{ Opcao = 'P'; Acao = 'Painel ao vivo (dashboard)' }
             [pscustomobject]@{ Opcao = 'H'; Acao = 'Help' }
@@ -688,6 +692,8 @@ function Invoke-QgMenu {
             & node $babysitJs --pr $prNumber --once
         }
         'R' { Invoke-ReportAction }
+        'F' { Invoke-FixAction }
+        'K' { Invoke-HookAction -Action 'install' }
         'P' { Invoke-DashboardAction }
         'H' { Show-Help }
         default { Write-Warning "Opção '$selection' inválida." }
