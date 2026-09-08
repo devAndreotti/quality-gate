@@ -37,6 +37,7 @@
   - [x] Bundle single-file ESM artifacts via `scripts/build-tui.mjs` and `esbuild`
 
 - [x] **Phase 6: Quality Gate & Test Battery**
-  - [x] 125/125 Node test runner suites passing (`node --test scripts/*.test.cjs`)
+  - [x] 135/135 Node test runner tests passing (`node --test scripts/*.test.cjs`)
   - [x] Zero-dependency contract verified on consumer projects
-  - [x] Spec-Kit and Archify diagram synchronization
+  - [x] Spec-Kit and Archify diagram synchronization (`docs/architecture/quality-gate-architecture.html`)
+  - [x] Refactoring & deduplication: extracted `workflow-templates.cjs` and unified github helpers
