@@ -44,7 +44,16 @@ test("github lib parses remote URLs and splits repo correctly", () => {
   assert.equal(detectRepoFromGit(process.cwd(), failExec), null);
 
   assert.equal(resolveRepo({ repo: "my-owner/my-repo" }), "my-owner/my-repo");
-  assert.throws(() => resolveRepo({ repo: null, cwd: "/non-existent", execFileSync: failExec }), /--repo ou GITHUB_REPOSITORY requerido/);
+
+  // GITHUB_REPOSITORY pode estar definida no ambiente (ex: GitHub Actions);
+  // remove para validar o caminho de erro quando não há repo nem git.
+  const savedGithubRepository = process.env.GITHUB_REPOSITORY;
+  delete process.env.GITHUB_REPOSITORY;
+  try {
+    assert.throws(() => resolveRepo({ repo: null, cwd: "/non-existent", execFileSync: failExec }), /--repo ou GITHUB_REPOSITORY requerido/);
+  } finally {
+    if (savedGithubRepository !== undefined) process.env.GITHUB_REPOSITORY = savedGithubRepository;
+  }
 });
 
 test("policy lib validates policies, catches schema errors and handles state", () => {
