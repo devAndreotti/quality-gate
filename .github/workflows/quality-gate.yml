@@ -22,11 +22,11 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   security:
     name: Security audit
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -59,11 +59,11 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -84,13 +84,13 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   test:
     name: Tests & ratchet
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # histórico completo para diff de cobertura
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -123,7 +123,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   sonar:
     name: SonarCloud
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     needs: test
     # Pula em push direto na main (sem PR) para não gastar créditos
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
@@ -132,7 +132,7 @@ jobs:
         with:
           fetch-depth: 0  # SonarCloud precisa do histórico completo
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -176,11 +176,11 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   docker:
     name: Docker image gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
@@ -202,7 +202,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   report:
     name: PR report
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
     needs: [security, lint, test, sonar, docker]
     if: always() && github.event_name == 'pull_request'
     permissions:
@@ -212,7 +212,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
 
