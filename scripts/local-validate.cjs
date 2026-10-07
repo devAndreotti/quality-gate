@@ -47,6 +47,29 @@ function detectNodeSurfaces(projectRoot) {
   return surfaces;
 }
 
+// Gerenciador de pacotes pelo lockfile: `npm ci`/`npm audit` exigem
+// package-lock e falham num repo yarn/pnpm. Yarn 2+ (Berry) tem .yarnrc.yml.
+function detectPackageManager(root) {
+  if (exists(path.join(root, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (exists(path.join(root, 'yarn.lock'))) return exists(path.join(root, '.yarnrc.yml')) ? 'yarn' : 'yarn1';
+  return 'npm';
+}
+
+const NODE_COMMANDS = {
+  npm: { bin: 'npm', install: ['ci'], run: (script) => ['run', script, '--if-present'], audit: ['audit', '--audit-level=moderate'] },
+  pnpm: { bin: 'pnpm', install: ['install', '--frozen-lockfile'], run: (script) => ['run', '--if-present', script], audit: ['audit', '--audit-level', 'moderate'] },
+  yarn: { bin: 'yarn', install: ['install', '--immutable'], run: (script) => ['run', script], audit: ['npm', 'audit', '--all', '--recursive', '--severity', 'moderate'] },
+  yarn1: { bin: 'yarn', install: ['install', '--frozen-lockfile'], run: (script) => ['run', script], audit: ['audit', '--level', 'moderate'] },
+};
+
+function packageScripts(root) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).scripts || {};
+  } catch {
+    return {};
+  }
+}
+
 function command(name, cwd, commandLine, extra = {}) {
   return {
     name,
@@ -58,13 +81,15 @@ function command(name, cwd, commandLine, extra = {}) {
   };
 }
 
+const WINDOWS_SHIMS = ['npm', 'npx', 'pnpm', 'yarn', 'uv', 'uvx'];
+
 function executable(name, platform = process.platform) {
   if (platform !== 'win32') return name;
-  return ['npm', 'uv', 'uvx'].includes(name) ? `${name}.cmd` : name;
+  return WINDOWS_SHIMS.includes(name) ? `${name}.cmd` : name;
 }
 
 function isWindowsCommandShim(name, platform = process.platform) {
-  return platform === 'win32' && ['npm', 'uv', 'uvx'].includes(name);
+  return platform === 'win32' && WINDOWS_SHIMS.includes(name);
 }
 
 function buildSpawnInvocation(step, platform = process.platform, env = process.env) {
@@ -206,38 +231,23 @@ function buildValidationPlan(options = {}) {
   }
 
   for (const surface of detectNodeSurfaces(projectRoot)) {
-    commands.push(
-      command('node:install', surface.root, 'npm ci', {
-        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-ci.log`),
+    const pm = detectPackageManager(surface.root);
+    const tool = NODE_COMMANDS[pm];
+    const scripts = packageScripts(surface.root);
+    const step = (name, args, label) =>
+      command(name, surface.root, [tool.bin, ...args].join(' '), {
+        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-${tool.bin}-${label}.log`),
         surface: 'node',
-        file: 'npm',
-        args: ['ci'],
-      }),
-      command('node:test', surface.root, 'npm run test --if-present', {
-        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-test.log`),
-        surface: 'node',
-        file: 'npm',
-        args: ['run', 'test', '--if-present'],
-      }),
-      command('node:lint', surface.root, 'npm run lint --if-present', {
-        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-lint.log`),
-        surface: 'node',
-        file: 'npm',
-        args: ['run', 'lint', '--if-present'],
-      }),
-      command('node:build', surface.root, 'npm run build --if-present', {
-        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-build.log`),
-        surface: 'node',
-        file: 'npm',
-        args: ['run', 'build', '--if-present'],
-      }),
-      command('node:audit', surface.root, 'npm audit --audit-level=moderate', {
-        artifact: path.join(reportsRoot, `${path.basename(surface.root)}-npm-audit.log`),
-        surface: 'node',
-        file: 'npm',
-        args: ['audit', '--audit-level=moderate'],
-      }),
-    );
+        file: tool.bin,
+        args,
+      });
+
+    commands.push(step('node:install', tool.install, 'install'));
+    // Yarn não tem --if-present: só roda o script que existe.
+    for (const script of ['test', 'lint', 'build']) {
+      if (pm === 'npm' || pm === 'pnpm' || scripts[script]) commands.push(step(`node:${script}`, tool.run(script), script));
+    }
+    commands.push(step('node:audit', tool.audit, 'audit'));
   }
 
   commands.push(
