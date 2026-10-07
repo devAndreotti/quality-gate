@@ -257,7 +257,10 @@ function buildValidationPlan(options = {}) {
       args: [path.join(scriptsRoot, 'secret-scan.cjs'), '--all'],
       requiresFile: path.join(scriptsRoot, 'secret-scan.cjs'),
     }),
+    // Repo de empresa não recebe o qg-init: sem baseline/cobertura nem os
+    // arquivos do Quality Gate, ratchet e doctor só informam, não reprovam.
     command('quality-gate-check', projectRoot, 'node scripts/quality-gate.js check', {
+      required: profile !== 'company',
       artifact: path.join(reportsRoot, 'quality-gate-check.log'),
       file: process.execPath,
       args: [path.join(scriptsRoot, 'quality-gate.js'), 'check'],
@@ -265,6 +268,7 @@ function buildValidationPlan(options = {}) {
       requiresFreshCoverage: exists(path.join(pipelineRoot, 'pyproject.toml')),
     }),
     command('quality-gate-doctor', projectRoot, 'node scripts/doctor.cjs --dry-run --root .', {
+      required: profile !== 'company',
       artifact: path.join(reportsRoot, 'quality-gate-doctor.log'),
       file: process.execPath,
       args: [path.join(scriptsRoot, 'doctor.cjs'), '--dry-run', '--root', projectRoot],
@@ -374,6 +378,7 @@ function createValidationResult(plan, options) {
       cwd: step.cwd,
       commandLine: step.commandLine,
       artifact: step.artifact,
+      required: step.required,
       exitCode: null,
       durationMs: null,
     })),
@@ -461,7 +466,9 @@ function printHuman(result) {
   console.log(`Project: ${result.project}`);
   console.log(`Status: ${result.status}`);
   for (const step of result.commands) {
-    const marker = step.skipped ? 'SKIP' : step.exitCode == null ? 'PLAN' : step.exitCode === 0 ? 'OK' : 'FAIL';
+    // WARN: passo opcional (não reprova o status) que falhou.
+    const failMarker = step.required === false ? 'WARN' : 'FAIL';
+    const marker = step.skipped ? 'SKIP' : step.exitCode == null ? 'PLAN' : step.exitCode === 0 ? 'OK' : failMarker;
     console.log(`${marker} ${step.name}: ${step.commandLine}`);
   }
 }

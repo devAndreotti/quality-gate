@@ -158,6 +158,12 @@ test('company profile adds an optional jscpd duplication step, pr profile does n
 
   const prPlan = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 123 });
   assert.equal(prPlan.commands.some((command) => command.name === 'jscpd'), false);
+
+  // Repo de empresa não tem baseline nem os arquivos do qg-init.
+  for (const name of ['quality-gate-check', 'quality-gate-doctor']) {
+    assert.equal(companyPlan.commands.find((command) => command.name === name).required, false);
+    assert.equal(prPlan.commands.find((command) => command.name === name).required, true);
+  }
 });
 
 test('missing packaged scripts produce installation error', () => {
