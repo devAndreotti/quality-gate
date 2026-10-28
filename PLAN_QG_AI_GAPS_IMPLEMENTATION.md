@@ -12,10 +12,10 @@ Este plano transforma as 7 fases da spec em fatias pequenas, cada uma em PR inde
 
 1. **Alinhar o schema de `policy.json`.** A spec (seção 4.1) põe `requiredChecks`, `diffCoverage` e `architectureBoundary` no topo. O formato real do projeto usa `ci.requiredChecks`, `ci.advisoryChecks` e `ci.coverageRatchet` (ver `.quality-gate/policy.json`). Novas chaves devem seguir o mesmo padrão: `ci.diffCoverage`, `ci.architectureBoundary`, `ci.bundleBudget`, `ci.aiEvals`. Atualizar a seção 4.1 da spec antes de codar.
 2. **Atualizar `policy.schema.json`** com as chaves novas, todas `enabled: false` por padrão. Isso mantém o comportamento atual para repos que não usam os recursos.
-3. **Decisões em aberto** (registrar a escolha em `decisions/`, não decidir em código):
-   - Parser AST da Fase 3: `oxc-parser` ou `typescript` (compiler API). Tree-sitter exige binários nativos e vai contra a meta de dependências mínimas.
-   - Provedor de IA da Fase 6: local primeiro (Ollama / 9Router), API externa só com opt-in explícito.
-   - Catálogo da Fase 4: fica em `.quality-gate/fleet.json` local, não versionado com nomes de repos privados.
+3. **Decisões tomadas:**
+   - **Parser AST (Fase 3): `oxc-parser`**, versão exata fixada. Motivo: parse rápido (necessário para a meta de <2s em repos grandes) e cobre JS, TS e JSX. Descartados: `typescript` (pesado, ~20 MB, mais lento) e tree-sitter (binários nativos por plataforma, mais superfície). É a única dependência de runtime nova do plano. Carregamento lazy: se o pacote não estiver instalado, o gate reporta `skipped` com instrução de instalação, nunca `failed`. Antes de fixar a versão, conferir que ela tem pelo menos 2 semanas de idade.
+   - **Provedores de IA (Fase 6): 9Router e Ollama, ambos locais.** Ordem padrão: 9Router (`http://127.0.0.1:20128/v1`, API compatível com OpenAI), depois Ollama (`http://localhost:11434`, endpoint compatível em `/v1`). Nenhum provedor de nuvem neste plano. Se nenhum estiver no ar, o gate fica `skipped`.
+   - **Catálogo da Fase 4:** `.quality-gate/fleet.json` local, fora do git. Só `fleet.example.json` é versionado.
 
 ## 1. Regras transversais
 
@@ -76,7 +76,7 @@ A ordem prioriza valor com risco baixo. Fases 1 e 7 reaproveitam código ou são
 
 ### Fase 3 — `feat(ast-graph): detecção de chamadas quebradas cross-file`
 
-- **Mudanças:** `scripts/ast-graph.cjs` e `scripts/lib/ast-parser.cjs` (extração de exports, imports e chamadas). Parser conforme decisão 0.3.
+- **Mudanças:** `scripts/ast-graph.cjs` e `scripts/lib/ast-parser.cjs` (extração de exports, imports e chamadas) usando `oxc-parser` (decisão 0.3), carregado com `require` dentro de try/catch.
 - **Escopo inicial:** JS/TS apenas. Python fica para fatia posterior.
 - **Testes:** renomear uma função exportada sem atualizar um chamador em outro arquivo deve ser detectado; re-export e import com alias são cobertos; arquivo que não parseia gera aviso, não crash.
 - **Aceite:** em um repo de teste com quebra cross-file, o gate aponta o chamador não tocado pelo diff. Medir tempo de execução e registrar; a meta de <2s é a verificar aqui.
@@ -92,6 +92,7 @@ A ordem prioriza valor com risco baixo. Fases 1 e 7 reaproveitam código ou são
 ### Fase 6 — `feat(ai-evals): gate determinístico para agentes e prompts`
 
 - **Mudanças:** `scripts/ai-evals-gate.cjs`, `scripts/lib/local-ai-client.cjs` e `.quality-gate/evals/golden-dataset.json`. Dispara só quando arquivos de prompt, skill ou agente mudam.
+- **Cliente:** `local-ai-client.cjs` fala o protocolo compatível com OpenAI (`/v1/chat/completions`) e tenta 9Router primeiro, depois Ollama. Host e modelo vêm de `ci.aiEvals.providers` no `policy.json`, com esses valores como padrão.
 - **Determinismo:** métricas que não dependem de juiz de IA primeiro (conformidade de schema JSON, presença de campos, limites de custo/latência). Métrica por LLM-as-judge fica para depois e é opt-in.
 - **Ratchet:** pass-rate e score mínimo (`ci.aiEvals.minScore`) só sobem.
 - **Testes:** dataset sintético com provedor falso (stub), sem chamada de rede nos testes; orçamento de tokens respeitado; ausência de provedor configurado gera "skipped", não "passed".
