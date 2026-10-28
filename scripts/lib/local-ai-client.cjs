@@ -15,7 +15,7 @@ const https = require('node:https');
 const path = require('node:path');
 
 const PROVIDERS = Object.freeze([
-  Object.freeze({ id: '9router', envVar: 'QG_9ROUTER_URL', defaultUrl: 'http://127.0.0.1:20128' }),
+  Object.freeze({ id: '9router', envVar: 'QG_9ROUTER_URL', defaultUrl: null }),
   Object.freeze({ id: 'ollama', envVar: 'QG_OLLAMA_URL', defaultUrl: 'http://localhost:11434' }),
 ]);
 
@@ -55,14 +55,18 @@ function normalizeBaseUrl(raw, providerId) {
 
 /**
  * Resolve a lista ordenada de provedores (9Router primeiro, depois Ollama).
- * Variavel ausente ou vazia usa o padrao generico.
+ * O 9Router nao tem padrao no codigo: o endereco real vem so do ambiente
+ * (QG_9ROUTER_URL). Provedor sem URL e omitido da lista.
  */
 function resolveProviders(env = process.env) {
-  return PROVIDERS.map((provider) => {
+  const resolved = [];
+  for (const provider of PROVIDERS) {
     const raw = typeof env[provider.envVar] === 'string' ? env[provider.envVar].trim() : '';
     const value = raw || provider.defaultUrl;
-    return { id: provider.id, baseUrl: normalizeBaseUrl(value, provider.id) };
-  });
+    if (!value) continue;
+    resolved.push({ id: provider.id, baseUrl: normalizeBaseUrl(value, provider.id) });
+  }
+  return resolved;
 }
 
 /**

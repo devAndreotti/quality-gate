@@ -80,11 +80,16 @@ function tmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qg-ai-client-'));
 }
 
-test('resolveProviders uses generic defaults when env is missing', () => {
+test('resolveProviders has no 9Router default and uses only the public Ollama default', () => {
   const providers = resolveProviders({});
+  assert.deepEqual(providers.map((p) => p.id), ['ollama']);
+  assert.equal(providers[0].baseUrl, 'http://localhost:11434');
+});
+
+test('resolveProviders includes 9Router only when QG_9ROUTER_URL is set', () => {
+  const providers = resolveProviders({ QG_9ROUTER_URL: 'http://gateway.example.test:8080' });
   assert.deepEqual(providers.map((p) => p.id), ['9router', 'ollama']);
-  assert.equal(providers[0].baseUrl, 'http://127.0.0.1:20128');
-  assert.equal(providers[1].baseUrl, 'http://localhost:11434');
+  assert.equal(providers[0].baseUrl, 'http://gateway.example.test:8080');
 });
 
 test('resolveProviders reads env overrides and strips trailing slashes', () => {
