@@ -1,8 +1,8 @@
 # Plano & Especificação Técnica: Evolução do Quality Gate (AI Gaps & Extensões 2026)
 
-**Data:** 28 de Outubro de 2026  
+**Data:** 28 de Outubro de 2026
 **Status:** Proposto / Especificação aprovada para planejamento; plano de implementação em `PLAN_QG_AI_GAPS_IMPLEMENTATION.md`
-**Escopo:** `devAndreotti/quality-gate`  
+**Escopo:** `devAndreotti/quality-gate`
 **Filosofia:** *Akita Way* — Determinismo mecânico em CPU pura (custo $0) na base; inferência de IA sob demanda nas exceções arquiteturais.
 
 ---
