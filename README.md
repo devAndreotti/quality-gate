@@ -361,6 +361,56 @@ node scripts/quality-gate.js report
 
 ---
 
+## Fleet Audit
+
+`scripts/fleet.cjs` audits a fleet of repositories managed by Quality Gate. It is read-only: it reports whether each repo is managed and healthy, and never changes files.
+
+Create the local catalog from the versioned example. The real catalog lives in `.quality-gate/fleet.json`, which is gitignored and must not be committed:
+
+```bash
+mkdir -p .quality-gate
+cp scripts/fleet.example.json .quality-gate/fleet.json
+# edit the paths to point to your repos
+```
+
+Catalog format (a plain array of entries is also accepted):
+
+```json
+{
+  "repos": [
+    "~/Projetos/exemplo/meu-app",
+    { "path": "~/Projetos/exemplo/outra-api", "name": "outra-api" }
+  ]
+}
+```
+
+```bash
+# Table report using .quality-gate/fleet.json
+node scripts/fleet.cjs
+
+# JSON output, custom catalog, and failure on any problem
+node scripts/fleet.cjs --json
+node scripts/fleet.cjs --catalog ~/Projetos/exemplo/fleet.json --strict
+```
+
+| Flag | Effect |
+|---|---|
+| `--catalog <file>` | Use another catalog instead of `.quality-gate/fleet.json` |
+| `--json` | Print the report as JSON instead of a table |
+| `--strict` | Exit with `1` if any repo has issues |
+
+Exit codes: `0` normal run (issues are reported but do not fail, unless `--strict`); `2` catalog missing or invalid; `1` only with `--strict` and at least one repo with issues.
+
+Checks per repo:
+
+- **policy**: `.quality-gate/policy.json` exists with `schemaVersion` 1. A repo without it is reported as unmanaged and the remaining checks are skipped.
+- **baseline**: `scripts/baseline.json` exists, parses, and is not zeroed. A baseline with all coverage metrics at zero is a release blocker.
+- **pre-push hook**: the managed pre-push hook is installed (run `git-hooks install` to fix). A path that is not a git repo is reported here.
+- **CI workflow**: `.github/workflows/quality-gate.yml` exists.
+- **path**: the catalog entry exists and is a directory.
+
+---
+
 ## Troubleshooting
 
 **SonarCloud does not appear in the PR**
