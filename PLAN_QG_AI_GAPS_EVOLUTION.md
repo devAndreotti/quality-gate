@@ -1,7 +1,7 @@
 # Plano & Especificação Técnica: Evolução do Quality Gate (AI Gaps & Extensões 2026)
 
 **Data:** 28 de Outubro de 2026  
-**Status:** Proposto / Especificação Pronta para Implementação  
+**Status:** Proposto / Especificação aprovada para planejamento; plano de implementação em `PLAN_QG_AI_GAPS_IMPLEMENTATION.md`
 **Escopo:** `devAndreotti/quality-gate`  
 **Filosofia:** *Akita Way* — Determinismo mecânico em CPU pura (custo $0) na base; inferência de IA sob demanda nas exceções arquiteturais.
 
@@ -17,9 +17,9 @@ O `devAndreotti/quality-gate` atingiu maturidade operacional v1.0.0 com:
 - TUI rica empacotada em bundle único standalone via React 19 + Ink 7 (`menu-tui.mjs`, `dashboard-tui.mjs`).
 - Gestão determinística de ciclo de vida de PRs (`pr-snapshot.cjs`, `babysit-loop.cjs`, `ci-diagnose.cjs`).
 
-A auditoria recente contra as plataformas líderes de mercado em 2025/2026 (**Greptile, CodeRabbit, Qodo, Augment Code, Harness AI Evals**) confirmou uma nota ponderada de **8.0 / 10**.
+A auditoria recente contra as plataformas líderes de mercado em 2025/2026 (**Greptile, CodeRabbit, Qodo, Augment Code, Harness AI Evals**) indicou uma nota ponderada de **8.0 / 10**. Esta nota é uma auto-avaliação interna, sem fonte pública verificada; use-a como hipótese, não como fato.
 
-O Quality Gate se destaca em determinismo, custo ($0/mês), velocidade e ausência de vendor lock-in. Contudo, possui quatro gaps em comparação ao estado da arte de IA, além de quatro oportunidades para ecossistemas modernos (como *Memory Apartment*, *Tower* e *Frosted Folio*).
+O Quality Gate se destaca em determinismo, custo ($0/mês), velocidade e ausência de vendor lock-in. Contudo, possui quatro gaps em comparação ao estado da arte de IA, além de quatro oportunidades ligadas a projetos pessoais do mantenedor.
 
 ---
 
@@ -32,7 +32,7 @@ O Quality Gate se destaca em determinismo, custo ($0/mês), velocidade e ausênc
   - Detecta se a renomeação ou alteração de assinatura de uma função quebrou chamadores em arquivos distantes que não foram tocados no PR.
   - Alerta sobre quebra de contratos de API, divergência de tipos e efeitos colaterais silenciosos.
 * **Abordagem no Quality Gate (Zero-Cloud):**
-  - Ferramentas como Greptile mantêm bases vetoriais remotas pesadas. No nosso paradigma, implementaremos o **`scripts/ast-graph.cjs`**: utiliza parsers sintáticos locais nativos (AST via `oxc-parser` ou `tree-sitter` / `typescript` compiler API) para extrair símbolos exportados/importados e verificar quebras de referências de forma 100% determinística em <2 segundos.
+  - Ferramentas como Greptile mantêm bases vetoriais remotas pesadas. No nosso paradigma, implementaremos o **`scripts/ast-graph.cjs`**: utiliza parsers sintáticos locais nativos (AST via `oxc-parser` ou `tree-sitter` / `typescript` compiler API) para extrair símbolos exportados/importados e verificar quebras de referências de forma 100% determinística, com meta de menos de 2 segundos (a medir na implementação).
 
 ---
 
@@ -49,7 +49,7 @@ O Quality Gate se destaca em determinismo, custo ($0/mês), velocidade e ausênc
 
 ### GAP 3: AI Evals Gate em CI/CD (Gating para Prompts e Agentes)
 
-* **O que é:** Um portão de bloqueio em CI para sistemas que consom Inteligência Artificial (prompts de sistema, agentes autônomos, skills Codex/Hermes, fluxos RAG).
+* **O que é:** Um portão de bloqueio em CI para sistemas que consomem Inteligência Artificial (prompts de sistema, agentes autônomos, skills Codex/Hermes, fluxos RAG).
 * **O que faz:**
   - Quando um prompt, template ou skill é modificado, executa um *golden dataset* (bateria de casos conhecidos de entrada/saída).
   - Mede métricas formais: fidelidade (*faithfulness*), conformidade de schema JSON, precisão de tool calls, ausência de alucinações e limites de custo/latência.
@@ -63,7 +63,7 @@ O Quality Gate se destaca em determinismo, custo ($0/mês), velocidade e ausênc
 
 * **O que é:** Painel e orquestrador para gerenciar e auditar as políticas de qualidade em dezenas de repositórios simultaneamente.
 * **O que faz:**
-  - Audita a frota de projetos do usuário (`frosted-motion-folio-v2`, `tower`, `memory-apartment`, repositórios OneMob).
+  - Audita a frota de projetos do mantenedor, listada no catálogo local `.quality-gate/fleet.json`. Nomes de repositórios privados ficam fora do código versionado e deste documento.
   - Exibe quais repositórios possuem políticas desatualizadas, baselines defasados, hooks ausentes ou branches de CI sem proteção.
   - Aplica atualizações e sincronizações de workflows em lote via comando único.
 * **Abordagem no Quality Gate:**
@@ -89,14 +89,14 @@ Para elevar o `quality-gate` ao patamar de infraestrutura de elite para engenhar
 ### ADIÇÃO 3: Performance & Bundle Size Budget Ratchet
 * **O que é:** Gate de orçamento de tamanho de arquivos compilados e performance web.
 * **O que faz:**
-  - Fundamental para aplicações Web e jogos WebGL/Canvas (ex: *Memory Apartment* e *Frosted Folio*).
+  - Fundamental para aplicações Web e jogos WebGL/Canvas.
   - Mede o peso dos artefatos em `dist/` (JavaScript gzip, WebP, shaders) e bloqueia PRs que aumentem o bundle acima de um percentual fixado (ex: +5%).
   - Integração com Lighthouse CI headless para garantir índices mínimos de Core Web Vitals (LCP, TBT, CLS).
 
 ### ADIÇÃO 4: Local AI Router para PR Reviews Privados (Zero-Cloud)
 * **O que é:** Conector para executar revisões semânticas de código usando LLMs locais ou roteadores privados (9Router, Hermes local, Ollama, LM Studio).
 * **O que faz:**
-  - Permite revisão inteligente profunda de código em repositórios confidenciais de empresas (ex: OneMob) sem enviar uma única linha de código para provedores públicos de nuvem e com custo financeiro zero.
+  - Permite revisão inteligente profunda de código em repositórios confidenciais de empresas sem enviar uma única linha de código para provedores públicos de nuvem e com custo financeiro zero.
 
 ---
 
