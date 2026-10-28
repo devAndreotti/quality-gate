@@ -19,6 +19,18 @@ const SECRET_PATTERNS = [
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build', '.venv', '.pytest_cache']);
 const PLACEHOLDER_PATTERN = /(?:YOUR_|DUMMY|EXAMPLE|TEST_|FAKE|XXXXX|<token>|\b0{10,}\b)/i;
 
+// Exclusão só por padrão explícito (--ignore). Test/spec/fixtures NÃO são isentos:
+// segredos reais costumam vazar justamente nesses arquivos.
+function shouldIgnore(filePath, customPatterns = []) {
+  if (!filePath) return false;
+  const normalized = filePath.replace(/\\/g, '/');
+  for (const pat of customPatterns) {
+    if (typeof pat === 'string' && normalized.includes(pat)) return true;
+    if (pat instanceof RegExp && pat.test(normalized)) return true;
+  }
+  return false;
+}
+
 function isPlaceholder(value) {
   return PLACEHOLDER_PATTERN.test(value);
 }
@@ -64,13 +76,15 @@ function scanFile(filePath) {
   }
 }
 
-function scanDirectory(dir = process.cwd(), results = []) {
+function scanDirectory(dir = process.cwd(), results = [], options = {}) {
+  const ignorePatterns = options.ignore || [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (IGNORED_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      scanDirectory(fullPath, results);
+      scanDirectory(fullPath, results, options);
     } else {
+      if (shouldIgnore(fullPath, ignorePatterns)) continue;
       const findings = scanFile(fullPath);
       results.push(...findings);
     }
@@ -78,7 +92,8 @@ function scanDirectory(dir = process.cwd(), results = []) {
   return results;
 }
 
-function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSync) {
+function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSync, options = {}) {
+  const ignorePatterns = options.ignore || [];
   try {
     const diff = execFileSync('git', ['diff', 'HEAD'], { cwd, encoding: 'utf8' });
     const findings = [];
@@ -89,6 +104,9 @@ function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSy
       const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
       if (fileMatch) {
         currentFile = fileMatch[1];
+        continue;
+      }
+      if (currentFile && shouldIgnore(currentFile, ignorePatterns)) {
         continue;
       }
       const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
@@ -114,14 +132,17 @@ function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSy
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
-  const args = { mode: 'all', root: process.cwd(), json: false };
+  const args = { mode: 'all', root: process.cwd(), json: false, ignore: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--diff') args.mode = 'diff';
     else if (arg === '--all') args.mode = 'all';
     else if (arg === '--json') args.json = true;
-    else if (arg === '--root') args.root = argv[++i];
+    else if (arg === '--root' || arg === '--project') args.root = argv[++i];
     else if (arg.startsWith('--root=')) args.root = arg.slice('--root='.length);
+    else if (arg.startsWith('--project=')) args.root = arg.slice('--project='.length);
+    else if (arg === '--ignore') args.ignore.push(argv[++i]);
+    else if (arg.startsWith('--ignore=')) args.ignore.push(arg.slice('--ignore='.length));
   }
   return args;
 }
@@ -129,7 +150,7 @@ function parseArgs(argv = process.argv.slice(2)) {
 function runSecretScan(options = {}) {
   const root = path.resolve(options.root || process.cwd());
   const mode = options.mode || 'all';
-  const findings = mode === 'diff' ? scanGitDiff(root) : scanDirectory(root);
+  const findings = mode === 'diff' ? scanGitDiff(root, childProcess.execFileSync, options) : scanDirectory(root, [], options);
   return {
     status: findings.length === 0 ? 'passed' : 'failed',
     mode,
@@ -164,4 +185,5 @@ module.exports = {
   scanFile,
   scanGitDiff,
   scanText,
+  shouldIgnore,
 };
