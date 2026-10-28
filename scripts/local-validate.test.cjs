@@ -70,6 +70,48 @@ test('buildSpawnInvocation keeps non-Windows commands direct', () => {
   assert.deepEqual(invocation.args, ['ci']);
 });
 
+test('buildValidationPlan uses the package manager of the lockfile', () => {
+  const project = tempProject();
+  writeJson(path.join(project, 'package.json'), { scripts: { test: 'jest', build: 'nest build' } });
+  fs.writeFileSync(path.join(project, 'yarn.lock'), '');
+  fs.writeFileSync(path.join(project, '.yarnrc.yml'), 'nodeLinker: node-modules\n');
+  writeJson(path.join(project, 'web', 'package.json'), { scripts: { build: 'vite build' } });
+  fs.writeFileSync(path.join(project, 'web', 'pnpm-lock.yaml'), '');
+  writeJson(path.join(project, 'legacy', 'package.json'), { scripts: { lint: 'eslint .' } });
+  fs.writeFileSync(path.join(project, 'legacy', 'yarn.lock'), '');
+
+  const plan = buildValidationPlan({ projectRoot: project, now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  const lines = (cwd) => plan.commands.filter((command) => command.cwd === cwd).map((command) => command.commandLine);
+
+  assert.deepEqual(lines(project).slice(0, 4), [
+    'yarn install --immutable',
+    'yarn run test',
+    'yarn run build',
+    'yarn npm audit --all --recursive --severity moderate',
+  ]);
+  assert.deepEqual(lines(path.join(project, 'web')), [
+    'pnpm install --frozen-lockfile',
+    'pnpm run --if-present test',
+    'pnpm run --if-present lint',
+    'pnpm run --if-present build',
+    'pnpm audit --audit-level moderate',
+  ]);
+  assert.deepEqual(lines(path.join(project, 'legacy')), [
+    'yarn install --frozen-lockfile',
+    'yarn run lint',
+    'yarn audit --level moderate',
+  ]);
+  assert.equal(plan.commands.some((command) => command.file === 'npm'), false);
+});
+
+test('buildSpawnInvocation routes npx, yarn and pnpm shims through cmd.exe on Windows', () => {
+  for (const file of ['npx', 'yarn', 'pnpm']) {
+    const invocation = buildSpawnInvocation({ file, args: ['--version'] }, 'win32', { ComSpec: 'cmd.exe' });
+
+    assert.deepEqual(invocation.args, ['/d', '/s', '/c', `${file}.cmd`, '--version']);
+  }
+});
+
 test('dry-run returns command plan without executing commands', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
@@ -116,6 +158,12 @@ test('company profile adds an optional jscpd duplication step, pr profile does n
 
   const prPlan = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 123 });
   assert.equal(prPlan.commands.some((command) => command.name === 'jscpd'), false);
+
+  // Repo de empresa não tem baseline nem os arquivos do qg-init.
+  for (const name of ['quality-gate-check', 'quality-gate-doctor']) {
+    assert.equal(companyPlan.commands.find((command) => command.name === name).required, false);
+    assert.equal(prPlan.commands.find((command) => command.name === name).required, true);
+  }
 });
 
 test('missing packaged scripts produce installation error', () => {
