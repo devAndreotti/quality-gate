@@ -11,6 +11,7 @@ const {
   scanDirectory,
   scanFile,
   scanText,
+  shouldIgnore,
 } = require('./secret-scan.cjs');
 
 test('isPlaceholder ignores dummy and sample tokens', () => {
@@ -47,4 +48,26 @@ test('scanFile and scanDirectory return clean status on safe repos', () => {
   const resFail = runSecretScan({ root: dir, mode: 'all' });
   assert.equal(resFail.status, 'failed');
   assert.equal(resFail.findingsCount, 1);
+});
+
+test("shouldIgnore ignores test files, spec files, and fixtures", () => {
+  assert.equal(shouldIgnore("scripts/secret-scan.test.cjs"), true);
+  assert.equal(shouldIgnore("src/app.spec.ts"), true);
+  assert.equal(shouldIgnore("fixtures/secrets.json"), true);
+  assert.equal(shouldIgnore("test/fixtures/key.pem"), true);
+  assert.equal(shouldIgnore("scripts/secret-scan.cjs"), false);
+  assert.equal(shouldIgnore("src/index.js"), false);
+  assert.equal(shouldIgnore("custom/path.txt", ["custom"]), true);
+});
+
+test("runSecretScan ignores test files and custom ignore patterns", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qg-sec-ignore-"));
+  fs.writeFileSync(path.join(dir, "app.test.js"), "const token = \"ghp_111111111111111111111111111111111111\";");
+  fs.writeFileSync(path.join(dir, "sample.txt"), "const token = \"ghp_222222222222222222222222222222222222\";");
+  const res = runSecretScan({ root: dir, mode: "all", ignore: ["sample.txt"] });
+  assert.equal(res.status, "passed");
+  assert.equal(res.findingsCount, 0);
+
+  const parsed = parseArgs(["--ignore", "*.fixture.js", "--ignore=custom/**"]);
+  assert.deepEqual(parsed.ignore, ["*.fixture.js", "custom/**"]);
 });
