@@ -1,0 +1,17 @@
+[
+  {
+    "id": "json-title-summary",
+    "input": "Return a JSON object with the keys \"title\" and \"summary\" describing the benefits of unit tests. Respond only with JSON.",
+    "expect": { "jsonKeys": ["title", "summary"] }
+  },
+  {
+    "id": "contains-greeting",
+    "input": "Reply with one short sentence that includes the word hello.",
+    "expect": { "contains": ["hello"] }
+  },
+  {
+    "id": "json-status-items",
+    "input": "Return a JSON object with the keys \"status\" and \"items\". Set status to ok and items to an empty array. Respond only with JSON.",
+    "expect": { "jsonKeys": ["status", "items"], "contains": ["ok"] }
+  }
+]

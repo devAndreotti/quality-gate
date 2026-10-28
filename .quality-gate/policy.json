@@ -22,7 +22,17 @@
       "SonarCloud Code Analysis"
     ],
     "coverageRatchet": true,
-    "maxFileLines": 300
+    "maxFileLines": 300,
+    "architectureBoundary": {
+      "enabled": false,
+      "blockOnFailure": true,
+      "rules": []
+    },
+    "aiEvals": {
+      "enabled": false,
+      "minScore": 0.85,
+      "blockOnFailure": true
+    }
   },
   "bootstrap": {
     "license": {
