@@ -9,5 +9,8 @@
     "esbuild": "^0.28.2",
     "ink": "^7.1.1",
     "react": "^19.2.0"
+  },
+  "optionalDependencies": {
+    "oxc-parser": "0.154.0"
   }
 }
