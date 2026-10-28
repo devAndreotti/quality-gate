@@ -3,3 +3,4 @@
 coverage/
 node_modules/
 .quality-gate/fleet.json
+.quality-gate/ai.local.json

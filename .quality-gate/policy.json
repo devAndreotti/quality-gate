@@ -27,6 +27,11 @@
       "enabled": false,
       "blockOnFailure": true,
       "rules": []
+    },
+    "aiEvals": {
+      "enabled": false,
+      "minScore": 0.85,
+      "blockOnFailure": true
     }
   },
   "bootstrap": {
