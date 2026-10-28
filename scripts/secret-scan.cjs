@@ -16,22 +16,14 @@ const SECRET_PATTERNS = [
   { id: 'db_uri_password', name: 'Database URI Password', regex: /(?:postgres|mysql|mongodb|redis):\/\/[^\s:]+:([^\s@]{4,})@/g },
 ];
 
-const IGNORED_DIRS = new Set([
-  'node_modules', '.git', 'coverage', 'dist', 'build', '.venv', '.pytest_cache',
-  'fixtures', '__fixtures__', 'test-fixtures',
-]);
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build', '.venv', '.pytest_cache']);
 const PLACEHOLDER_PATTERN = /(?:YOUR_|DUMMY|EXAMPLE|TEST_|FAKE|XXXXX|<token>|\b0{10,}\b)/i;
-const DEFAULT_IGNORE_PATTERNS = [
-  /\.(?:test|spec)\.[a-zA-Z0-9]+$/,
-  /(?:^|[\\/])(?:fixtures|__fixtures__|test-fixtures)(?:[\\/]|$)/,
-];
 
+// Exclusão só por padrão explícito (--ignore). Test/spec/fixtures NÃO são isentos:
+// segredos reais costumam vazar justamente nesses arquivos.
 function shouldIgnore(filePath, customPatterns = []) {
   if (!filePath) return false;
   const normalized = filePath.replace(/\\/g, '/');
-  for (const pat of DEFAULT_IGNORE_PATTERNS) {
-    if (pat.test(normalized)) return true;
-  }
   for (const pat of customPatterns) {
     if (typeof pat === 'string' && normalized.includes(pat)) return true;
     if (pat instanceof RegExp && pat.test(normalized)) return true;
@@ -185,8 +177,6 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  DEFAULT_IGNORE_PATTERNS,
-  IGNORED_DIRS,
   SECRET_PATTERNS,
   isPlaceholder,
   parseArgs,
