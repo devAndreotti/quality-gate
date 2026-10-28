@@ -1,0 +1,6 @@
+{
+  "repos": [
+    "~/Projetos/exemplo/meu-app",
+    { "path": "~/Projetos/exemplo/outra-api", "name": "outra-api" }
+  ]
+}
