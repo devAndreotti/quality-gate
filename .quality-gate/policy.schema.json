@@ -52,7 +52,25 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "coverageRatchet": { "type": "boolean" },
-        "maxFileLines": { "type": "integer", "minimum": 1 }
+        "maxFileLines": { "type": "integer", "minimum": 1 },
+        "aiEvals": {
+          "type": "object",
+          "required": ["enabled", "minScore", "blockOnFailure"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minScore": { "type": "number", "minimum": 0, "maximum": 1 },
+            "blockOnFailure": { "type": "boolean" },
+            "budget": {
+              "type": "object",
+              "properties": {
+                "maxCases": { "type": "integer", "minimum": 1 },
+                "maxOutputChars": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },
