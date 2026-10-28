@@ -4,9 +4,9 @@ Data: 2026-05-26
 
 ## Objetivo
 
-Transformar os gaps observados no uso real do Quality Gate em automacoes verificaveis dentro de `D:\Dev\Tooling\quality-gate`, reduzindo trabalho manual de agente e evitando falsos "PR pronto".
+Transformar os gaps observados no uso real do Quality Gate em automacoes verificaveis dentro de `<caminho-do-quality-gate>`, reduzindo trabalho manual de agente e evitando falsos "PR pronto".
 
-Este plano nasce de falhas reais vistas no fluxo com `tcc-free-plaud`:
+Este plano nasce de falhas reais vistas no fluxo com `meu-projeto-python`:
 
 - PR parecia pronto localmente, mas GitHub bloqueava merge por politica de base branch.
 - `babysit-loop.cjs` podia concluir `ready` mesmo com estado de merge inadequado ou checagens consultadas de forma incompleta.
@@ -124,7 +124,7 @@ Fazer `scripts/pr-snapshot.cjs` parar de depender apenas de `gh pr checks` e cam
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\pr-snapshot.test.cjs
 node --check scripts\pr-snapshot.cjs
 ```
@@ -156,7 +156,7 @@ Fazer `scripts/babysit-loop.cjs` confiar no contrato novo de `pr-snapshot`, nao 
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\babysit-loop.test.cjs
 node --check scripts\babysit-loop.cjs
 ```
@@ -201,7 +201,7 @@ Reduzir ida manual ao GitHub Actions quando algo falha.
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\ci-diagnose.test.cjs
 node --check scripts\ci-diagnose.cjs
 ```
@@ -221,9 +221,9 @@ scripts/local-validate.cjs
 ### Comandos desejados
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
-node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --json
-node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --dry-run --json
+cd <caminho-do-quality-gate>
+node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --json
+node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --dry-run --json
 ```
 
 ### Perfil Python uv
@@ -265,14 +265,14 @@ npm audit --audit-level=moderate
 ```json
 {
   "profile": "pr",
-  "project": "D:\\Dev\\Repos\\Own\\tcc-free-plaud",
+  "project": "C:\\caminho\\meu-projeto-python",
   "startedAt": "2026-05-26T00:00:00.000Z",
   "finishedAt": "2026-05-26T00:03:40.000Z",
   "status": "failure",
   "commands": [
     {
       "name": "pytest",
-      "cwd": "D:\\Dev\\Repos\\Own\\tcc-free-plaud\\pipeline",
+      "cwd": "C:\\caminho\\meu-projeto-python\\pipeline",
       "exitCode": 1,
       "durationMs": 41200,
       "artifact": ".quality-gate/reports/local/pytest.log"
@@ -291,9 +291,9 @@ npm audit --audit-level=moderate
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\local-validate.test.cjs
-node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --dry-run --json
+node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --dry-run --json
 node --check scripts\local-validate.cjs
 ```
 
@@ -356,7 +356,7 @@ Permitir que o Quality Gate saiba quais superficies existem no projeto.
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\doctor.test.cjs
 node --test scripts\bootstrap-repo.test.cjs
 node --test scripts\quality-gate.test.cjs
@@ -388,7 +388,7 @@ Gerar GitHub Actions que acompanhe o schema de superficies.
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\setup.test.cjs
 node --test scripts\bootstrap-repo.test.cjs
 node scripts\doctor.cjs --dry-run
@@ -411,7 +411,7 @@ scripts/dependabot-consolidate.cjs
 O primeiro corte deve apenas diagnosticar e sugerir plano:
 
 ```powershell
-node scripts\dependabot-consolidate.cjs --repo devAndreotti/tcc-free-plaud --dry-run --json
+node scripts\dependabot-consolidate.cjs --repo devAndreotti/meu-projeto-python --dry-run --json
 ```
 
 ### Saida esperada
@@ -451,7 +451,7 @@ Atualizar documentacao para o agente usar a automacao, nao repetir investigacao 
 ### Validacao
 
 ```powershell
-cd D:\Dev\Tooling\quality-gate
+cd <caminho-do-quality-gate>
 node --test scripts\e2e-smoke.test.cjs
 node scripts\doctor.cjs --dry-run
 ```
@@ -460,7 +460,7 @@ node scripts\doctor.cjs --dry-run
 
 ### Antes
 
-Em PRs como os de `tcc-free-plaud`, o agente precisava rodar manualmente:
+Em PRs como os de `meu-projeto-python`, o agente precisava rodar manualmente:
 
 - `gh pr checks`;
 - `gh pr view`;

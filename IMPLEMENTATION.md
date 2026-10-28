@@ -139,7 +139,7 @@ Comportamento:
 - Se houver Docker, chama o helper local de forma nao interativa:
 
 ```powershell
-& "D:\Dev\Scripts\seguranca\18-Docker-Image-Doctor.ps1" `
+& "C:\tools\18-Docker-Image-Doctor.ps1" `
   -Project "<repo>" -Preset AI -ForAI -Json -FixPlan -NoPrompt
 ```
 
@@ -155,8 +155,8 @@ Motivo:
 
 - Docker Doctor atual e bom, mas se rodar em repo sem Docker cria falso positivo
   de `.dockerignore` ausente. Por isso a deteccao precisa vir antes do scan.
-- Ferramenta local grava logs em `C:\ProgramData\Scriply\Logs\Docker-Image-Doctor`
-  e estado em `C:\ProgramData\Scriply\State\Docker-Image-Doctor`; Quality Gate
+- Ferramenta local grava logs em `C:\ProgramData\<ferramenta>\Logs\Docker-Image-Doctor`
+  e estado em `C:\ProgramData\<ferramenta>\State\Docker-Image-Doctor`; Quality Gate
   deve copiar/sumarizar o JSON, nao depender de estado global velho.
 - Escopo e build-time hardening. Nao controlar container, volume, porta,
   Dockhand, Hawser, `compose up/down`, prune ou live logs.
@@ -250,7 +250,7 @@ Comportamento:
 - Pytest usa `--basetemp .pytest-tmp-qg-<timestamp>-<pid>`.
 - `node scripts/quality-gate.js check` so roda depois de pytest verde e
   `coverage/coverage.json` fresco.
-- `node scripts/doctor.cjs --dry-run` e usado diretamente; aliases Scriply
+- `node scripts/doctor.cjs --dry-run` e usado diretamente; aliases do perfil local
   (`qg-chk`, `qg-doc`) sao conveniencia humana, nao dependencia do validador.
 - Relatorio final vai para `.quality-gate/reports/local-validation.json`.
 

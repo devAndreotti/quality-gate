@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Script auxiliar para o Quality Gate integrado com o perfil Scriply.
+    Script auxiliar para o Quality Gate integrado com o perfil PowerShell local.
 .DESCRIPTION
     Este script expõe funções para gerenciar e executar as checagens do Quality Gate.
     Código em inglês; comentários em português do Brasil (regra de global user).
@@ -31,7 +31,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# ── UI compartilhada (porte local do estilo Scriply/winh — sem depender do
+# ── UI compartilhada (porte local do estilo do perfil local — sem depender do
 # profile em runtime, já que QualityGate.ps1 também pode rodar via -NoProfile
 # ou em CI) ─────────────────────────────────────────────────────────────
 function Get-QgDisplayWidth {
@@ -701,7 +701,7 @@ function Invoke-QgMenu {
 }
 
 # Resolve os caminhos importantes
-# $PSScriptRoot é d:\Dev\Tooling\quality-gate\scripts. O pai é a raiz do template.
+# $PSScriptRoot é a pasta scripts do quality-gate. O pai é a raiz do template.
 $TemplateRoot = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $TemplateRoot "scripts\setup.js"))) {
     # Fallback caso o localizador dinâmico falhe

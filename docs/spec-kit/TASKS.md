@@ -1,6 +1,6 @@
 # Quality Gate — Tasks Breakdown & Verification Milestones
 
-**Project:** Quality Gate (`D:\Dev\Tooling\quality-gate`)  
+**Project:** Quality Gate (`<caminho-do-quality-gate>`)
 **Version:** `1.0.0`
 
 ---

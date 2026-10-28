@@ -1,6 +1,6 @@
 # Quality Gate — Engineering Plan & Verification Architecture
 
-**Project:** Quality Gate (`D:\Dev\Tooling\quality-gate`)  
+**Project:** Quality Gate (`<caminho-do-quality-gate>`)
 **Methodology:** Spec-Driven Development (SDD) & Ratchet Evolution  
 **Status:** In Production (Version `1.0.0`)
 

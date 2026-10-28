@@ -1,6 +1,6 @@
 # Quality Gate — Software Design Contract & Technical Specification
 
-**Project:** Quality Gate (`D:\Dev\Tooling\quality-gate`)  
+**Project:** Quality Gate (`<caminho-do-quality-gate>`)
 **Package Version:** `1.0.0`  
 **Stack:** Node.js (v22+ recommended, stdlib-first runtime), PowerShell 7+, Ink 7 + React 19 (bundled TUIs via esbuild), GitHub Actions, SonarCloud, Docker Image Doctor, Copilot Review, Codex `babysit-pr`.
 

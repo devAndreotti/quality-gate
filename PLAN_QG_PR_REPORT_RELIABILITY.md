@@ -389,12 +389,12 @@ Done:
 
 - [x] Slice 7 entregue e validado.
 
-### Slice 8 - `local-validate` portavel sem aliases Scriply
+### Slice 8 - `local-validate` portavel sem aliases do perfil local
 
 Problema:
 
 - `local-validate.cjs` chama `qg-chk` e `qg-doc`.
-- Esses aliases existem no ambiente Scriply, mas nao em clone limpo.
+- Esses aliases existem no ambiente local, mas nao em clone limpo.
 
 Comportamento esperado:
 
@@ -548,7 +548,7 @@ Cada slice deve seguir:
   conservadora.
 - [x] Workflow raiz e workflows gerados passam `REQUIRED_CHECKS`.
 - [x] Python coverage nao inventa `functions`.
-- [x] `local-validate` funciona em clone limpo com Node, sem Scriply aliases.
+- [x] `local-validate` funciona em clone limpo com Node, sem aliases locais.
 - [x] Sticky comment nao duplica por marker fora da primeira pagina.
 - [x] Falha de comentario fica visivel por warning ou falha configuravel.
 - [x] Job summary existe ou esta explicitamente adiado.

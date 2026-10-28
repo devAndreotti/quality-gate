@@ -39,7 +39,7 @@ function writePackagedFiles(project) {
     dockerImageDoctor: {
       enabled: 'auto',
       runWhen: 'docker-files-present',
-      scriptPath: 'D:\\Dev\\Scripts\\seguranca\\18-Docker-Image-Doctor.ps1',
+      scriptPath: 'C:\\tools\\18-Docker-Image-Doctor.ps1',
       agentArgs: ['-Preset', 'AI', '-ForAI', '-Json', '-FixPlan', '-NoPrompt'],
       interactiveAllowed: false,
       blockOn: ['Critical'],

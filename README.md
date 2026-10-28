@@ -55,7 +55,7 @@ The evolution plan to reduce AI usage is documented in [`IMPLEMENTATION.md`](./I
 
 ### PowerShell Alias Flow
 
-When the Scriply profile is installed, use the aliases from any repository:
+When the local PowerShell profile is installed, use the aliases from any repository:
 
 ```powershell
 qg
@@ -95,12 +95,12 @@ qg-init -Sonar       # configure SonarCloud and require the SonarCloud check
 qg-init -Force       # allow non-Node stack override
 ```
 
-For a Python/uv repo like `tcc-free-plaud`:
+For a Python/uv repo like `meu-projeto-python`:
 
 ```powershell
-cd D:\Dev\Repos\Own\tcc-free-plaud
-qg-init -DryRun -Repo devAndreotti/tcc-free-plaud
-qg-init -Yes -Repo devAndreotti/tcc-free-plaud -SkipBaseline -SkipCommit
+cd C:\caminho\meu-projeto-python
+qg-init -DryRun -Repo devAndreotti/meu-projeto-python
+qg-init -Yes -Repo devAndreotti/meu-projeto-python -SkipBaseline -SkipCommit
 
 cd pipeline
 uv run pytest --basetemp .pytest-tmp-qg -q --cov=src --cov-report=json:../coverage/coverage.json --cov-report=xml:../coverage/coverage.xml --cov-report=term-missing
@@ -114,16 +114,16 @@ node scripts\doctor.cjs --dry-run
 Equivalent one-command validation for PR work:
 
 ```powershell
-node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --dry-run --json
-node scripts\local-validate.cjs --project D:\Dev\Repos\Own\tcc-free-plaud --profile pr --json
+node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --dry-run --json
+node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --json
 ```
 
-`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are Scriply conveniences, not local validation dependencies.
+`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are local PowerShell conveniences, not local validation dependencies.
 
 **Company repos (no persistent install)**: pass `--scripts-root <path to this repo's scripts folder>` to run `quality-gate.js`/`doctor.cjs` against a real clone with zero files copied or committed into it — `qg-init` is never run there. Add `--profile company` to also run an advisory `jscpd` cross-file duplication scan (`npx jscpd`, no install, non-blocking) covering what Sonar's duplication metric used to. Complexity/code-smell coverage comes from adding `eslint-plugin-sonarjs` to the target's own ESLint config — it flows through the existing `node:lint` step automatically, no extra flag needed.
 
 ```powershell
-node D:\Dev\Tooling\quality-gate\scripts\local-validate.cjs --project D:\Work\company-repo --scripts-root D:\Dev\Tooling\quality-gate\scripts --profile company --json
+node <caminho-do-quality-gate>\scripts\local-validate.cjs --project C:\caminho\repo-empresa --scripts-root <caminho-do-quality-gate>\scripts --profile company --json
 ```
 
 ### Step 1 — Copy Files to Your Repository
@@ -376,7 +376,7 @@ node scripts/quality-gate.js report
 → The initial `baseline.json` starts with zeros. Run `node scripts/quality-gate.js init`.
 
 **Docker image gate shows warnings without Docker Doctor**
-→ On Linux CI, the local helper `D:\Dev\Scripts\seguranca\18-Docker-Image-Doctor.ps1`
+→ On Linux CI, the local helper `C:\tools\18-Docker-Image-Doctor.ps1`
   does not exist; the script falls back to `static-advisory`. Run it locally on Windows
   to use Syft/Grype/Dive/Hadolint via Docker Doctor.
 
