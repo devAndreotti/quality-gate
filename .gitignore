@@ -2,3 +2,4 @@
 .quality-gate/reports/
 coverage/
 node_modules/
+.quality-gate/fleet.json
