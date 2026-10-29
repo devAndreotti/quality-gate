@@ -23,6 +23,7 @@ jobs:
   security:
     name: Security audit
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -60,6 +61,7 @@ jobs:
   lint:
     name: Lint
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -85,6 +87,7 @@ jobs:
   test:
     name: Tests & ratchet
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -95,9 +98,10 @@ jobs:
           node-version: 20
 
       - name: Node tests — coverage completo
+        timeout-minutes: 10
         run: |
           mkdir -p coverage
-          node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs
+          node --test --test-timeout=120000 --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs
           node scripts/test-coverage-ci.cjs
         env:
           CI: true
@@ -132,6 +136,7 @@ jobs:
   sonar:
     name: SonarCloud
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     needs: test
     # Pula em push direto na main (sem PR) para não gastar créditos
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
@@ -185,6 +190,7 @@ jobs:
   docker:
     name: Docker image gate
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -211,6 +217,7 @@ jobs:
   report:
     name: PR report
     runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 15
     needs: [security, lint, test, sonar, docker]
     if: always() && github.event_name == 'pull_request'
     permissions:
