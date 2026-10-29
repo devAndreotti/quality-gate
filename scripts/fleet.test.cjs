@@ -8,6 +8,11 @@ const test = require('node:test');
 const { HOOK_MARKER, auditRepo, isZeroBaseline } = require('./lib/fleet-audit.cjs');
 const { auditFleet, expandHome, formatTable, loadCatalog, parseArgs, parseCatalog } = require('./fleet.cjs');
 
+// Os repos de teste nascem em os.tmpdir(). Se esse diretorio estiver dentro de outro repo,
+// git acharia o pai e o caso "sem git" mudaria. O teto impede que git suba acima do tmp.
+process.env.GIT_CEILING_DIRECTORIES = [process.env.GIT_CEILING_DIRECTORIES, os.tmpdir()].filter(Boolean).join(path.delimiter);
+const FLEET_CLI = path.join(__dirname, 'fleet.cjs');
+
 function tmp(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -172,4 +177,45 @@ test('parseArgs accepts the --catalog=<path> form', () => {
   assert.equal(a.catalog, 'frota/fleet.json');
   assert.equal(a.json, true);
   assert.notEqual(a.catalog, path.join('.quality-gate', 'fleet.json'));
+});
+
+test('GIT_CEILING_DIRECTORIES includes os.tmpdir() for the whole test process', () => {
+  const ceilings = (process.env.GIT_CEILING_DIRECTORIES || '').split(path.delimiter);
+  assert.ok(ceilings.includes(os.tmpdir()));
+});
+
+test('git does not climb above the ceiling, so a tmp dir under a repo is not a repo', () => {
+  const parent = tmp('qg-fleet-ceil-');
+  childProcess.execFileSync('git', ['init', '-q', parent]);
+  const ceiling = path.join(parent, 'teto');
+  const child = path.join(ceiling, 'filho');
+  fs.mkdirSync(child, { recursive: true });
+  const probe = (env) => childProcess.spawnSync('git', ['-C', child, 'rev-parse', '--is-inside-work-tree'], { encoding: 'utf8', env });
+
+  const withCeiling = probe({ ...process.env, GIT_CEILING_DIRECTORIES: ceiling });
+  assert.notEqual(withCeiling.status, 0);
+
+  // Controle: sem teto, o repo pai e encontrado; logo o teste acima e significativo.
+  const noEnv = { ...process.env };
+  delete noEnv.GIT_CEILING_DIRECTORIES;
+  const withoutCeiling = probe(noEnv);
+  assert.equal(withoutCeiling.stdout.trim(), 'true');
+});
+
+test('CLI uses .quality-gate/fleet.json from the cwd when --catalog is omitted', () => {
+  const repo = makeRepo();
+  const cwd = tmp('qg-fleet-default-');
+  write(cwd, '.quality-gate/fleet.json', JSON.stringify({ repos: [{ path: repo, name: 'frota-padrao' }] }));
+  const r = childProcess.spawnSync(process.execPath, [FLEET_CLI], { cwd, encoding: 'utf8', env: { ...process.env } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /frota-padrao/);
+  assert.match(r.stdout, /1 repos, 0 com atencao\./);
+});
+
+test('CLI exits 2 with a catalog message when --catalog is omitted and the default file is absent', () => {
+  const cwd = tmp('qg-fleet-default-miss-');
+  const r = childProcess.spawnSync(process.execPath, [FLEET_CLI], { cwd, encoding: 'utf8', env: { ...process.env } });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /catalogo nao encontrado/);
+  assert.ok(r.stderr.includes(path.join('.quality-gate', 'fleet.json')));
 });
