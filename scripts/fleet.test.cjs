@@ -166,3 +166,10 @@ test('CLI exits 2 when the catalog is missing', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /catalogo nao encontrado/);
 });
+
+test('parseArgs accepts the --catalog=<path> form', () => {
+  const a = parseArgs(['--catalog=frota/fleet.json', '--json']);
+  assert.equal(a.catalog, 'frota/fleet.json');
+  assert.equal(a.json, true);
+  assert.notEqual(a.catalog, path.join('.quality-gate', 'fleet.json'));
+});
