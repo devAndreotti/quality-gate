@@ -36,7 +36,7 @@
     "diffCoverage": {
       "enabled": true,
       "minPercentage": 90,
-      "blockOnFailure": false
+      "blockOnFailure": true
     },
     "prSize": {
       "enabled": false,
