@@ -10,7 +10,8 @@ on:
 # Cancela rodadas anteriores do mesmo PR para economizar minutos
 concurrency:
   group: quality-gate-${{ github.ref }}
-  cancel-in-progress: true
+  # Só cancela rodadas de PR; pushes na main rodam até o fim.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Permissão mínima global: leitura.
 permissions:
