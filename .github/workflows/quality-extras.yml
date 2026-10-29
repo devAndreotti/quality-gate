@@ -39,13 +39,22 @@ jobs:
 
   # ───────────────────────────────────────────────────────────────────────────
   # Dashboard como artefato: HTML estático gerado por scripts/dashboard-publish.cjs.
-  # Só em push na main; retenção de 14 dias.
+  # Só em push na main; retenção de 14 dias. Também publica em GitHub Pages
+  # (requer Pages habilitado com source "GitHub Actions" nas settings do repo).
   # ───────────────────────────────────────────────────────────────────────────
   dashboard:
-    name: Dashboard (artefato)
+    name: Dashboard (artefato + Pages)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Permissões extras só para este job; o padrão global segue em contents: read.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -63,3 +72,12 @@ jobs:
           path: dashboard/index.html
           retention-days: 14
           if-no-files-found: error
+
+      - name: Preparar artefato do GitHub Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dashboard
+
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
