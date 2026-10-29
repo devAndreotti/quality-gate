@@ -37,7 +37,7 @@ test('scanText detects openai, github, aws, and private keys', () => {
   const sampleText = [
     `const key = "${dummyGh}";`,
     `const fake = "${GH}DUMMY1234567890123456789012345678";`,
-    `// nosecret comment with ${dummyGh}`,
+    `const note = "${dummyGh}"; // nosecret`,
     PEM + 'RSA PRIVATE KEY-----',
     `const aws = "${dummyAws}";`,
   ].join('\n');
@@ -179,4 +179,98 @@ test('SS-3 db_uri_password matches postgresql, mongodb+srv and generic URI crede
     const ids = scanText(`url = "${uri}"`).map((f) => f.id);
     assert.ok(ids.includes('db_uri_password'), `should match ${uri.split('@')[0]}`);
   }
+});
+
+// SS-4: arquivos acima de 2 MB não podem sumir em silêncio.
+test('SS-4 files larger than 2MB are reported as skipped and never as passed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-big-'));
+  const big = `${OPENAI_LIKE}\n` + 'a'.repeat(2 * 1024 * 1024 + 16);
+  fs.writeFileSync(path.join(dir, 'huge.txt'), big);
+  fs.writeFileSync(path.join(dir, 'small.js'), 'console.log("clean");\n');
+
+  const res = runSecretScan({ root: dir, mode: 'all' });
+  assert.equal(res.findingsCount, 0);
+  assert.equal(res.skippedCount, 1);
+  assert.equal(res.skipped.length, 1);
+  assert.equal(path.basename(res.skipped[0].file), 'huge.txt');
+  assert.match(res.skipped[0].reason, /2MB/);
+  assert.equal(res.status, 'passed-with-skips');
+});
+
+test('SS-4 a clean scan without skipped files keeps status passed and skippedCount 0', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-noskip-'));
+  fs.writeFileSync(path.join(dir, 'index.js'), 'console.log("clean");\n');
+  const res = runSecretScan({ root: dir, mode: 'all' });
+  assert.equal(res.status, 'passed');
+  assert.equal(res.skippedCount, 0);
+  assert.deepEqual(res.skipped, []);
+});
+
+// SS-5: supressão só com marcador de comentário no fim da linha.
+test('SS-5 nosecret inside a string literal does not suppress a real key', () => {
+  const dummyGh = GH + 'realtoken1234567890123456789012345678';
+  const findings = scanText(`const t = "${dummyGh} // nosecret";`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].id, 'github_pat');
+});
+
+test('SS-5 a key on a line ending with a nosecret or NOSONAR comment is suppressed', () => {
+  const dummyGh = GH + 'realtoken1234567890123456789012345678';
+  assert.equal(scanText(`const t = "${dummyGh}"; // nosecret`).length, 0);
+  assert.equal(scanText(`const t = "${dummyGh}"; # NOSONAR   `).length, 0);
+  assert.equal(scanText(`const t = "${dummyGh}"; /* nosecret */`).length, 0);
+});
+
+// SS-7: o preview não pode expor caracteres do valor.
+test('SS-7 finding preview never contains leading characters of the matched value', () => {
+  const dummyGh = GH + 'realtoken1234567890123456789012345678';
+  const [finding] = scanText(`const t = "${dummyGh}";`);
+  assert.ok(finding);
+  assert.equal(finding.preview.includes(dummyGh.slice(0, 8)), false);
+  assert.equal(finding.preview.includes(dummyGh.slice(-4)), false);
+  assert.equal(finding.preview.includes('realtoken'), false);
+});
+
+// SS-8: parser de diff.
+function fakeGit(diff) {
+  return (cmd, args) => (args[0] === 'diff' ? diff : '');
+}
+
+test('SS-8 an added line whose content starts with ++ is still scanned', () => {
+  const diff = [
+    'diff --git a/notes.txt b/notes.txt',
+    'index 1111111..2222222 100644',
+    '--- a/notes.txt',
+    '+++ b/notes.txt',
+    '@@ -1 +1,2 @@',
+    ' context',
+    `+++x ${OPENAI_LIKE}`,
+    '',
+  ].join('\n');
+  const findings = scanGitDiff(process.cwd(), fakeGit(diff));
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].file, 'notes.txt');
+  assert.equal(findings[0].line, 2);
+});
+
+test('SS-8 quoted git headers resolve to the unescaped filename, including after index lines', () => {
+  const diff = [
+    'diff --git a/plain.txt b/plain.txt',
+    'new file mode 100644',
+    'index 0000000..3333333',
+    '--- /dev/null',
+    '+++ b/plain.txt',
+    '@@ -0,0 +1 @@',
+    `+token=${OPENAI_LIKE}`,
+    'diff --git "a/dir with space/caf\\303\\251 \\"q\\".txt" "b/dir with space/caf\\303\\251 \\"q\\".txt"',
+    'index 4444444..5555555 100644',
+    '--- "a/dir with space/caf\\303\\251 \\"q\\".txt"',
+    '+++ "b/dir with space/caf\\303\\251 \\"q\\".txt"',
+    '@@ -1 +1 @@',
+    `+token=${OPENAI_LIKE}`,
+    '',
+  ].join('\n');
+  const findings = scanGitDiff(process.cwd(), fakeGit(diff));
+  assert.deepEqual(findings.map((f) => f.file), ['plain.txt', 'dir with space/café "q".txt']);
+  assert.deepEqual(findings.map((f) => f.line), [1, 1]);
 });
