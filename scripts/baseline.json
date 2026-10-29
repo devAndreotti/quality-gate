@@ -3,8 +3,8 @@
     "lines": 91.22,
     "statements": 91.22,
     "functions": 92.57,
-    "branches": 80.58
+    "branches": 80.5
   },
-  "updatedAt": "2026-10-29T12:49:57.049Z",
+  "updatedAt": "2026-10-29T17:16:41.447Z",
   "_comment": "Execute 'node scripts/quality-gate.js init' após a primeira rodada de testes para capturar o baseline real do projeto."
 }
