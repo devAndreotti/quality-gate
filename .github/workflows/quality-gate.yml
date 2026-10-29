@@ -96,6 +96,10 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+      # Formatação (Prettier, .prettierrc.json). Qualquer arquivo fora do padrão reprova.
+      - name: Formatação (Prettier)
+        run: npm run -s format:check
+
       - name: Node syntax check
         run: node scripts/check-syntax.cjs
         continue-on-error: false
