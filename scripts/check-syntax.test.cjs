@@ -2,19 +2,31 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const test = require("node:test");
+const { after, test } = require("node:test");
 
 const { collectScriptFiles, checkSyntax, writeEslintReport, resolveEslintBin } = require("./check-syntax.cjs");
 
 const ESLINT_CONFIG = "module.exports = [{ files: [\"**/*.cjs\"], rules: { \"no-unused-vars\": \"error\" } }];\n";
 const eslintAvailable = Boolean(resolveEslintBin(__dirname));
 
+// Nome aleatorio (mkdtemp) para ser unico; removido em after() para nao sobrar em os.tmpdir().
+const tempRoots = [];
+after(() => {
+  for (const root of tempRoots) fs.rmSync(root, { recursive: true, force: true });
+});
+
+function tempRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  tempRoots.push(root);
+  return root;
+}
+
 function readReport(root) {
   return JSON.parse(fs.readFileSync(path.join(root, "coverage/eslint-report.json"), "utf8"));
 }
 
 test("collectScriptFiles returns JS and CJS files below scripts", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  const root = tempRoot();
   fs.mkdirSync(path.join(root, "scripts/lib"), { recursive: true });
   fs.writeFileSync(path.join(root, "scripts/a.cjs"), "module.exports = {};\n");
   fs.writeFileSync(path.join(root, "scripts/lib/b.js"), "console.log(\"ok\");\n");
@@ -26,7 +38,7 @@ test("collectScriptFiles returns JS and CJS files below scripts", () => {
 });
 
 test("writeEslintReport writes the real ESLint result, not an empty array", { skip: eslintAvailable ? false : "eslint não instalado neste ambiente" }, () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  const root = tempRoot();
   fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(root, "eslint.config.js"), ESLINT_CONFIG);
   fs.writeFileSync(path.join(root, "scripts/bad.cjs"), "const unused = 1;\nmodule.exports = {};\n");
@@ -42,7 +54,7 @@ test("writeEslintReport writes the real ESLint result, not an empty array", { sk
 });
 
 test("writeEslintReport writes skipped object, never [], when eslint is not installed", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  const root = tempRoot();
   fs.writeFileSync(path.join(root, "eslint.config.js"), ESLINT_CONFIG);
 
   writeEslintReport(root, { files: [], eslintBin: null });
@@ -53,7 +65,7 @@ test("writeEslintReport writes skipped object, never [], when eslint is not inst
 });
 
 test("writeEslintReport writes skipped object, never [], when eslint.config.js is missing", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  const root = tempRoot();
 
   writeEslintReport(root, { files: [], eslintBin: "/unused/eslint.js" });
 
@@ -64,7 +76,7 @@ test("writeEslintReport writes skipped object, never [], when eslint.config.js i
 });
 
 test("checkSyntax passes on valid scripts and catches invalid syntax", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  const root = tempRoot();
   fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(root, "scripts/valid.cjs"), "const x = 1; module.exports = { x };\n");
 
