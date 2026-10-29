@@ -181,6 +181,23 @@
             }
           },
           "additionalProperties": false
+        },
+        "diffCoverage": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "minPercentage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "blockOnFailure": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

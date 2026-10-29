@@ -102,6 +102,14 @@ jobs:
         env:
           CI: true
 
+      # Diff coverage: linhas novas do PR precisam de teste. Config em ci.diffCoverage.
+      # Roda só em PR (precisa da base); sem histórico completo falha fechado.
+      - name: Diff coverage — linhas novas do PR
+        if: github.event_name == 'pull_request'
+        run: node scripts/diff-coverage-gate.cjs --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
       # Ratchet: compara métricas com baseline.json commitado.
       # Falha se linhas, statements, functions ou branches regrediram.
       - name: Ratchet — quality gate
