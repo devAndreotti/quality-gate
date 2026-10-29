@@ -479,3 +479,49 @@ test('--history fails closed on a shallow clone instead of scanning only the tip
   assert.equal(res.status, 'error');
   assert.match(res.error, /historico raso/);
 });
+
+test('--history rejects an allowlist entry missing a required field', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'fx.js'), `const t = "${TOKEN_ONES}";\n`);
+  commitAll(dir, 'fixture');
+  allowFile(dir, [{ commit: 'a'.repeat(40), file: 'x.js', id: 'github_pat' }]);
+  const r = runSecretScan({ root: dir, mode: 'history', historyAllowPath: path.join(dir, 'allow.json') });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /entrada invalida na allowlist/);
+});
+
+test('--history CLI text output shows allowed count, stale entries and the commit of each finding', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'fx.js'), `const t = "${TOKEN_ONES}";\n`);
+  commitAll(dir, 'fixture');
+  const f = historyFindingOf(dir);
+  // Caminho padrão que o CLI lê (sem historyAllowPath).
+  fs.mkdirSync(path.join(dir, '.quality-gate'));
+  fs.writeFileSync(
+    path.join(dir, '.quality-gate', 'secret-history-allow.json'),
+    JSON.stringify([
+      { commit: f.commit, file: f.file, line: f.line, id: f.id, motivo: 'teste' },
+      { commit: 'b'.repeat(40), file: 'gone.js', line: 9, id: 'github_pat', motivo: 'obsoleta' },
+    ]),
+  );
+  const script = path.join(__dirname, 'secret-scan.cjs');
+  const out = childProcess.execFileSync('node', [script, '--history', '--root', dir], { encoding: 'utf8' });
+  assert.match(out, /Secret Scan \(history\): PASSED/);
+  assert.match(out, /1 achado\(s\) do historico cobertos pela allowlist/);
+  assert.match(
+    out,
+    /entrada da allowlist sem achado correspondente \(remover\): bbbbbbbbbbbb gone\.js:9 github_pat/,
+  );
+});
+
+test('--history CLI text output caps the printed findings and says how many were omitted', () => {
+  const dir = makeRepoWithoutCommit();
+  const lines = Array.from({ length: 105 }, () => `token = "${TOKEN_ONES}"`);
+  fs.writeFileSync(path.join(dir, 'many.txt'), lines.join('\n') + '\n');
+  commitAll(dir, 'many');
+  const script = path.join(__dirname, 'secret-scan.cjs');
+  const r = childProcess.spawnSync('node', [script, '--history', '--root', dir], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout.split('\n').filter((l) => l.includes('❌')).length, 100);
+  assert.match(r.stdout, /\.\.\. mais 5 achado\(s\) omitido\(s\)/);
+});
