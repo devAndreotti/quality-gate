@@ -14,7 +14,7 @@
     "eslint": "^9.39.5",
     "ink": "^7.1.1",
     "jscpd": "^4.3.0",
-    "react": "^19.2.0"
+    "react": "^19.3.1"
   },
   "optionalDependencies": {
     "oxc-parser": "0.154.0"
