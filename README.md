@@ -1,10 +1,247 @@
-# Quality Gate — Setup & Usage
+# 🛡️ Quality Gate
 
-Stack: GitHub Actions + SonarCloud + Docker Image Doctor + Copilot Review + Codex babysit-pr
+<p align="center">
+  <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/devAndreotti/quality-gate?style=flat-square&labelColor=111827&color=22c55e">
+  <img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/devAndreotti/quality-gate?style=flat-square&labelColor=111827&color=38bdf8">
+  <img alt="GitHub stars" src="https://img.shields.io/github/stars/devAndreotti/quality-gate?style=flat-square&labelColor=111827&color=f59e0b">
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-eab308?style=flat-square&labelColor=111827">
+</p>
 
-Current Version: `1.0.0`
+<p align="center">
+  <img alt="JavaScript" src="https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=111827">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white">
+  <img alt="GitHub Actions" src="https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white">
+  <img alt="SonarCloud" src="https://img.shields.io/badge/SonarCloud-F3705A?style=flat-square&logo=sonarcloud&logoColor=white">
+  <img alt="React (Ink)" src="https://img.shields.io/badge/React%20%28Ink%29-61DAFB?style=flat-square&logo=react&logoColor=111827">
+  <img alt="PowerShell" src="https://img.shields.io/badge/PowerShell-5391FE?style=flat-square&logo=powershell&logoColor=white">
+</p>
+
+<p align="left">
+  <strong>Portão de qualidade determinístico com ratchet matemático upward-only, validação multi-stack e babysitter autônomo de PRs.</strong><br />
+  Infraestrutura completa de CI/CD que impede regressões silenciosas de cobertura, audita licenças, detecta vazamentos de segredos e valida contêineres com custo zero de nuvem.
+</p>
+
+![Banner do Quality Gate](./Banner.png)
+
+> "Software de verdade precisa de garantias matemáticas na base, não de promessas de LLMs. IA auxilia nas exceções; CPU pura e determinismo cuidam do portão." — Filosofia Akita Way
 
 ---
+
+## Visão geral
+
+**Quality Gate** é uma solução completa de governança e controle de qualidade para repositórios de software modernos. Ele substitui ferramentas proprietárias pesadas e serviços caros em nuvem por scripts leves executados em CPU local e em GitHub Actions nativo, garantindo total privacidade do código e custo financeiro zero.
+
+O sistema atua em quatro frentes coordenadas:
+
+1. **Validação prévia local em comando único (`local-validate.cjs`)**: executa linters, testes unitários, auditoria de licenças de dependências, detecção de segredos e lint de commits antes de qualquer envio ao Git.
+2. **Ratchet matemático upward-only (`quality-gate.js`)**: calcula métricas exatas de cobertura de testes (statements, branches, functions, lines) e impede commits que reduzam esses percentuais em relação ao histórico.
+3. **Auditoria de contêineres e imagens (`docker-gate.cjs`)**: avalia arquivos Dockerfile e Docker Compose contra boas práticas de segurança através de inspeção estática ou Docker Image Doctor.
+4. **Babysitter autônomo de Pull Requests (`babysit-loop.cjs`)**: loop inteligente que monitora o status de CI no GitHub, classifica falhas automaticamente e gera relatórios com sticky comments em formato limpo.
+
+O foco central é fornecer feedback imediato para desenvolvedores humanos e agentes autônomos de IA (Codex, agentes locais, Claude Code), assegurando que o código mesclado à branch principal seja sempre superior ao anterior.
+
+---
+
+## Demo
+
+<p align="center">
+  <img src="./demo.gif" alt="Demonstração animada do Quality Gate CLI" width="92%" />
+</p>
+
+<p align="center">
+  <img src="./photo.png" alt="Interface TUI e Dashboard ao vivo do Quality Gate" width="92%" />
+</p>
+
+---
+
+## Fluxo
+
+```mermaid
+flowchart LR
+    A["Código & Testes Locais"] --> B["local-validate\n(Lint, Segredos, Testes)"]
+    B --> C["Ratchet de Cobertura\n(Upward-Only)"]
+    C --> D["GitHub Actions CI\n(6 Jobs Paralelos)"]
+    D --> E["babysit-pr Loop\n(Diagnóstico de Falhas)"]
+    E --> F["PR Merge Aprovado\n(Baseline Atualizado)"]
+
+    style A fill:#450a0a,color:#fff,stroke:#7f1d1d
+    style B fill:#7f1d1d,color:#fff,stroke:#b91c1c
+    style C fill:#b91c1c,color:#fff,stroke:#dc2626
+    style D fill:#dc2626,color:#fff,stroke:#ea580c
+    style E fill:#f97316,color:#111827,stroke:#ea580c
+    style F fill:#f59e0b,color:#111827,stroke:#d97706
+    linkStyle default stroke:#7f1d1d,stroke-width:2px
+```
+
+---
+
+## Para quem é
+
+- **Desenvolvedores Full-Stack** que precisam de validação rápida e confiável no terminal antes de enviar código para revisão.
+- **Equipes de Engenharia** que gerenciam projetos heterogêneos (Node.js e Python/uv) e buscam uma política unificada de CI/CD.
+- **Mantenedores Open Source** que desejam assegurar que contribuidores nunca reduzam a cobertura de testes existente no repositório.
+- **Operadores de Agentes Autônomos de IA** que precisam de um portão determinístico e autônomo para validar alterações de código geradas por máquinas antes do merge.
+
+---
+
+## Stack
+
+- **Node.js** para o motor principal de validação, cálculo de métricas de cobertura e scripts de automação.
+- **Python / uv** para suporte nativo a projetos com `pytest`, `pytest-cov`, `ruff` e `pip-audit`.
+- **React 19 + Ink 7** para a interface interativa no terminal (TUI) empacotada em bundle único independente de dependências externas.
+- **GitHub Actions** para a esteira automatizada com 6 jobs paralelos de verificação em cada Pull Request.
+- **Docker** para inspeção estática de manifestos de contêineres e integração com ferramentas de segurança.
+- **PowerShell / Bash** para aliases rápidos de produtividade local (`qg`, `qg-dash`, `qg-chk`).
+
+---
+
+## Pré-requisitos
+
+*   [x] **Node.js >= 20.x** (Node.js 22 LTS recomendado para execução do TUI rico com Ink)
+*   [x] **Git** instalado e configurado localmente
+*   [x] **GitHub CLI (`gh`)** autenticado para operações de PR e monitoramento de workflows
+
+---
+
+## Configuração
+
+### 1. Inicialização e Scaffold
+
+Copie os scripts e workflows para o seu repositório de destino e inicialize a política:
+
+```bash
+# Execução direta com o script de setup automático
+node scripts/setup.js --repo=OWNER/REPO --skip-sonar
+```
+
+Ou utilizando o fluxo de aliases em PowerShell com o perfil PowerShell local:
+
+```powershell
+qg-init -Yes -Repo OWNER/REPO -SkipBaseline -SkipCommit
+```
+
+### 2. Variáveis de ambiente
+
+| Variável | Descrição | Exemplo |
+|---|---|---|
+| `GITHUB_TOKEN` | Token do GitHub com permissões de administração para configurar proteções de branch e regras de PR. | `ghp_xxxxxxxxxxxxxxxxxxxx` |
+| `SONAR_TOKEN` | Token de autenticação do SonarCloud (opcional, exigido apenas se o check do Sonar estiver ativado). | `squ_xxxxxxxxxxxxxxxxxxxx` |
+
+### 3. Testar a instalação
+
+```bash
+# Executa a auditoria das políticas e configurações do repositório
+node scripts/doctor.cjs --dry-run
+```
+
+---
+
+## Uso
+
+### Fluxo diário
+
+1. Implemente suas alterações de código e crie os respectivos testes automatizados.
+2. Valide o estado completo do projeto localmente com um único comando:
+   ```bash
+   node scripts/local-validate.cjs --profile pr
+   ```
+3. Se a cobertura aumentou, atualize o baseline matemático do ratchet:
+   ```bash
+   node scripts/quality-gate.js update
+   ```
+4. Envie o commit e abra o Pull Request no GitHub:
+   ```bash
+   git push origin sua-branch
+   gh pr create --fill
+   ```
+5. Acompanhe a esteira de CI em tempo real no terminal através do live dashboard:
+   ```bash
+   node scripts/dashboard.cjs
+   # ou via bundle TUI rico no Node 22:
+   node scripts/dashboard-tui.mjs
+   ```
+
+### Exemplo de execução do menu interativo
+
+```bash
+# Abre o menu interativo com todas as opções de verificação e reparo
+node scripts/menu-tui.mjs
+```
+
+### O que fazer depois
+
+- **Monitorar com babysit-pr**: execute `node scripts/babysit-loop.cjs --pr <NUMERO> --once` para auditar se o PR está pronto para merge.
+- **Consolidar Dependabot**: use `node scripts/dependabot-consolidate.cjs --repo OWNER/REPO` para agrupar PRs semanais de dependências.
+- **Evolução de IA**: consulte a especificação técnica em [PLAN_QG_AI_GAPS_EVOLUTION.md](./PLAN_QG_AI_GAPS_EVOLUTION.md) para os próximos passos de análise semântica e evals.
+
+---
+
+## Estrutura do projeto
+
+```text
+quality-gate/
+├── .github/
+│   ├── FUNDING.yml                  # Configuração de patrocínio
+│   ├── copilot-instructions.md      # Diretrizes para revisores automatizados
+│   ├── dependabot.yml               # Atualizações semanais de dependências
+│   └── workflows/
+│       └── quality-gate.yml         # Esteira de CI com 6 jobs paralelos
+├── .quality-gate/
+│   ├── policy.json                  # Contrato de políticas e regras exigidas
+│   └── policy.schema.json           # Schema formal de validação da política
+├── scripts/
+│   ├── baseline.json                # Registro imutável das métricas de cobertura
+│   ├── babysit-loop.cjs             # Loop de monitoramento e auditoria de PRs
+│   ├── ci-diagnose.cjs              # Classificador determinístico de falhas de CI
+│   ├── configure-project.cjs        # Adaptador de stack (Node.js ou Python/uv)
+│   ├── dashboard.cjs                # Dashboard em texto puro (zero dependências)
+│   ├── dashboard-tui.mjs            # Dashboard rico em TUI (React 19 + Ink 7)
+│   ├── doctor.cjs                   # Auditoria de integridade do pacote e configs
+│   ├── docker-gate.cjs              # Validador de Dockerfile e regras de contêiner
+│   ├── local-validate.cjs           # Validação unificada pré-push em comando único
+│   ├── menu-tui.mjs                 # Menu interativo TUI (React 19 + Ink 7)
+│   ├── quality-gate.js              # Motor matemático do ratchet de cobertura
+│   ├── pr-comment.js                # Publicador do comentário sticky de status no PR
+│   └── pr-snapshot.cjs              # Gerador de snapshot de PR e mergeabilidade
+├── Banner.png                       # Banner de identificação visual do projeto
+├── photo.png                        # Captura da interface TUI e Dashboard
+├── demo.gif                         # Demonstração animada da CLI em execução
+├── LICENSE                          # Licença MIT
+├── sonar-project.properties         # Configuração de análise do SonarCloud
+└── README.md                        # Documentação do projeto
+```
+
+---
+
+## Contribuindo
+
+Contribuições são bem-vindas!
+
+1. Faça um fork do repositório
+2. Crie uma branch para sua modificação: `git checkout -b feature/sua-feature`
+3. Commit suas alterações: `git commit -m "feat: sua modificacao"`
+4. Envie a branch para o seu repositório: `git push origin feature/sua-feature`
+5. Abra um Pull Request detalhando as alterações propostas
+
+Utilize o padrão [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`.
+
+---
+
+## Licença
+
+Este projeto está sob a licença **MIT**. Veja o arquivo [LICENSE](./LICENSE) para detalhes.
+
+---
+
+<p align="center">
+  Desenvolvido com ☕ por <a href="https://github.com/devAndreotti">devAndreotti</a>
+</p>
+
+---
+
+# Referência técnica detalhada
 
 ## File Structure & Descriptions
 
@@ -56,7 +293,7 @@ The evolution plan to reduce AI usage is documented in [`IMPLEMENTATION.md`](./I
 
 ### PowerShell Alias Flow
 
-When the local profile is installed, use the aliases from any repository:
+When the local PowerShell profile is installed, use the aliases from any repository:
 
 ```powershell
 qg
@@ -119,7 +356,7 @@ node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profil
 node scripts\local-validate.cjs --project C:\caminho\meu-projeto-python --profile pr --json
 ```
 
-`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are local conveniences, not local validation dependencies.
+`local-validate` runs Python/uv checks, Node UI checks when `package.json` is detected, `node scripts/quality-gate.js check`, `node scripts/doctor.cjs --dry-run`, `git diff --check`, and `git status`. The quality-gate check only runs after successful pytest with fresh coverage. `qg-chk` and `qg-doc` are local PowerShell conveniences, not local validation dependencies.
 
 **Company repos (no persistent install)**: pass `--scripts-root <path to this repo's scripts folder>` to run `quality-gate.js`/`doctor.cjs` against a real clone with zero files copied or committed into it — `qg-init` is never run there. Add `--profile company` to also run an advisory `jscpd` cross-file duplication scan (`npx jscpd`, no install, non-blocking) covering what Sonar's duplication metric used to. Complexity/code-smell coverage comes from adding `eslint-plugin-sonarjs` to the target's own ESLint config — it flows through the existing `node:lint` step automatically, no extra flag needed.
 
