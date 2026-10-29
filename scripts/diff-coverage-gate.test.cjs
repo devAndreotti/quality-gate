@@ -178,3 +178,15 @@ test('formatReport truncates long uncovered lists and marks advisory mode', () =
   assert.match(text, /\.\.\. e mais 10/);
   assert.match(text, /advisory/);
 });
+
+test('evaluateDiffCoverage only gates files under include prefixes when set', () => {
+  const diff = [diffFor('scripts/tool.cjs', ['const a = 1;']), diffFor('src/app.js', ['const b = 2;'])].join('\n');
+  const r = evaluateDiffCoverage({
+    diffText: diff,
+    lcovText: lcovFor('src/app.js', { 1: 1 }),
+    minDiffCoverage: 90,
+    include: ['src/'],
+  });
+  assert.equal(r.passed, true);
+  assert.deepEqual(r.untestedFiles, []);
+});
