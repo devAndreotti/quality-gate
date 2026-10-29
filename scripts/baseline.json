@@ -1,10 +1,10 @@
 {
   "coverage": {
-    "lines": 0,
-    "statements": 0,
-    "functions": 0,
-    "branches": 0
+    "lines": 90.85,
+    "statements": 90.85,
+    "functions": 92.05,
+    "branches": 80.34
   },
-  "updatedAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-10-29T10:57:38.686Z",
   "_comment": "Execute 'node scripts/quality-gate.js init' após a primeira rodada de testes para capturar o baseline real do projeto."
 }
