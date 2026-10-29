@@ -23,7 +23,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   security:
     name: Security audit
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -62,7 +62,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -113,7 +113,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   test:
     name: Tests & ratchet
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -162,7 +162,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   sonar:
     name: SonarCloud
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: test
     # Pula em push direto na main (sem PR) para não gastar créditos
@@ -216,7 +216,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   docker:
     name: Docker image gate
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -243,7 +243,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   sbom:
     name: SBOM
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -279,7 +279,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   report:
     name: PR report
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [security, lint, test, sonar, docker]
     if: always() && github.event_name == 'pull_request'
