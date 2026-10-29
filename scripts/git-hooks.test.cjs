@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -79,6 +80,51 @@ test('renderPreCommitHook carries the managed marker and runs secret-scan and pr
   assert.match(content, /node_modules\/\.bin\/prettier --check/);
   assert.match(content, /git diff --cached --name-only --diff-filter=ACM/);
   assert.doesNotMatch(content, /local-validate/);
+});
+
+test('renderPreCommitHook runs eslint with --max-warnings=0 on staged JS files behind an existence guard', () => {
+  const content = renderPreCommitHook();
+  assert.match(content, /\[ -x "node_modules\/\.bin\/eslint" \]/);
+  assert.match(content, /node_modules\/\.bin\/eslint --max-warnings=0/);
+  assert.match(content, /\\\.\(cjs\|mjs\|js\)\$/);
+  assert.match(content, /ESLint nao instalado/);
+});
+
+test('pre-commit hook fails on a staged file with a real lint error and passes a clean one', (t) => {
+  const realEslint = path.join(__dirname, '..', 'node_modules', 'eslint', 'bin', 'eslint.js');
+  if (!fs.existsSync(realEslint)) {
+    t.skip('eslint nao instalado no checkout; rode npm ci');
+    return;
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-eslint-hook-'));
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  // Config local sem imports: so a regra no-undef, nada de rede nem dependencias.
+  fs.writeFileSync(path.join(root, 'eslint.config.js'), "module.exports = [{ rules: { 'no-undef': 'error' } }];\n");
+  fs.mkdirSync(path.join(root, 'node_modules/.bin'), { recursive: true });
+  fs.symlinkSync(realEslint, path.join(root, 'node_modules/.bin/eslint'));
+  installHook({ root, hook: 'pre-commit' });
+
+  fs.writeFileSync(path.join(root, 'good.cjs'), 'module.exports = 1;\n');
+  execFileSync('git', ['add', 'good.cjs'], { cwd: root });
+  const ok = spawnSync('sh', [path.join(root, '.git/hooks/pre-commit')], { cwd: root, encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+
+  fs.writeFileSync(path.join(root, 'bad.cjs'), 'module.exports = missingIdentifier;\n');
+  execFileSync('git', ['add', 'bad.cjs'], { cwd: root });
+  const bad = spawnSync('sh', [path.join(root, '.git/hooks/pre-commit')], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(bad.status, 0, 'hook deve bloquear lint error staged');
+  assert.match(bad.stdout + bad.stderr, /no-undef|missingIdentifier/);
+});
+
+test('pre-commit hook skips eslint with a message and does not fail when eslint is not installed', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-eslint-skip-'));
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  installHook({ root, hook: 'pre-commit' });
+  fs.writeFileSync(path.join(root, 'bad.cjs'), 'module.exports = missingIdentifier;\n');
+  execFileSync('git', ['add', 'bad.cjs'], { cwd: root });
+  const res = spawnSync('sh', [path.join(root, '.git/hooks/pre-commit')], { cwd: root, encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stdout + res.stderr);
+  assert.match(res.stdout + res.stderr, /ESLint nao instalado/);
 });
 
 test('renderPrePushHook keeps the pre-push checks and does not run the pre-commit checks', () => {
