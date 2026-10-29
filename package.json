@@ -22,6 +22,6 @@
     "typescript": "^5.9.3"
   },
   "optionalDependencies": {
-    "oxc-parser": "0.154.0"
+    "oxc-parser": "0.155.0"
   }
 }
