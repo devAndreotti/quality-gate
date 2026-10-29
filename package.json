@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.check.json"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "ink": "^8.0.0",
