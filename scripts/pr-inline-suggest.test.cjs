@@ -3,7 +3,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const test = require('node:test');
+const { after, test } = require('node:test');
 
 const {
   buildBody,
@@ -306,4 +306,23 @@ test('"\\ No newline" markers do not shift added line numbers', () => {
   });
   assert.equal(items.length, 1);
   assert.equal(items[0].comment.line, 2);
+});
+
+const scratchDirs = [];
+after(() => {
+  for (const dir of scratchDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('git failure outside InputError exits 1 with a runtime message and no report', () => {
+  const dir = tmp('qg-inline-rt-');
+  scratchDirs.push(dir);
+  git(dir, ['init', '-q']);
+  const file = writeFindings(dir, [{ file: 'src/a.js', line: 1, message: 'm', rule: 'r' }]);
+  const io = captureIo();
+  // Base inexistente: git diff falha de verdade, sem mock.
+  const code = main(['--findings', file, '--base', 'refs/qg-missing-base', '--head', 'HEAD'], { ...io.deps, cwd: dir });
+  assert.equal(code, 1);
+  assert.match(io.err, /não foi possível calcular o diff refs\/qg-missing-base\.\.\.HEAD/);
+  assert.doesNotMatch(io.err, /entrada inválida/);
+  assert.equal(io.out, '');
 });

@@ -21,6 +21,18 @@ function git(dir, args) {
   });
 }
 
+// Sem teto, git sobe a arvore e acha um .git que contenha o tmp. O teto e o pai de dir.
+function withGitCeiling(dir, fn) {
+  const previous = process.env.GIT_CEILING_DIRECTORIES;
+  process.env.GIT_CEILING_DIRECTORIES = [previous, path.dirname(dir)].filter(Boolean).join(path.delimiter);
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env.GIT_CEILING_DIRECTORIES;
+    else process.env.GIT_CEILING_DIRECTORIES = previous;
+  }
+}
+
 function makeRepo(files, { commit = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ast-graph-'));
   tempDirs.push(dir);
@@ -436,7 +448,13 @@ describe('ast-graph run', () => {
     assert.equal(runOn(dir, ['--base', 'ref-que-nao-existe']).exitCode, 2);
     const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'ast-graph-norepo-'));
     tempDirs.push(notRepo);
-    assert.equal(run(['--root', notRepo], { loadParser: injected }).exitCode, 2);
+    assert.equal(withGitCeiling(notRepo, () => run(['--root', notRepo], { loadParser: injected }).exitCode), 2);
+  });
+
+  test('--root sem repo continua exit 2 mesmo com tmp aninhado sob diretorio com .git', () => {
+    const parent = makeRepo({ 'a.js': 'export const x = 1;\n' });
+    const nested = fs.mkdtempSync(path.join(parent, 'ast-graph-nested-'));
+    assert.equal(withGitCeiling(nested, () => run(['--root', nested], { loadParser: injected }).exitCode), 2);
   });
 
   test('CommonJS: export nomeado de .cjs é checado; module.exports não literal fica opaco', () => {

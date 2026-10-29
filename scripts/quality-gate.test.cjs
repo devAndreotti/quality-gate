@@ -17,6 +17,26 @@ function tempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qg-ratchet-'));
 }
 
+// Restaura uma variavel exatamente como estava: string, ou ausente quando previous e undefined.
+function restoreEnv(name, previous) {
+  if (previous === undefined) delete process.env[name];
+  else process.env[name] = previous;
+}
+
+// Define vars (undefined remove a variavel), roda fn e restaura cada uma no finally.
+function withEnv(vars, fn) {
+  const previous = Object.keys(vars).map((name) => [name, process.env[name]]);
+  for (const [name, value] of Object.entries(vars)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [name, value] of previous) restoreEnv(name, value);
+  }
+}
+
 function writeCoverage(project, pct = 82) {
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
   fs.writeFileSync(
@@ -251,18 +271,49 @@ test('untracked allowlist ignores samples without hiding tracked modifications',
   assert.deepEqual(filtered, [' M samples/tracked.json', '?? scratch.txt']);
 });
 
+test('withEnv restores a pre-existing variable and keeps absent ones absent', () => {
+  const previousActions = process.env.GITHUB_ACTIONS;
+  const previousAbsent = process.env.QG_TEST_ABSENT;
+  process.env.GITHUB_ACTIONS = 'sentinel';
+  delete process.env.QG_TEST_ABSENT;
+  try {
+    withEnv({ GITHUB_ACTIONS: 'true', QG_TEST_ABSENT: 'temp' }, () => {
+      assert.equal(process.env.GITHUB_ACTIONS, 'true');
+      assert.equal(process.env.QG_TEST_ABSENT, 'temp');
+    });
+    assert.equal(process.env.GITHUB_ACTIONS, 'sentinel');
+    assert.equal(Object.prototype.hasOwnProperty.call(process.env, 'QG_TEST_ABSENT'), false);
+  } finally {
+    restoreEnv('GITHUB_ACTIONS', previousActions);
+    restoreEnv('QG_TEST_ABSENT', previousAbsent);
+  }
+});
+
+test('withEnv restores the environment even when fn throws', () => {
+  const previous = process.env.GITHUB_ACTIONS;
+  process.env.GITHUB_ACTIONS = 'sentinel';
+  try {
+    assert.throws(() => withEnv({ GITHUB_ACTIONS: undefined }, () => {
+      throw new Error('boom');
+    }), /boom/);
+    assert.equal(process.env.GITHUB_ACTIONS, 'sentinel');
+  } finally {
+    restoreEnv('GITHUB_ACTIONS', previous);
+  }
+});
+
 test('renderWorkflowAnnotations outputs GitHub Actions ::error commands when in CI', () => {
   const logs = [];
   const originalLog = console.log;
   console.log = (msg) => logs.push(msg);
-  process.env.GITHUB_ACTIONS = 'true';
   try {
-    renderWorkflowAnnotations([{ group: 'Coverage', metric: 'lines', baseline: 80, current: 75 }]);
+    withEnv({ GITHUB_ACTIONS: 'true' }, () => {
+      renderWorkflowAnnotations([{ group: 'Coverage', metric: 'lines', baseline: 80, current: 75 }]);
+    });
     assert.equal(logs.length, 1);
     assert.match(logs[0], /^::error title=Quality Gate: Coverage - lines::/);
   } finally {
     console.log = originalLog;
-    delete process.env.GITHUB_ACTIONS;
   }
 });
 

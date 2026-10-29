@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const test = require('node:test');
+const { after, test } = require('node:test');
 
 const {
   AiClientError,
@@ -67,16 +67,54 @@ function startFakeProvider({ models = [], content = 'ok', delayMs = 0, status = 
   });
 }
 
-// Porta que acabou de ser liberada: conexao recusada, sem rede externa.
+// Porta reservada e inalcancavel: o servidor fica aberto (ninguem mais pega a porta)
+// e derruba cada socket que chega, entao a requisicao falha sem resposta HTTP.
+const unreachableServers = [];
+after(() => Promise.all(unreachableServers.map((s) => new Promise((done) => s.close(done)))));
+
 function closedUrl() {
   return new Promise((resolve) => {
     const server = http.createServer();
+    server.on('connection', (socket) => socket.destroy());
+    unreachableServers.push(server);
     server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address();
-      server.close(() => resolve(`http://127.0.0.1:${port}`));
+      resolve(`http://127.0.0.1:${server.address().port}`);
     });
   });
 }
+
+function httpStatusOf(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on('error', reject);
+    req.setTimeout(2000, () => req.destroy(new Error('timeout')));
+  });
+}
+
+function listenOn(server, port) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => resolve(server.address().port));
+  });
+}
+
+test('closedUrl cannot answer HTTP: the request fails with an error, never a status code', async () => {
+  const url = await closedUrl();
+  await assert.rejects(httpStatusOf(url));
+});
+
+test('closedUrl keeps its port reserved, so another listener cannot take it', async () => {
+  const url = await closedUrl();
+  const squatter = http.createServer((req, res) => res.end('taken'));
+  try {
+    await assert.rejects(listenOn(squatter, Number(new URL(url).port)), { code: 'EADDRINUSE' });
+  } finally {
+    if (squatter.listening) squatter.close();
+  }
+});
 
 function tmpRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qg-ai-client-'));

@@ -124,6 +124,18 @@ function makeRepoWithoutCommit() {
   return dir;
 }
 
+// Sem teto, git sobe a arvore e acha um .git que contenha o tmp. O teto e o pai de dir.
+function withGitCeiling(dir, fn) {
+  const previous = process.env.GIT_CEILING_DIRECTORIES;
+  process.env.GIT_CEILING_DIRECTORIES = [previous, path.dirname(dir)].filter(Boolean).join(path.delimiter);
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env.GIT_CEILING_DIRECTORIES;
+    else process.env.GIT_CEILING_DIRECTORIES = previous;
+  }
+}
+
 test('SS-2 diff mode reports staged and untracked files in a repo without commits', () => {
   const dir = makeRepoWithoutCommit();
   fs.writeFileSync(path.join(dir, 'staged.txt'), `token=${OPENAI_LIKE}\n`);
@@ -150,8 +162,15 @@ test('SS-2 a failing git command is reported as error, never as passed', () => {
 
 test('SS-2 diff mode outside a git repository is an error, not a pass', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-nogit-'));
-  const res = runSecretScan({ root: dir, mode: 'diff' });
+  const res = withGitCeiling(dir, () => runSecretScan({ root: dir, mode: 'diff' }));
   assert.notEqual(res.status, 'passed');
+  assert.equal(res.status, 'error');
+});
+
+test('SS-2 not-a-repo stays an error when the temp dir is nested under a directory with .git', () => {
+  const parent = makeRepoWithoutCommit();
+  const nested = fs.mkdtempSync(path.join(parent, 'qg-sec-nested-'));
+  const res = withGitCeiling(nested, () => runSecretScan({ root: nested, mode: 'diff' }));
   assert.equal(res.status, 'error');
 });
 
