@@ -23,7 +23,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   security:
     name: Security audit
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -62,10 +62,12 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0  # commit-lint precisa da base do PR no histórico
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -74,6 +76,21 @@ jobs:
 
       - name: Instalação determinística
         run: npm ci --ignore-scripts
+
+      # Todo commit do PR precisa seguir Conventional Commits (scripts/commit-lint.cjs).
+      # Usa --no-merges internamente; o merge sintético do GitHub não entra na conta.
+      - name: Commit-lint — commits do PR
+        if: github.event_name == 'pull_request'
+        run: node scripts/commit-lint.cjs --range "$BASE_SHA..HEAD"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+      # Tamanho do PR (ci.prSize). Desligado por padrão: imprime SKIPPED e sai 0.
+      - name: PR size — linhas alteradas
+        if: github.event_name == 'pull_request'
+        run: node scripts/pr-size.cjs --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
       # Lint real: ESLint 9 (eslint.config.js). Qualquer erro reprova o job.
       - name: ESLint
@@ -96,7 +113,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   test:
     name: Tests & ratchet
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -150,7 +167,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   sonar:
     name: SonarCloud
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: test
     # Pula em push direto na main (sem PR) para não gastar créditos
@@ -204,7 +221,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   docker:
     name: Docker image gate
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -226,12 +243,48 @@ jobs:
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────
+  # JOB 6 — SBOM (CycloneDX, dependências de produção)
+  # Informativo: só reprova se o arquivo sair vazio.
+  # ───────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      - name: Gerar SBOM (CycloneDX, sem devDependencies)
+        run: |
+          set +e
+          npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json
+          echo "npm sbom exit=$? (saída vazia reprova; erro isolado não reprova)"
+          if [ ! -s sbom.cdx.json ]; then
+            echo "sbom.cdx.json vazio; falha"
+            exit 1
+          fi
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 30
+
+  # ───────────────────────────────────────────────────────────────────────────
   # JOB 6 — Sticky comment no PR
   # Roda sempre (mesmo se jobs anteriores falharam) para o agente ter visibilidade.
   # ───────────────────────────────────────────────────────────────────────────
   report:
     name: PR report
-    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [security, lint, test, sonar, docker]
     if: always() && github.event_name == 'pull_request'

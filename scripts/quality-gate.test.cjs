@@ -223,3 +223,88 @@ test('renderWorkflowAnnotations outputs GitHub Actions ::error commands when in 
     delete process.env.GITHUB_ACTIONS;
   }
 });
+
+test('QG-2: coverage metric null with positive baseline fails and names the metric', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
+    total: {
+      lines: { pct: 90 },
+      statements: { pct: 90 },
+      functions: { pct: 90 },
+      branches: { pct: null },
+    },
+  }));
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+  }));
+
+  const result = runQualityGate({ root: project, command: 'check' });
+  const failure = result.failures.find((item) => item.metric === 'branches');
+
+  assert.equal(result.status, 'failed');
+  assert.ok(failure, 'branches must fail when it was baselined and is not measured');
+  assert.match(failure.message, /branches/);
+  assert.match(failure.message, /não medid/);
+});
+
+test('QG-2: coverage metric null with zero or absent baseline stays not applicable', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
+    total: {
+      lines: { pct: 90 },
+      statements: { pct: 90 },
+      functions: { pct: 90 },
+      branches: { pct: null },
+    },
+  }));
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: { lines: 80, statements: 80, functions: 80, branches: 0 },
+  }));
+
+  const result = runQualityGate({ root: project, command: 'check' });
+  const branchesRow = result.rows.find((row) => row.metric === 'branches');
+
+  assert.equal(result.status, 'passed');
+  assert.equal(branchesRow.passed, true);
+  assert.equal(branchesRow.current, 'n/a');
+});
+
+test('QG-4: lint row without baseline value appears with warn status', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'coverage/eslint-report.json'), JSON.stringify([{ errorCount: 2 }]));
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+  }));
+  writeCoverage(project, 90);
+
+  const result = runQualityGate({ root: project, command: 'check' });
+  const lintRow = result.rows.find((row) => row.group === 'Lint');
+
+  assert.equal(result.status, 'passed');
+  assert.ok(lintRow, 'lint row must stay visible without a baseline');
+  assert.equal(lintRow.status, 'warn');
+  assert.equal(lintRow.baseline, 'sem baseline');
+  assert.equal(lintRow.current, '2');
+});
+
+test('QG-5: report without coverage returns a warning and does not throw', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
+    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+  }));
+
+  let result;
+  assert.doesNotThrow(() => {
+    result = runQualityGate({ root: project, command: 'report' });
+  });
+  assert.equal(result.status, 'warning');
+  assert.match(result.warning, /coverage/);
+  assert.throws(() => runQualityGate({ root: project, command: 'check' }), /coverage nao encontrado/);
+});
