@@ -4,7 +4,14 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { collectScriptFiles, checkSyntax, writeEmptyEslintReport } = require("./check-syntax.cjs");
+const { collectScriptFiles, checkSyntax, writeEslintReport, resolveEslintBin } = require("./check-syntax.cjs");
+
+const ESLINT_CONFIG = "module.exports = [{ files: [\"**/*.cjs\"], rules: { \"no-unused-vars\": \"error\" } }];\n";
+const eslintAvailable = Boolean(resolveEslintBin(__dirname));
+
+function readReport(root) {
+  return JSON.parse(fs.readFileSync(path.join(root, "coverage/eslint-report.json"), "utf8"));
+}
 
 test("collectScriptFiles returns JS and CJS files below scripts", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
@@ -18,11 +25,42 @@ test("collectScriptFiles returns JS and CJS files below scripts", () => {
   assert.deepEqual(files, ["scripts/a.cjs", "scripts/lib/b.js"]);
 });
 
-test("writeEmptyEslintReport creates empty array JSON in coverage dir", () => {
+test("writeEslintReport writes the real ESLint result, not an empty array", { skip: eslintAvailable ? false : "eslint não instalado neste ambiente" }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
-  writeEmptyEslintReport(root);
-  const report = JSON.parse(fs.readFileSync(path.join(root, "coverage/eslint-report.json"), "utf8"));
-  assert.deepEqual(report, []);
+  fs.mkdirSync(path.join(root, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(root, "eslint.config.js"), ESLINT_CONFIG);
+  fs.writeFileSync(path.join(root, "scripts/bad.cjs"), "const unused = 1;\nmodule.exports = {};\n");
+
+  writeEslintReport(root, { files: [path.join(root, "scripts/bad.cjs")] });
+
+  const report = readReport(root);
+  assert.notDeepEqual(report, []);
+  assert.ok(Array.isArray(report), "real report is ESLint JSON output (an array of results)");
+  const entry = report.find((item) => item.filePath.endsWith("scripts/bad.cjs"));
+  assert.ok(entry, "report has an entry for the file with the violation");
+  assert.ok(entry.messages.some((message) => message.ruleId === "no-unused-vars"));
+});
+
+test("writeEslintReport writes skipped object, never [], when eslint is not installed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+  fs.writeFileSync(path.join(root, "eslint.config.js"), ESLINT_CONFIG);
+
+  writeEslintReport(root, { files: [], eslintBin: null });
+
+  const report = readReport(root);
+  assert.notDeepEqual(report, []);
+  assert.deepEqual(report, { status: "skipped", reason: "eslint não instalado" });
+});
+
+test("writeEslintReport writes skipped object, never [], when eslint.config.js is missing", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "qg-syntax-"));
+
+  writeEslintReport(root, { files: [], eslintBin: "/unused/eslint.js" });
+
+  const report = readReport(root);
+  assert.notDeepEqual(report, []);
+  assert.equal(report.status, "skipped");
+  assert.match(report.reason, /eslint\.config\.js/);
 });
 
 test("checkSyntax passes on valid scripts and catches invalid syntax", () => {
