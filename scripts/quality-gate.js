@@ -107,6 +107,8 @@ function collectPythonCoverage(root) {
     statements: null,
     functions: null,
     branches: branchPct == null ? null : Number(branchPct.toFixed(2)),
+    // Métricas que esta fonte nunca mede: não são "não medidas", são não aplicáveis.
+    unsupported: ['statements', 'functions'],
   };
 }
 
@@ -143,7 +145,9 @@ function collectFileSizes(root, maxFileLines = 300) {
 function collectAll(root) {
   const coverage = collectCoverage(root) || collectPythonCoverage(root);
   if (!coverage) {
-    throw new Error('coverage nao encontrado. Rode node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
+    const missing = new Error('coverage nao encontrado. Rode node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
+    missing.code = 'COVERAGE_MISSING';
+    throw missing;
   }
   return {
     coverage,
@@ -156,28 +160,46 @@ function collectAll(root) {
 function compareMetrics(current, baseline) {
   const failures = [];
   const rows = [];
+  const notApplicable = new Set(current.coverage?.unsupported || []);
   for (const key of ['lines', 'statements', 'functions', 'branches']) {
     const cur = current.coverage?.[key] ?? null;
     const base = baseline.coverage?.[key] ?? null;
-    const passed = base == null || cur == null || cur >= base - 0.01;
-    if (!passed) failures.push({ group: 'coverage', metric: key, baseline: base, current: cur });
-    rows.push({ group: 'Coverage', metric: key, baseline: pct(base), current: pct(cur), delta: delta(cur, base), passed });
+    if (notApplicable.has(key)) {
+      rows.push({ group: 'Coverage', metric: key, baseline: pct(base), current: pct(cur), delta: '-', passed: true, status: 'pass' });
+      continue;
+    }
+    // Baseline 0 ou ausente: null segue não aplicável. Baseline > 0 sem medição: falha.
+    const passed = cur == null ? !(base > 0) : base == null || cur >= base - 0.01;
+    if (!passed) {
+      const failure = { group: 'coverage', metric: key, baseline: base, current: cur };
+      if (cur == null) failure.message = `${key} não medido: baseline ${base}% exige medição, mas a métrica veio nula`;
+      failures.push(failure);
+    }
+    rows.push({ group: 'Coverage', metric: key, baseline: pct(base), current: pct(cur), delta: delta(cur, base), passed, status: passed ? 'pass' : 'fail' });
   }
 
   if (current.lintErrors != null) {
     const cur = current.lintErrors;
     const base = baseline.lintErrors ?? null;
-    const passed = base == null || cur <= base;
-    if (!passed) failures.push({ group: 'lint', metric: 'errors', baseline: base, current: cur });
-    rows.push({ group: 'Lint', metric: 'errors', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed });
+    if (base == null) {
+      rows.push({ group: 'Lint', metric: 'errors', baseline: 'sem baseline', current: count(cur), delta: '-', passed: true, status: 'warn' });
+    } else {
+      const passed = cur <= base;
+      if (!passed) failures.push({ group: 'lint', metric: 'errors', baseline: base, current: cur });
+      rows.push({ group: 'Lint', metric: 'errors', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed, status: passed ? 'pass' : 'fail' });
+    }
   }
 
   if (current.oversizedFiles != null) {
     const cur = current.oversizedFiles;
     const base = baseline.oversizedFiles ?? null;
-    const passed = base == null || cur <= base;
-    if (!passed) failures.push({ group: 'files', metric: 'oversized (>300 linhas)', baseline: base, current: cur });
-    rows.push({ group: 'Files', metric: 'oversized (>300 linhas)', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed });
+    if (base == null) {
+      rows.push({ group: 'Files', metric: 'oversized (>300 linhas)', baseline: 'sem baseline', current: count(cur), delta: '-', passed: true, status: 'warn' });
+    } else {
+      const passed = cur <= base;
+      if (!passed) failures.push({ group: 'files', metric: 'oversized (>300 linhas)', baseline: base, current: cur });
+      rows.push({ group: 'Files', metric: 'oversized (>300 linhas)', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed, status: passed ? 'pass' : 'fail' });
+    }
   }
 
   return { rows, failures };
@@ -221,9 +243,18 @@ function runQualityGate(options = {}) {
   const command = options.command || 'check';
   const dryRun = Boolean(options.dryRun);
   const now = options.now || new Date().toISOString();
-  const current = collectAll(root);
   const baselineFile = readJSON(paths(root).baseline);
   const existing = baselineFile || {};
+  let current;
+  try {
+    current = collectAll(root);
+  } catch (error) {
+    // report é consulta: sem coverage ele avisa e sai 0. check continua falhando.
+    if (command === 'report' && error.code === 'COVERAGE_MISSING') {
+      return { status: 'warning', command, current: null, baseline: existing, rows: [], failures: [], warning: error.message };
+    }
+    throw error;
+  }
 
   if (command === 'check' || command === 'report') {
     const compared = compareMetrics(current, existing);
@@ -258,8 +289,9 @@ function runQualityGate(options = {}) {
 }
 
 function toMetricsTableRows(rows) {
+  const icons = { pass: '✅', warn: '⚠️', fail: '❌' };
   return rows.map((row) => [
-    row.passed ? '✅' : '❌',
+    icons[row.status] || (row.passed ? '✅' : '❌'),
     row.group,
     row.metric,
     row.baseline,
@@ -294,6 +326,7 @@ function printReport(result) {
       ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`
       : '✅ GATE PASSOU — nenhuma métrica regrediu');
   } else if (result.command === 'report') {
+    if (result.warning) console.log(`⚠️  ${result.warning}`);
     console.log('');
     console.log('ℹ️  modo consulta — nunca falha o build (use "qg-chk" para o gate real de CI)');
   }

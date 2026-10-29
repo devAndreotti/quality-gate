@@ -149,26 +149,43 @@ function parseRequiredChecks(value) {
     .filter(Boolean);
 }
 
+// Politica ausente = sem checks obrigatorios. Politica ilegivel ou invalida = erro reportado
+// e requiredChecks desconhecido (null), nunca [] silencioso.
 function readPolicyRequiredChecks(cwd = process.cwd()) {
+  const policyPath = path.join(cwd, '.quality-gate', 'policy.json');
+  let raw;
   try {
-    const policyPath = path.join(cwd, '.quality-gate', 'policy.json');
-    const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
-    return Array.isArray(policy?.ci?.requiredChecks) ? policy.ci.requiredChecks : [];
-  } catch {
-    return [];
+    raw = fs.readFileSync(policyPath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return { requiredChecks: [], error: null };
+    return { requiredChecks: null, error: `policy nao legivel em .quality-gate/policy.json: ${error.message}` };
+  }
+  try {
+    const policy = JSON.parse(raw);
+    return {
+      requiredChecks: Array.isArray(policy?.ci?.requiredChecks) ? policy.ci.requiredChecks : [],
+      error: null,
+    };
+  } catch (error) {
+    return { requiredChecks: null, error: `policy invalida em .quality-gate/policy.json: ${error.message}` };
   }
 }
 
 function resolveRequiredChecks(options = {}) {
   const explicit = parseRequiredChecks(options.requiredChecks);
-  if (explicit.length) return [...new Set(explicit)];
+  if (explicit.length) return { requiredChecks: [...new Set(explicit)], error: null };
   const fromEnv = parseRequiredChecks(process.env.REQUIRED_CHECKS);
-  if (fromEnv.length) return [...new Set(fromEnv)];
-  return options.cwd ? [...new Set(readPolicyRequiredChecks(options.cwd))] : [];
+  if (fromEnv.length) return { requiredChecks: [...new Set(fromEnv)], error: null };
+  if (!options.cwd) return { requiredChecks: [], error: null };
+  const policy = readPolicyRequiredChecks(options.cwd);
+  return {
+    requiredChecks: policy.requiredChecks ? [...new Set(policy.requiredChecks)] : null,
+    error: policy.error,
+  };
 }
 
 function applyRequiredChecksFallback(branchProtection, requiredChecks) {
-  if (branchProtection.requiredChecks?.length || !requiredChecks.length) return branchProtection;
+  if (branchProtection.requiredChecks?.length || !requiredChecks?.length) return branchProtection;
   return {
     ...branchProtection,
     requiredChecks,
@@ -571,10 +588,8 @@ function buildSnapshot(options) {
     githubApi,
     allowApiFallback,
   });
-  const effectiveBranchProtection = applyRequiredChecksFallback(
-    branchProtection,
-    resolveRequiredChecks({ requiredChecks: options.requiredChecks, cwd: options.cwd }),
-  );
+  const requiredResolution = resolveRequiredChecks({ requiredChecks: options.requiredChecks, cwd: options.cwd });
+  const effectiveBranchProtection = applyRequiredChecksFallback(branchProtection, requiredResolution.requiredChecks);
   const categorizedChecks = {
     ...categorizeChecks(checkQuery.items, effectiveBranchProtection),
     status: checkQuery.status,
@@ -638,6 +653,8 @@ function buildSnapshot(options) {
     ci: normalizeChecks(checkQuery.items),
     checks: categorizedChecks,
     branchProtection: effectiveBranchProtection,
+    requiredChecks: requiredResolution.requiredChecks,
+    errors: requiredResolution.error ? [requiredResolution.error] : [],
     reviewThreads,
     copilotBlockers: collectCopilotBlockers(inlineComments),
     humanBlockers: collectHumanBlockers(reviews),
@@ -667,6 +684,7 @@ function printHuman(snapshot) {
   console.log(` PR: #${snapshot.pr.number} ${snapshot.pr.title}`);
   console.log(` CI: ${snapshot.ci.overall}`);
   console.log(` Actions: ${snapshot.actions.join(', ')}`);
+  for (const error of snapshot.errors || []) console.log(` ⚠️  ${error}`);
   if (snapshot.latestRun) console.log(` Run: ${snapshot.latestRun.id} (${snapshot.latestRun.conclusion || snapshot.latestRun.status})`);
 }
 
