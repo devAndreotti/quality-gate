@@ -231,6 +231,42 @@ jobs:
           retention-days: 7
 
   # ───────────────────────────────────────────────────────────────────────────
+  # JOB 6 — SBOM (CycloneDX, dependências de produção)
+  # Informativo: só reprova se o arquivo sair vazio.
+  # ───────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: SBOM
+    runs-on: [self-hosted, linux, ostg02, quality-gate]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      - name: Gerar SBOM (CycloneDX, sem devDependencies)
+        run: |
+          set +e
+          npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json
+          echo "npm sbom exit=$? (saída vazia reprova; erro isolado não reprova)"
+          if [ ! -s sbom.cdx.json ]; then
+            echo "sbom.cdx.json vazio; falha"
+            exit 1
+          fi
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 30
+
+  # ───────────────────────────────────────────────────────────────────────────
   # JOB 6 — Sticky comment no PR
   # Roda sempre (mesmo se jobs anteriores falharam) para o agente ter visibilidade.
   # ───────────────────────────────────────────────────────────────────────────
