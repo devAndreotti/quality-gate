@@ -124,6 +124,11 @@ jobs:
         with:
           node-version: 22
 
+      # Sem node_modules, os testes do oxc-parser e do ESLint são pulados, e a
+      # cobertura do CI fica abaixo da local. Instalar aqui torna a medição igual.
+      - name: Instalar dependências (testes)
+        run: npm ci --ignore-scripts
+
       - name: Node tests — coverage completo
         timeout-minutes: 10
         run: |
