@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  HISTORY_MAX_FINDINGS,
   isPlaceholder,
   parseArgs,
   runSecretScan,
@@ -307,4 +308,75 @@ test('SS-8 quoted git headers resolve to the unescaped filename, including after
     findings.map((f) => f.line),
     [1, 1],
   );
+});
+
+// --history: linhas adicionadas de todo o historico (git log -p --all).
+// Repo temporario com commits sinteticos; a arvore de trabalho fica limpa.
+function gitIn(dir, args) {
+  return childProcess.execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
+function commitAll(dir, message) {
+  gitIn(dir, ['add', '-A']);
+  gitIn(dir, ['-c', 'user.name=qg-test', '-c', 'user.email=qg-test@example.invalid', 'commit', '-q', '--allow-empty', '-m', message]);
+}
+const TOKEN_ONES = GH + '1'.repeat(36);
+
+test('--history reports a token removed in a later commit, with a clean working tree', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'config.js'), `module.exports = { token: "${TOKEN_ONES}" };\n`);
+  commitAll(dir, 'add config');
+  fs.writeFileSync(path.join(dir, 'config.js'), 'module.exports = {};\n');
+  commitAll(dir, 'remove token');
+  assert.equal(gitIn(dir, ['status', '--porcelain']).trim(), '');
+
+  assert.equal(runSecretScan({ root: dir, mode: 'all' }).findingsCount, 0);
+
+  const res = runSecretScan({ root: dir, mode: 'history' });
+  assert.equal(res.status, 'failed');
+  assert.equal(res.findingsCount, 1);
+  const [finding] = res.findings;
+  assert.equal(finding.id, 'github_pat');
+  assert.equal(finding.file, 'config.js');
+  assert.equal(finding.commit, gitIn(dir, ['rev-parse', 'HEAD~1']).trim());
+  assert.equal(finding.preview, '[valor oculto]');
+});
+
+test('--history reports nothing for a clean repo', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'index.js'), 'console.log("clean");\n');
+  commitAll(dir, 'clean');
+  const res = runSecretScan({ root: dir, mode: 'history' });
+  assert.equal(res.status, 'passed');
+  assert.equal(res.findingsCount, 0);
+});
+
+test('--history skips binary blobs', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'blob.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(TOKEN_ONES)]));
+  commitAll(dir, 'binary');
+  const res = runSecretScan({ root: dir, mode: 'history' });
+  assert.equal(res.findingsCount, 0);
+  assert.equal(res.status, 'passed');
+});
+
+test('--history caps the findings list but keeps the total count', () => {
+  const dir = makeRepoWithoutCommit();
+  const lines = Array.from({ length: HISTORY_MAX_FINDINGS + 10 }, () => `token = "${TOKEN_ONES}"`);
+  fs.writeFileSync(path.join(dir, 'many.txt'), lines.join('\n') + '\n');
+  commitAll(dir, 'many');
+  const res = runSecretScan({ root: dir, mode: 'history' });
+  assert.equal(res.findingsCount, HISTORY_MAX_FINDINGS + 10);
+  assert.equal(res.findings.length, HISTORY_MAX_FINDINGS);
+  assert.equal(res.findingsTruncated, true);
+});
+
+test('--history outside a git repository is an error, not a pass', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-hist-nogit-'));
+  const res = withGitCeiling(dir, () => runSecretScan({ root: dir, mode: 'history' }));
+  assert.equal(res.status, 'error');
+});
+
+test('parseArgs maps --history to history mode', () => {
+  assert.equal(parseArgs(['--history']).mode, 'history');
+  assert.equal(parseArgs(['--all']).mode, 'all');
 });
