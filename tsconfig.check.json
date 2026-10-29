@@ -1,0 +1,1 @@
+{"compilerOptions":{"allowJs":true,"checkJs":true,"noEmit":true,"target":"es2022","module":"commonjs","skipLibCheck":true,"strict":false},"include":["scripts/**/*.cjs","scripts/**/*.js"],"exclude":["scripts/**/*-tui.mjs","scripts/dashboard.cjs"]}

@@ -7,6 +7,7 @@
     "build:tui": "node scripts/build-tui.mjs",
     "format": "prettier --write --no-error-on-unmatched-pattern scripts test",
     "format:check": "prettier --check --no-error-on-unmatched-pattern scripts test",
+    "typecheck": "tsc -p tsconfig.check.json",
     "lint": "eslint scripts test --max-warnings=0 --no-error-on-unmatched-pattern"
   },
   "devDependencies": {
@@ -15,7 +16,8 @@
     "eslint": "^9.39.5",
     "ink": "^7.1.1",
     "prettier": "^3.9.10",
-    "react": "^19.2.0"
+    "react": "^19.2.0",
+    "typescript": "^5.9.3"
   },
   "optionalDependencies": {
     "oxc-parser": "0.154.0"
