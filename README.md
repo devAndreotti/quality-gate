@@ -37,6 +37,7 @@ your-project/                        ← Root of YOUR repository
 │   ├── menu-tui.mjs                 ← qg: rich ink/React menu (bundled, Node >=22)
 │   ├── quality-gate.js              ← Ratchet: check | update | report
 │   ├── pr-comment.js                ← Automatic sticky comment on PR
+│   ├── pr-inline-suggest.cjs        ← Findings as inline review comments (dry-run by default)
 │   └── setup.js                     ← Setup automation via GitHub API
 ├── LICENSE                          ← Standard MIT license
 ├── sonar-project.properties         ← SonarCloud configuration
