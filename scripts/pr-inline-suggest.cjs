@@ -44,9 +44,9 @@ function validateFinding(item, index) {
   if (
     path.posix.isAbsolute(normalized) ||
     normalized.split('/').includes('..') ||
-    /[\r\n]|-->/.test(normalized)
+    /[\r\n<>]/.test(normalized)
   ) {
-    throw new InputError(`${where}: "file" precisa ser caminho relativo sem ".." nem quebra de linha`);
+    throw new InputError(`${where}: "file" precisa ser caminho relativo sem ".." nem quebra de linha ou < >`);
   }
   if (!Number.isInteger(line) || line < 1) throw new InputError(`${where}: "line" precisa ser inteiro >= 1`);
   if (typeof message !== 'string' || !message.trim())
