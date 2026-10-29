@@ -26,6 +26,10 @@ const IGNORED_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build
 const PLACEHOLDER_PATTERN = /(?:YOUR_|DUMMY|EXAMPLE|TEST_|FAKE|XXXXX|<token>|\b0{10,}\b)/i;
 // Prefixo de chave Stripe (sk_test_) contém "TEST_" e não deve tornar a chave um placeholder.
 const PROVIDER_PREFIX = /^(?:sk|rk)_(?:live|test)_/;
+// SS-5: marcador só vale como comentário no fim da linha (não dentro de string literal).
+const SUPPRESS_PATTERN = /(?:\/\/|#|\/\*)\s*(?:nosecret|NOSONAR)\b\s*(?:\*\/)?\s*$/;
+// SS-4: arquivos acima deste limite são pulados e registrados como skipped.
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 // Exclusão só por padrão explícito (--ignore). Test/spec/fixtures NÃO são isentos:
 // segredos reais costumam vazar justamente nesses arquivos.
@@ -49,7 +53,7 @@ function scanText(text, options = {}) {
 
   for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
     const line = lines[lineNum - 1];
-    if (line.includes('nosecret') || line.includes('NOSONAR')) continue;
+    if (SUPPRESS_PATTERN.test(line)) continue;
 
     for (const pattern of SECRET_PATTERNS) {
       pattern.regex.lastIndex = 0;
@@ -62,7 +66,7 @@ function scanText(text, options = {}) {
           name: pattern.name,
           line: lineNum,
           column: match.index + 1,
-          preview: matchedValue.slice(0, 8) + '...' + matchedValue.slice(-4),
+          preview: '[valor oculto]', // SS-7: nunca expõe caracteres do segredo
         });
       }
     }
@@ -71,10 +75,14 @@ function scanText(text, options = {}) {
   return findings;
 }
 
-function scanFile(filePath) {
+function scanFile(filePath, skipped = null) {
   if (!fs.existsSync(filePath)) return [];
   const stat = fs.statSync(filePath);
-  if (stat.size > 2 * 1024 * 1024) return []; // ignora arquivos > 2MB
+  if (stat.size > MAX_FILE_BYTES) {
+    // SS-4: arquivo grande não é escaneado, mas precisa aparecer no resultado.
+    if (skipped) skipped.push({ file: filePath, reason: 'tamanho > 2MB' });
+    return [];
+  }
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const findings = scanText(content);
@@ -93,7 +101,7 @@ function scanDirectory(dir = process.cwd(), results = [], options = {}) {
       scanDirectory(fullPath, results, options);
     } else {
       if (shouldIgnore(fullPath, ignorePatterns)) continue;
-      const findings = scanFile(fullPath);
+      const findings = scanFile(fullPath, options.skipped);
       results.push(...findings);
     }
   }
@@ -104,15 +112,56 @@ function scanDirectory(dir = process.cwd(), results = [], options = {}) {
 // Falha de git propaga erro: nunca vira lista vazia com status PASSED.
 const GIT_MAX_BUFFER = 64 * 1024 * 1024;
 
+// SS-8: git cota caminhos com espaços/unicode/aspas: "b/caf\\303\\251 \\"x\\".txt".
+// Remove aspas e desescapa sequências comuns; octais viram bytes UTF-8.
+function unquoteGitPath(raw) {
+  let value = raw.replace(/\t$/, '');
+  if (!(value.length >= 2 && value.startsWith('"') && value.endsWith('"'))) return value;
+  const body = value.slice(1, -1);
+  const bytes = [];
+  const simple = { '\\': 0x5c, '"': 0x22, t: 0x09, n: 0x0a, r: 0x0d };
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch !== '\\') {
+      bytes.push(...Buffer.from(ch, 'utf8'));
+      continue;
+    }
+    const octal = body.slice(i + 1, i + 4);
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(parseInt(octal, 8));
+      i += 3;
+    } else if (body[i + 1] in simple) {
+      bytes.push(simple[body[i + 1]]);
+      i += 1;
+    } else {
+      bytes.push(0x5c);
+    }
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+function headerPath(raw) {
+  const unquoted = unquoteGitPath(raw);
+  if (unquoted === '/dev/null') return null;
+  return unquoted.startsWith('b/') ? unquoted.slice(2) : unquoted;
+}
+
 function scanUnifiedDiff(diff, ignorePatterns = []) {
   const findings = [];
   let currentFile = null;
   let currentLine = 0;
+  let inPreamble = false;
 
   for (const line of diff.split(/\r?\n/)) {
-    const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
-    if (fileMatch) {
-      currentFile = fileMatch[1];
+    // Cabeçalhos só existem no preâmbulo de cada arquivo (entre "diff --git" e "@@").
+    // Dentro de hunk, uma linha adicionada "++x" é conteúdo e deve ser escaneada.
+    if (line.startsWith('diff --git ')) {
+      inPreamble = true;
+      continue;
+    }
+    if (line.startsWith('@@')) inPreamble = false;
+    if (inPreamble && line.startsWith('+++ ')) {
+      currentFile = headerPath(line.slice(4));
       continue;
     }
     if (currentFile && shouldIgnore(currentFile, ignorePatterns)) {
@@ -123,14 +172,14 @@ function scanUnifiedDiff(diff, ignorePatterns = []) {
       currentLine = parseInt(hunkMatch[1], 10);
       continue;
     }
-    if (line.startsWith('+') && !line.startsWith('+++')) {
+    if (line.startsWith('+')) {
       const text = line.slice(1);
       const lineFindings = scanText(text);
       for (const f of lineFindings) {
         findings.push({ ...f, file: currentFile, line: currentLine });
       }
       currentLine++;
-    } else if (!line.startsWith('-')) {
+    } else if (!line.startsWith('-') && !line.startsWith('\\')) {
       currentLine++;
     }
   }
@@ -153,7 +202,7 @@ function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSy
   const untracked = runGit(['ls-files', '--others', '--exclude-standard', '-z']).split('\0').filter(Boolean);
   for (const relPath of untracked) {
     if (shouldIgnore(relPath, ignorePatterns)) continue;
-    const fileFindings = scanFile(path.join(cwd, relPath));
+    const fileFindings = scanFile(path.join(cwd, relPath), options.skipped);
     for (const f of fileFindings) findings.push({ ...f, file: relPath });
   }
   return findings;
@@ -178,21 +227,28 @@ function parseArgs(argv = process.argv.slice(2)) {
 function runSecretScan(options = {}) {
   const root = path.resolve(options.root || process.cwd());
   const mode = options.mode || 'all';
+  const skipped = [];
+  const scanOptions = { ...options, skipped };
   let findings;
   try {
     findings = mode === 'diff'
-      ? scanGitDiff(root, options.execFileSync || childProcess.execFileSync, options)
-      : scanDirectory(root, [], options);
+      ? scanGitDiff(root, options.execFileSync || childProcess.execFileSync, scanOptions)
+      : scanDirectory(root, [], scanOptions);
   } catch (err) {
     const message = String((err && err.message) || err).split(/\r?\n/)[0];
-    return { status: 'error', mode, root, findingsCount: 0, findings: [], error: message };
+    return { status: 'error', mode, root, findingsCount: 0, findings: [], skippedCount: 0, skipped: [], error: message };
   }
+  let status = 'passed';
+  if (findings.length > 0) status = 'failed';
+  else if (skipped.length > 0) status = 'passed-with-skips';
   return {
-    status: findings.length === 0 ? 'passed' : 'failed',
+    status,
     mode,
     root,
     findingsCount: findings.length,
     findings,
+    skippedCount: skipped.length,
+    skipped,
   };
 }
 
@@ -207,9 +263,12 @@ function main() {
     for (const f of result.findings) {
       console.log(`  ❌ ${f.name} em ${f.file}:${f.line} (${f.preview})`);
     }
+    for (const s of result.skipped) {
+      console.log(`  ⚠️  nao escaneado: ${s.file} (${s.reason})`);
+    }
   }
   if (result.status === 'error') process.exitCode = 2;
-  else process.exitCode = result.status === 'passed' ? 0 : 1;
+  else process.exitCode = result.status === 'failed' ? 1 : 0;
 }
 
 if (require.main === module) main();
