@@ -120,10 +120,13 @@ function readPinnedVersion() {
 }
 
 function sortViolations(list) {
-  return list.sort((a, b) => (a.file.localeCompare(b.file))
-    || (a.line - b.line)
-    || a.type.localeCompare(b.type)
-    || String(a.symbol).localeCompare(String(b.symbol)));
+  return list.sort(
+    (a, b) =>
+      a.file.localeCompare(b.file) ||
+      a.line - b.line ||
+      a.type.localeCompare(b.type) ||
+      String(a.symbol).localeCompare(String(b.symbol)),
+  );
 }
 
 /**
@@ -144,7 +147,10 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
     for (const e of analyses.get(rel).exports) {
       if (e.kind === 'star') {
         const target = resolveImport(rel, e.from, fileSet);
-        if (!target) { opaque = true; continue; }
+        if (!target) {
+          opaque = true;
+          continue;
+        }
         const sub = exportsOf(target, seen);
         if (sub.opaque) opaque = true;
         for (const [n, info] of sub.names) {
@@ -154,7 +160,10 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
       }
       if (e.kind === 'reexport') {
         const target = resolveImport(rel, e.from, fileSet);
-        if (!target) { opaque = true; continue; }
+        if (!target) {
+          opaque = true;
+          continue;
+        }
         if (e.imported === '*') {
           names.set(e.name, { file: target, name: '*', line: e.line, arity: null, kind: 'namespace' });
           continue;
@@ -172,9 +181,11 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
     const cjs = analyses.get(rel).cjs;
     if (cjs.names.length > 0 || cjs.opaque) {
       for (const c of cjs.names) {
-        if (!names.has(c.name)) names.set(c.name, { file: rel, name: c.name, line: c.line, arity: null, kind: 'cjs' });
+        if (!names.has(c.name))
+          names.set(c.name, { file: rel, name: c.name, line: c.line, arity: null, kind: 'cjs' });
       }
-      if (!names.has('default')) names.set('default', { file: rel, name: 'default', line: 1, arity: null, kind: 'cjs' });
+      if (!names.has('default'))
+        names.set('default', { file: rel, name: 'default', line: 1, arity: null, kind: 'cjs' });
       if (cjs.opaque) opaque = true;
     }
     const result = { names, opaque };
@@ -199,8 +210,14 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
       const target = resolveImport(rel, imp.source, fileSet);
       if (!target) {
         if (isUnresolvedCodeSpec(imp.source)) {
-          push({ type: 'unresolved-module', file: rel, line: imp.line, symbol: imp.source, module: imp.source,
-            message: `import de "${imp.source}" não resolve para nenhum arquivo rastreado` });
+          push({
+            type: 'unresolved-module',
+            file: rel,
+            line: imp.line,
+            symbol: imp.source,
+            module: imp.source,
+            message: `import de "${imp.source}" não resolve para nenhum arquivo rastreado`,
+          });
         }
         continue;
       }
@@ -214,8 +231,14 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
         if (info) {
           bindings.set(spec.local, info);
         } else if (!exp.opaque) {
-          push({ type: 'missing-export', file: rel, line: imp.line, symbol: spec.imported, module: imp.source,
-            message: `"${spec.imported}" não é exportado por ${target}` });
+          push({
+            type: 'missing-export',
+            file: rel,
+            line: imp.line,
+            symbol: spec.imported,
+            module: imp.source,
+            message: `"${spec.imported}" não é exportado por ${target}`,
+          });
         }
       }
     }
@@ -226,8 +249,14 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
       if (!target) continue;
       const exp = exportsOf(target);
       if (!exp.opaque && !exp.names.has(e.imported)) {
-        push({ type: 'missing-export', file: rel, line: e.line, symbol: e.imported, module: e.from,
-          message: `re-export de "${e.imported}" não existe em ${target}` });
+        push({
+          type: 'missing-export',
+          file: rel,
+          line: e.line,
+          symbol: e.imported,
+          module: e.from,
+          message: `re-export de "${e.imported}" não existe em ${target}`,
+        });
       }
     }
 
@@ -240,8 +269,14 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
         const exp = exportsOf(namespaces.get(call.object));
         info = exp.names.get(call.callee) || null;
         if (!info && !exp.opaque) {
-          push({ type: 'missing-export', file: rel, line: call.line, symbol: call.callee, module: call.object,
-            message: `${call.object}.${call.callee}() chamado, mas o símbolo não é exportado` });
+          push({
+            type: 'missing-export',
+            file: rel,
+            line: call.line,
+            symbol: call.callee,
+            module: call.object,
+            message: `${call.object}.${call.callee}() chamado, mas o símbolo não é exportado`,
+          });
         }
       }
       if (!info || !info.arity || call.spread || !baseArity) continue;
@@ -249,8 +284,14 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
       if (!old) continue;
       const changed = old.min !== info.arity.min || old.max !== info.arity.max;
       if (changed && (call.argc < info.arity.min || call.argc > info.arity.max)) {
-        push({ type: 'arity-mismatch', file: rel, line: call.line, symbol: info.name, module: info.file,
-          message: `chamada com ${call.argc} argumento(s); assinatura de ${info.name} em ${info.file} era ${formatArity(old)} e agora é ${formatArity(info.arity)}` });
+        push({
+          type: 'arity-mismatch',
+          file: rel,
+          line: call.line,
+          symbol: info.name,
+          module: info.file,
+          message: `chamada com ${call.argc} argumento(s); assinatura de ${info.name} em ${info.file} era ${formatArity(old)} e agora é ${formatArity(info.arity)}`,
+        });
       }
     }
   }
@@ -259,7 +300,7 @@ function analyzeGraph({ files, fileSet, analyses, baseArity }) {
 }
 
 function formatArity(a) {
-  return a.max === Infinity ? `${a.min}+` : (a.min === a.max ? `${a.min}` : `${a.min}..${a.max}`);
+  return a.max === Infinity ? `${a.min}+` : a.min === a.max ? `${a.min}` : `${a.min}..${a.max}`;
 }
 
 /**
@@ -312,7 +353,9 @@ function formatText(report) {
     lines.push(`ast-graph: SKIPPED. ${report.message}`);
     return `${lines.join('\n')}\n`;
   }
-  lines.push(`ast-graph: status=${report.status} arquivos=${report.filesParsed}/${report.filesListed} violacoes=${report.violations.length} avisos=${report.warnings.length} tempo=${report.durationMs}ms`);
+  lines.push(
+    `ast-graph: status=${report.status} arquivos=${report.filesParsed}/${report.filesListed} violacoes=${report.violations.length} avisos=${report.warnings.length} tempo=${report.durationMs}ms`,
+  );
   if (report.violations.length > 0) {
     const rows = report.violations.map((v) => [v.type, v.file, String(v.line), String(v.symbol), v.message]);
     const header = ['TIPO', 'ARQUIVO', 'LINHA', 'SIMBOLO', 'DETALHE'];
@@ -355,7 +398,9 @@ function run(argv = [], deps = {}) {
     if (!fs.statSync(root).isDirectory()) throw new ConfigError('--root não é um diretório');
     listed = listSourceFiles(root);
   } catch (err) {
-    return configFail(err instanceof ConfigError ? err.message : `--root inválido (${err.code || err.message})`);
+    return configFail(
+      err instanceof ConfigError ? err.message : `--root inválido (${err.code || err.message})`,
+    );
   }
 
   if (opts.base) {
@@ -380,10 +425,16 @@ function run(argv = [], deps = {}) {
       violations: [],
       warnings: [],
       durationMs: Date.now() - started,
-      message: `oxc-parser não instalado (${loaded.error || 'motivo desconhecido'}). `
-        + `Instale as dependências do quality-gate (npm install) ou rode: npm install --no-save oxc-parser@${readPinnedVersion()}`,
+      message:
+        `oxc-parser não instalado (${loaded.error || 'motivo desconhecido'}). ` +
+        `Instale as dependências do quality-gate (npm install) ou rode: npm install --no-save oxc-parser@${readPinnedVersion()}`,
     };
-    return { exitCode: EXIT_OK, stdout: opts.json ? `${JSON.stringify(report, null, 2)}\n` : formatText(report), stderr: '', report };
+    return {
+      exitCode: EXIT_OK,
+      stdout: opts.json ? `${JSON.stringify(report, null, 2)}\n` : formatText(report),
+      stderr: '',
+      report,
+    };
   }
 
   const { parser } = loaded;

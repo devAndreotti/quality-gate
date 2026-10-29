@@ -45,14 +45,20 @@ function loadOxcParser({ basedir } = {}) {
       }
       lastError = 'módulo carregado não expõe parseSync';
     } catch (err) {
-      lastError = err && err.code === 'MODULE_NOT_FOUND' ? 'módulo não encontrado' : (err && err.message) || String(err);
+      lastError =
+        err && err.code === 'MODULE_NOT_FOUND'
+          ? 'módulo não encontrado'
+          : (err && err.message) || String(err);
     }
   }
   return { parser: null, version: null, error: lastError };
 }
 
 function readParserVersion(basedir) {
-  for (const load of [basedir && (() => createRequire(path.join(basedir, 'noop.cjs'))(`${PARSER_PACKAGE}/package.json`)), () => require(`${PARSER_PACKAGE}/package.json`)]) {
+  for (const load of [
+    basedir && (() => createRequire(path.join(basedir, 'noop.cjs'))(`${PARSER_PACKAGE}/package.json`)),
+    () => require(`${PARSER_PACKAGE}/package.json`),
+  ]) {
     if (!load) continue;
     try {
       return load().version || null;
@@ -106,7 +112,10 @@ function arityOf(fn) {
 }
 
 function isFunctionNode(node) {
-  return Boolean(node) && ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type);
+  return (
+    Boolean(node) &&
+    ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression'].includes(node.type)
+  );
 }
 
 function declarationEntries(decl, line) {
@@ -141,9 +150,17 @@ function declarationEntries(decl, line) {
  * Qualquer `module.exports = <não-literal>` ou `export =` (TS) marca o arquivo como opaco.
  */
 function isModuleExports(node) {
-  return Boolean(node) && node.type === 'MemberExpression' && !node.computed
-    && node.object && node.object.type === 'Identifier' && node.object.name === 'module'
-    && node.property && node.property.type === 'Identifier' && node.property.name === 'exports';
+  return (
+    Boolean(node) &&
+    node.type === 'MemberExpression' &&
+    !node.computed &&
+    node.object &&
+    node.object.type === 'Identifier' &&
+    node.object.name === 'module' &&
+    node.property &&
+    node.property.type === 'Identifier' &&
+    node.property.name === 'exports'
+  );
 }
 
 function walkTree(program, lineOf) {
@@ -159,7 +176,12 @@ function walkTree(program, lineOf) {
       continue;
     }
     if (node.type === 'TSExportAssignment') cjsOpaque = true;
-    if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left && node.left.type === 'MemberExpression') {
+    if (
+      node.type === 'AssignmentExpression' &&
+      node.operator === '=' &&
+      node.left &&
+      node.left.type === 'MemberExpression'
+    ) {
       const target = node.left;
       const line = lineOf(node.start || 0);
       const plainProp = target.property && target.property.type === 'Identifier' && !target.computed;
@@ -174,7 +196,12 @@ function walkTree(program, lineOf) {
         } else {
           cjsOpaque = true;
         }
-      } else if (plainProp && target.object && target.object.type === 'Identifier' && target.object.name === 'exports') {
+      } else if (
+        plainProp &&
+        target.object &&
+        target.object.type === 'Identifier' &&
+        target.object.name === 'exports'
+      ) {
         // exports.x = ...
         cjsNames.push({ name: target.property.name, line });
       } else if (plainProp && isModuleExports(target.object)) {
@@ -192,8 +219,15 @@ function walkTree(program, lineOf) {
       const callee = node.callee;
       if (callee && callee.type === 'Identifier') {
         calls.push({ ...base, kind: 'identifier', callee: callee.name, object: null });
-      } else if (callee && callee.type === 'MemberExpression' && !callee.computed
-        && callee.object && callee.object.type === 'Identifier' && callee.property && callee.property.type === 'Identifier') {
+      } else if (
+        callee &&
+        callee.type === 'MemberExpression' &&
+        !callee.computed &&
+        callee.object &&
+        callee.object.type === 'Identifier' &&
+        callee.property &&
+        callee.property.type === 'Identifier'
+      ) {
         calls.push({ ...base, kind: 'member', callee: callee.property.name, object: callee.object.name });
       }
     }
@@ -244,7 +278,8 @@ function analyzeSource(source, { filename = 'input.js', parser } = {}) {
       localArity.set(nameOf(stmt.id), arityOf(stmt));
     } else if (stmt.type === 'VariableDeclaration') {
       for (const d of stmt.declarations || []) {
-        if (d.id && d.id.type === 'Identifier' && isFunctionNode(d.init)) localArity.set(d.id.name, arityOf(d.init));
+        if (d.id && d.id.type === 'Identifier' && isFunctionNode(d.init))
+          localArity.set(d.id.name, arityOf(d.init));
       }
     }
   }
@@ -253,8 +288,10 @@ function analyzeSource(source, { filename = 'input.js', parser } = {}) {
     const line = lineOf(stmt.start || 0);
     if (stmt.type === 'ImportDeclaration') {
       const specifiers = (stmt.specifiers || []).map((s) => {
-        if (s.type === 'ImportDefaultSpecifier') return { kind: 'default', imported: 'default', local: nameOf(s.local) };
-        if (s.type === 'ImportNamespaceSpecifier') return { kind: 'namespace', imported: '*', local: nameOf(s.local) };
+        if (s.type === 'ImportDefaultSpecifier')
+          return { kind: 'default', imported: 'default', local: nameOf(s.local) };
+        if (s.type === 'ImportNamespaceSpecifier')
+          return { kind: 'namespace', imported: '*', local: nameOf(s.local) };
         return { kind: 'named', imported: nameOf(s.imported), local: nameOf(s.local) };
       });
       imports.push({
@@ -274,10 +311,24 @@ function analyzeSource(source, { filename = 'input.js', parser } = {}) {
         const exported = nameOf(spec.exported);
         if (!exported) continue;
         if (from) {
-          exportsOut.push({ name: exported, line, kind: 'reexport', from, imported: nameOf(spec.local), arity: null });
+          exportsOut.push({
+            name: exported,
+            line,
+            kind: 'reexport',
+            from,
+            imported: nameOf(spec.local),
+            arity: null,
+          });
         } else {
           const local = nameOf(spec.local);
-          exportsOut.push({ name: exported, line, kind: 'local', from: null, imported: local, arity: localArity.get(local) || null });
+          exportsOut.push({
+            name: exported,
+            line,
+            kind: 'local',
+            from: null,
+            imported: local,
+            arity: localArity.get(local) || null,
+          });
         }
       }
     } else if (stmt.type === 'ExportDefaultDeclaration') {
@@ -287,7 +338,14 @@ function analyzeSource(source, { filename = 'input.js', parser } = {}) {
     } else if (stmt.type === 'ExportAllDeclaration') {
       const exported = nameOf(stmt.exported);
       if (exported) {
-        exportsOut.push({ name: exported, line, kind: 'reexport', from: stmt.source.value, imported: '*', arity: null });
+        exportsOut.push({
+          name: exported,
+          line,
+          kind: 'reexport',
+          from: stmt.source.value,
+          imported: '*',
+          arity: null,
+        });
       } else {
         exportsOut.push({ name: null, line, kind: 'star', from: stmt.source.value, arity: null });
       }

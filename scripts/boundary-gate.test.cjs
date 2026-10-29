@@ -32,8 +32,14 @@ test('extractImports finds import, export-from, require and dynamic import with 
     "const w = await import('./e');",
   ].join('\n');
   const found = extractImports(src);
-  assert.deepEqual(found.map((f) => f.specifier), ['./a', '../b', './c', './d', './e']);
-  assert.deepEqual(found.map((f) => f.line), [1, 2, 3, 4, 5]);
+  assert.deepEqual(
+    found.map((f) => f.specifier),
+    ['./a', '../b', './c', './d', './e'],
+  );
+  assert.deepEqual(
+    found.map((f) => f.line),
+    [1, 2, 3, 4, 5],
+  );
 });
 
 test('extractImports detects multiline imports', () => {
@@ -64,7 +70,10 @@ test('evaluateBoundaries flags domain importing infra', () => {
 
 test('evaluateBoundaries allows domain importing domain and resolves index files', () => {
   const files = [
-    { file: 'src/domain/user.js', content: "import { e } from './entity';\nimport { u } from './util/index';" },
+    {
+      file: 'src/domain/user.js',
+      content: "import { e } from './entity';\nimport { u } from './util/index';",
+    },
   ];
   assert.deepEqual(evaluateBoundaries({ files, rules: [RULE] }), []);
 
@@ -75,7 +84,9 @@ test('evaluateBoundaries allows domain importing domain and resolves index files
 });
 
 test('evaluateBoundaries catches a multiline violation at the import line', () => {
-  const files = [{ file: 'src/domain/user.js', content: "const a = 1;\nimport {\n  db,\n} from '../infra/db';" }];
+  const files = [
+    { file: 'src/domain/user.js', content: "const a = 1;\nimport {\n  db,\n} from '../infra/db';" },
+  ];
   const v = evaluateBoundaries({ files, rules: [RULE] });
   assert.equal(v.length, 1);
   assert.equal(v[0].line, 2);
@@ -104,7 +115,11 @@ test('runBoundaryGate fails blocking and is advisory when blockOnFailure is fals
   const blocking = runBoundaryGate({ config: { enabled: true, rules: [RULE] }, files, contents });
   assert.equal(blocking.status, 'failed');
   assert.equal(blocking.violations.length, 1);
-  const advisory = runBoundaryGate({ config: { enabled: true, blockOnFailure: false, rules: [RULE] }, files, contents });
+  const advisory = runBoundaryGate({
+    config: { enabled: true, blockOnFailure: false, rules: [RULE] },
+    files,
+    contents,
+  });
   assert.equal(advisory.status, 'advisory');
 });
 
@@ -120,7 +135,9 @@ test('runBoundaryGate passes when there are no violations', () => {
 test('runBoundaryGate fails closed when git ls-files cannot run', () => {
   const r = runBoundaryGate({
     config: { enabled: true, rules: [RULE] },
-    execFileSync: () => { throw new Error('fatal: not a git repository'); },
+    execFileSync: () => {
+      throw new Error('fatal: not a git repository');
+    },
   });
   assert.equal(r.status, 'error');
   assert.match(r.reason, /git ls-files falhou/);
@@ -129,7 +146,10 @@ test('runBoundaryGate fails closed when git ls-files cannot run', () => {
 test('readConfig reads ci.architectureBoundary from policy.json', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-boundary-'));
   const policyPath = path.join(dir, 'policy.json');
-  fs.writeFileSync(policyPath, JSON.stringify({ ci: { architectureBoundary: { enabled: true, rules: [RULE] } } }));
+  fs.writeFileSync(
+    policyPath,
+    JSON.stringify({ ci: { architectureBoundary: { enabled: true, rules: [RULE] } } }),
+  );
   const c = readConfig(policyPath);
   assert.equal(c.enabled, true);
   assert.equal(c.blockOnFailure, true);

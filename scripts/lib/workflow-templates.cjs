@@ -1,23 +1,13 @@
 // Workflow & Sonar templates for project auto-configuration
 
-const REQUIRED_CHECKS = [
-  'Security audit',
-  'Lint',
-  'Tests & ratchet',
-  'SonarCloud',
-  'Docker image gate',
-];
+const REQUIRED_CHECKS = ['Security audit', 'Lint', 'Tests & ratchet', 'SonarCloud', 'Docker image gate'];
 
 function requiredChecks(options = {}) {
-  return options.skipSonar
-    ? REQUIRED_CHECKS.filter((check) => check !== 'SonarCloud')
-    : REQUIRED_CHECKS;
+  return options.skipSonar ? REQUIRED_CHECKS.filter((check) => check !== 'SonarCloud') : REQUIRED_CHECKS;
 }
 
-
-
 function pythonCoveragePath(projectDir, fileName) {
-  return projectDir === "." ? `coverage/${fileName}` : `../coverage/${fileName}`;
+  return projectDir === '.' ? `coverage/${fileName}` : `../coverage/${fileName}`;
 }
 
 function pythonWorkflow(projectDir, options = {}) {
@@ -27,7 +17,8 @@ function pythonWorkflow(projectDir, options = {}) {
   const ruffJson = pythonCoveragePath(projectDir, 'ruff.json');
   const coverageDir = projectDir === '.' ? 'coverage' : '../coverage';
   const includeSonar = !options.skipSonar;
-  const sonarJob = includeSonar ? `
+  const sonarJob = includeSonar
+    ? `
 
   sonar:
     name: SonarCloud
@@ -52,13 +43,12 @@ function pythonWorkflow(projectDir, options = {}) {
         timeout-minutes: 5
         env:
           SONAR_TOKEN: \${{ secrets.SONAR_TOKEN }}
-` : '';
+`
+    : '';
   const reportNeeds = includeSonar
     ? '[security, lint, test, sonar, docker]'
     : '[security, lint, test, docker]';
-  const sonarResultEnv = includeSonar
-    ? '          SONAR_RESULT: ${{ needs.sonar.result }}\n'
-    : '';
+  const sonarResultEnv = includeSonar ? '          SONAR_RESULT: ${{ needs.sonar.result }}\n' : '';
 
   return `# quality-gate:managed-workflow version 1
 name: Quality Gate
@@ -213,11 +203,11 @@ ${sonarResultEnv}          REQUIRED_CHECKS: '${requiredChecks(options).join(',')
 `;
 }
 
-
 function nodeWorkflow(projectDir, options = {}) {
   const workingDirectory = projectDir === '.' ? '.' : projectDir;
   const includeSonar = !options.skipSonar;
-  const sonarJob = includeSonar ? `
+  const sonarJob = includeSonar
+    ? `
 
   sonar:
     name: SonarCloud
@@ -256,13 +246,12 @@ function nodeWorkflow(projectDir, options = {}) {
         timeout-minutes: 5
         env:
           SONAR_TOKEN: \${{ secrets.SONAR_TOKEN }}
-` : '';
+`
+    : '';
   const reportNeeds = includeSonar
     ? '[security, lint, test, sonar, docker]'
     : '[security, lint, test, docker]';
-  const sonarResultEnv = includeSonar
-    ? '          SONAR_RESULT: ${{ needs.sonar.result }}\n'
-    : '';
+  const sonarResultEnv = includeSonar ? '          SONAR_RESULT: ${{ needs.sonar.result }}\n' : '';
 
   return `# quality-gate:managed-workflow version 1
 name: Quality Gate
@@ -409,12 +398,16 @@ ${sonarResultEnv}          REQUIRED_CHECKS: '${requiredChecks(options).join(',')
 `;
 }
 
-
 function nodeSonarProperties(current, projectDir) {
   const prefix = projectDir === '.' ? '' : `${projectDir}/`;
   const lines = current
     .split(/\r?\n/)
-    .filter((line) => !/^sonar\.(sources|tests|test\.inclusions|exclusions|javascript\.lcov\.reportPaths|typescript\.tsconfigPath|python\.coverage\.reportPaths)=/.test(line));
+    .filter(
+      (line) =>
+        !/^sonar\.(sources|tests|test\.inclusions|exclusions|javascript\.lcov\.reportPaths|typescript\.tsconfigPath|python\.coverage\.reportPaths)=/.test(
+          line,
+        ),
+    );
   while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
   lines.push(
     `sonar.sources=${prefix}src`,
@@ -426,12 +419,16 @@ function nodeSonarProperties(current, projectDir) {
   return `${lines.join('\n').replace(/\n+$/g, '')}\n`;
 }
 
-
 function pythonSonarProperties(current, projectDir) {
   const prefix = projectDir === '.' ? '' : `${projectDir}/`;
   const lines = current
     .split(/\r?\n/)
-    .filter((line) => !/^sonar\.(sources|tests|test\.inclusions|exclusions|javascript\.lcov\.reportPaths|typescript\.tsconfigPath|python\.coverage\.reportPaths)=/.test(line));
+    .filter(
+      (line) =>
+        !/^sonar\.(sources|tests|test\.inclusions|exclusions|javascript\.lcov\.reportPaths|typescript\.tsconfigPath|python\.coverage\.reportPaths)=/.test(
+          line,
+        ),
+    );
   while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
   lines.push(
     `sonar.sources=${prefix}src`,
@@ -442,7 +439,6 @@ function pythonSonarProperties(current, projectDir) {
   );
   return `${lines.join('\n').replace(/\n+$/g, '')}\n`;
 }
-
 
 module.exports = {
   dotnetWorkflow,
@@ -456,7 +452,6 @@ module.exports = {
   pythonSonarProperties,
   pythonWorkflow,
 };
-
 
 function rustWorkflow(projectDir = '.') {
   const wd = projectDir === '.' ? '.' : projectDir;

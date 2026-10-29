@@ -1,10 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const {
-  auditLicenses,
-  extractNodeLicenses,
-} = require('./license-audit.cjs');
+const { auditLicenses, extractNodeLicenses } = require('./license-audit.cjs');
 
 test('extractNodeLicenses parses lockfile packages', () => {
   const lock = {
@@ -12,7 +9,7 @@ test('extractNodeLicenses parses lockfile packages', () => {
       '': { name: 'root' },
       'node_modules/pkg-a': { name: 'pkg-a', version: '1.0.0', license: 'MIT' },
       'node_modules/pkg-b': { name: 'pkg-b', version: '2.0.0', license: 'GPL-3.0' },
-    }
+    },
   };
   const deps = extractNodeLicenses(lock);
   assert.equal(deps.length, 2);

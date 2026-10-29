@@ -56,25 +56,28 @@ test('parseArgs reads sonar token only from QG_SONAR_TOKEN env var, never from a
 });
 
 test('detectRepoFromRemote supports https and ssh remotes', () => {
-  assert.deepEqual(
-    detectRepoFromRemote('https://github.com/devAndreotti/quality-gate.git'),
-    { owner: 'devAndreotti', repo: 'quality-gate' },
-  );
-  assert.deepEqual(
-    detectRepoFromRemote('git@github.com:devAndreotti/quality-gate.git'),
-    { owner: 'devAndreotti', repo: 'quality-gate' },
-  );
+  assert.deepEqual(detectRepoFromRemote('https://github.com/devAndreotti/quality-gate.git'), {
+    owner: 'devAndreotti',
+    repo: 'quality-gate',
+  });
+  assert.deepEqual(detectRepoFromRemote('git@github.com:devAndreotti/quality-gate.git'), {
+    owner: 'devAndreotti',
+    repo: 'quality-gate',
+  });
 });
 
 test('configureSonarProperties replaces placeholders idempotently', () => {
   const project = tempProject();
   const sonarPath = path.join(project, 'sonar-project.properties');
-  fs.writeFileSync(sonarPath, [
-    'sonar.projectKey=YOUR_ORG_YOUR_REPO',
-    'sonar.organization=YOUR_ORG',
-    'sonar.projectName=YOUR_REPO',
-    '',
-  ].join('\n'));
+  fs.writeFileSync(
+    sonarPath,
+    [
+      'sonar.projectKey=YOUR_ORG_YOUR_REPO',
+      'sonar.organization=YOUR_ORG',
+      'sonar.projectName=YOUR_REPO',
+      '',
+    ].join('\n'),
+  );
 
   const first = configureSonarProperties({
     projectRoot: project,
@@ -124,10 +127,14 @@ test('copilot ruleset body uses only currently accepted pull request parameters'
 });
 
 test('formatGitHubApiError includes validation details', () => {
-  const message = formatGitHubApiError(422, {
-    message: 'Validation Failed',
-    errors: ['Unexpected parameter `automatic_copilot_code_review_enabled`'],
-  }, '/repos/owner/repo/rulesets');
+  const message = formatGitHubApiError(
+    422,
+    {
+      message: 'Validation Failed',
+      errors: ['Unexpected parameter `automatic_copilot_code_review_enabled`'],
+    },
+    '/repos/owner/repo/rulesets',
+  );
 
   assert.match(message, /GitHub API 422/);
   assert.match(message, /\/repos\/owner\/repo\/rulesets/);
@@ -135,10 +142,14 @@ test('formatGitHubApiError includes validation details', () => {
 });
 
 test('formatGitHubApiError sanitizes response text for logs', () => {
-  const message = formatGitHubApiError(422, {
-    message: 'Validation Failed\nsecond line',
-    errors: [{ message: 'bad\r\nvalue', field: 'name' }],
-  }, '/repos/owner/repo/rulesets');
+  const message = formatGitHubApiError(
+    422,
+    {
+      message: 'Validation Failed\nsecond line',
+      errors: [{ message: 'bad\r\nvalue', field: 'name' }],
+    },
+    '/repos/owner/repo/rulesets',
+  );
 
   assert.doesNotMatch(message, /[\r\n]/);
   assert.match(message, /Validation Failed second line/);
@@ -150,7 +161,10 @@ test('runSetup uses default branch from GitHub metadata and never shell-quotes s
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(project, '.github', 'workflows'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, 'baseline.json'), path.join(project, 'scripts', 'baseline.json'));
-  fs.writeFileSync(path.join(project, 'sonar-project.properties'), 'sonar.projectKey=YOUR_ORG_YOUR_REPO\nsonar.organization=YOUR_ORG\nsonar.projectName=YOUR_REPO\n');
+  fs.writeFileSync(
+    path.join(project, 'sonar-project.properties'),
+    'sonar.projectKey=YOUR_ORG_YOUR_REPO\nsonar.organization=YOUR_ORG\nsonar.projectName=YOUR_REPO\n',
+  );
   fs.writeFileSync(path.join(project, '.github', 'workflows', 'quality-gate.yml'), 'name: Quality Gate\n');
 
   const apiCalls = [];
@@ -159,8 +173,10 @@ test('runSetup uses default branch from GitHub metadata and never shell-quotes s
     if (method === 'GET' && apiPath === '/user') return { body: { login: 'me' } };
     if (method === 'GET' && apiPath === '/repos/owner/repo') return { body: { default_branch: 'trunk' } };
     if (method === 'GET' && apiPath === '/repos/owner/repo/rulesets') return { body: [] };
-    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets') return { body: { id: 1 }, status: 201 };
-    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/trunk/protection') return { body: {}, status: 200 };
+    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets')
+      return { body: { id: 1 }, status: 201 };
+    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/trunk/protection')
+      return { body: {}, status: 200 };
     throw new Error(`unexpected API ${method} ${apiPath}`);
   };
   const secretCalls = [];
@@ -196,10 +212,13 @@ test('runSetup URL-encodes default branch names in GitHub API paths', async () =
   const ghApi = async (method, apiPath, body) => {
     apiCalls.push({ method, apiPath, body });
     if (method === 'GET' && apiPath === '/user') return { body: { login: 'me' } };
-    if (method === 'GET' && apiPath === '/repos/owner/repo') return { body: { default_branch: 'release/2026.05' } };
+    if (method === 'GET' && apiPath === '/repos/owner/repo')
+      return { body: { default_branch: 'release/2026.05' } };
     if (method === 'GET' && apiPath === '/repos/owner/repo/rulesets') return { body: [] };
-    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets') return { body: { id: 1 }, status: 201 };
-    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection') return { body: {}, status: 200 };
+    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets')
+      return { body: { id: 1 }, status: 201 };
+    if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection')
+      return { body: {}, status: 200 };
     throw new Error(`unexpected API ${method} ${apiPath}`);
   };
 
@@ -217,7 +236,9 @@ test('runSetup URL-encodes default branch names in GitHub API paths', async () =
   });
 
   assert.equal(result.defaultBranch, 'release/2026.05');
-  assert.ok(apiCalls.some((call) => call.apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection'));
+  assert.ok(
+    apiCalls.some((call) => call.apiPath === '/repos/owner/repo/branches/release%2F2026.05/protection'),
+  );
 });
 
 test('runSetup skips branch protection with actionable detail when default branch is not pushed', async () => {
@@ -232,7 +253,8 @@ test('runSetup skips branch protection with actionable detail when default branc
     if (method === 'GET' && apiPath === '/user') return { body: { login: 'me' } };
     if (method === 'GET' && apiPath === '/repos/owner/repo') return { body: { default_branch: 'main' } };
     if (method === 'GET' && apiPath === '/repos/owner/repo/rulesets') return { body: [] };
-    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets') return { body: { id: 1 }, status: 201 };
+    if (method === 'POST' && apiPath === '/repos/owner/repo/rulesets')
+      return { body: { id: 1 }, status: 201 };
     if (method === 'PUT' && apiPath === '/repos/owner/repo/branches/main/protection') {
       const error = new Error('GitHub API 404 /repos/owner/repo/branches/main/protection: Branch not found');
       error.statusCode = 404;

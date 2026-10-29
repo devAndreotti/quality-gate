@@ -1,26 +1,18 @@
 #!/usr/bin/env node
-const fs = require("node:fs");
-const path = require("node:path");
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   nodeSonarProperties,
   nodeWorkflow,
   pythonCoveragePath,
   pythonSonarProperties,
   pythonWorkflow,
-} = require("./lib/workflow-templates.cjs");
+} = require('./lib/workflow-templates.cjs');
 
-const REQUIRED_CHECKS = [
-  'Security audit',
-  'Lint',
-  'Tests & ratchet',
-  'SonarCloud',
-  'Docker image gate',
-];
+const REQUIRED_CHECKS = ['Security audit', 'Lint', 'Tests & ratchet', 'SonarCloud', 'Docker image gate'];
 
 function requiredChecks(options = {}) {
-  return options.skipSonar
-    ? REQUIRED_CHECKS.filter((check) => check !== 'SonarCloud')
-    : REQUIRED_CHECKS;
+  return options.skipSonar ? REQUIRED_CHECKS.filter((check) => check !== 'SonarCloud') : REQUIRED_CHECKS;
 }
 
 function parseArgs(argv) {
@@ -102,8 +94,16 @@ function configureNode(projectRoot, profile, dryRun, options = {}) {
     if (!dryRun) fs.writeFileSync(sonarPath, nodeSonarProperties(current, profile.projectDir));
   }
   return [
-    { status: dryRun ? 'planned' : 'updated', file: '.github/workflows/quality-gate.yml', detail: 'node workflow' },
-    { status: dryRun ? 'planned' : 'updated', file: '.quality-gate/policy.json', detail: 'profile strict-node' },
+    {
+      status: dryRun ? 'planned' : 'updated',
+      file: '.github/workflows/quality-gate.yml',
+      detail: 'node workflow',
+    },
+    {
+      status: dryRun ? 'planned' : 'updated',
+      file: '.quality-gate/policy.json',
+      detail: 'profile strict-node',
+    },
     { status: dryRun ? 'planned' : 'updated', file: 'sonar-project.properties', detail: 'node paths' },
   ];
 }
@@ -122,8 +122,16 @@ function configurePythonUv(projectRoot, profile, dryRun, options = {}) {
     if (!dryRun) fs.writeFileSync(sonarPath, pythonSonarProperties(current, profile.projectDir));
   }
   return [
-    { status: dryRun ? 'planned' : 'updated', file: '.github/workflows/quality-gate.yml', detail: 'python-uv workflow' },
-    { status: dryRun ? 'planned' : 'updated', file: '.quality-gate/policy.json', detail: 'profile python-uv' },
+    {
+      status: dryRun ? 'planned' : 'updated',
+      file: '.github/workflows/quality-gate.yml',
+      detail: 'python-uv workflow',
+    },
+    {
+      status: dryRun ? 'planned' : 'updated',
+      file: '.quality-gate/policy.json',
+      detail: 'profile python-uv',
+    },
     { status: dryRun ? 'planned' : 'updated', file: 'sonar-project.properties', detail: 'python paths' },
   ];
 }

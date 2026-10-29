@@ -70,11 +70,13 @@ function readJsonIfExists(filePath) {
 
 function detectRemote(projectRoot) {
   try {
-    const remote = childProcess.execSync('git remote get-url origin', {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    const remote = childProcess
+      .execSync('git remote get-url origin', {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      .trim();
     const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
     if (match) return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
   } catch {
@@ -205,17 +207,18 @@ function dependabotContent(info) {
     ]);
   }
 
-  return [
-    'version: 2',
-    'updates:',
-    ...updates.flat(),
-    '',
-  ].join('\n');
+  return ['version: 2', 'updates:', ...updates.flat(), ''].join('\n');
 }
 
 function ensureDependabot(context) {
   if (context.skipDependabot || context.policy.bootstrap?.dependabot?.enabled === false) {
-    recordStep(context.steps, 'skipped', 'Dependabot', 'disabled by flag or policy', '.github/dependabot.yml');
+    recordStep(
+      context.steps,
+      'skipped',
+      'Dependabot',
+      'disabled by flag or policy',
+      '.github/dependabot.yml',
+    );
     return;
   }
 
@@ -378,7 +381,13 @@ function ensureWorkflow(context) {
     }
     if (context.upgrade) {
       if (!current.includes(WORKFLOW_MARKER_PREFIX)) {
-        recordStep(context.steps, 'warn', 'Workflow', 'manual review required; existing workflow has no managed marker', relativePath);
+        recordStep(
+          context.steps,
+          'warn',
+          'Workflow',
+          'manual review required; existing workflow has no managed marker',
+          relativePath,
+        );
         return;
       }
       if (context.dryRun) {
@@ -405,16 +414,24 @@ function ensureWorkflow(context) {
 function toolBadges(packageJson) {
   const badges = [];
   if (packageJson) {
-    badges.push('<img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=flat-square&labelColor=111827&logo=node.js&logoColor=white">');
+    badges.push(
+      '<img alt="Node.js" src="https://img.shields.io/badge/Node.js-20+-339933?style=flat-square&labelColor=111827&logo=node.js&logoColor=white">',
+    );
     if (packageJson.dependencies?.react || packageJson.devDependencies?.react) {
-      badges.push('<img alt="React" src="https://img.shields.io/badge/React-61dafb?style=flat-square&labelColor=111827&logo=react&logoColor=61dafb">');
+      badges.push(
+        '<img alt="React" src="https://img.shields.io/badge/React-61dafb?style=flat-square&labelColor=111827&logo=react&logoColor=61dafb">',
+      );
     }
     if (packageJson.devDependencies?.typescript || packageJson.dependencies?.typescript) {
-      badges.push('<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&labelColor=111827&logo=typescript&logoColor=white">');
+      badges.push(
+        '<img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&labelColor=111827&logo=typescript&logoColor=white">',
+      );
     }
   }
 
-  return badges.length ? badges.join('\n  ') : '<img alt="Quality Gate" src="https://img.shields.io/badge/Quality_Gate-enabled-22c55e?style=flat-square&labelColor=111827">';
+  return badges.length
+    ? badges.join('\n  ')
+    : '<img alt="Quality Gate" src="https://img.shields.io/badge/Quality_Gate-enabled-22c55e?style=flat-square&labelColor=111827">';
 }
 
 function packageScripts(packageJson) {
@@ -422,7 +439,11 @@ function packageScripts(packageJson) {
   return {
     install: packageJson ? 'npm install' : '# Instale dependencias conforme stack do projeto',
     test: scripts.test ? 'npm test' : '# Adicione comando de teste do projeto',
-    start: scripts.start ? 'npm start' : scripts.dev ? 'npm run dev' : '# Adicione comando de execucao do projeto',
+    start: scripts.start
+      ? 'npm start'
+      : scripts.dev
+        ? 'npm run dev'
+        : '# Adicione comando de execucao do projeto',
   };
 }
 
@@ -540,7 +561,13 @@ function ensureReadme(context) {
   const current = fs.readFileSync(target, 'utf8');
   const replaced = replaceManagedBlock(current, scaffold);
   if (replaced == null) {
-    recordStep(context.steps, 'skipped', 'README', 'existing README has no managed markers; not overwritten', 'README.md');
+    recordStep(
+      context.steps,
+      'skipped',
+      'README',
+      'existing README has no managed markers; not overwritten',
+      'README.md',
+    );
     return;
   }
 
@@ -632,7 +659,9 @@ function printHuman(result) {
     console.log(` ${icon(step.status)} ${step.name}: ${step.detail}${step.file ? ` (${step.file})` : ''}`);
   }
   console.log('');
-  console.log(` Resultado: ${result.summary.created} criados, ${result.summary.updated} atualizados, ${result.summary.ok} ok, ${result.summary.planned} planejados, ${result.summary.skipped} pulados, ${result.summary.warn} avisos, ${result.summary.fail} falhas`);
+  console.log(
+    ` Resultado: ${result.summary.created} criados, ${result.summary.updated} atualizados, ${result.summary.ok} ok, ${result.summary.planned} planejados, ${result.summary.skipped} pulados, ${result.summary.warn} avisos, ${result.summary.fail} falhas`,
+  );
   if (result.reportPath) console.log(` Report: ${result.reportPath}`);
 }
 

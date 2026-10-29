@@ -15,7 +15,9 @@ function runGitHubApi() {
 }
 
 function repoFromRemoteUrl(remote) {
-  const match = String(remote || '').trim().match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
+  const match = String(remote || '')
+    .trim()
+    .match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
   if (!match) return null;
   const slug = `${match[1]}/${match[2].replace(/\.git$/, '')}`;
   try {
@@ -40,7 +42,8 @@ function detectRepoFromGit(cwd = process.cwd(), execFileSync = childProcess.exec
 }
 
 function resolveRepo(options = {}) {
-  const repo = options.repo || process.env.GITHUB_REPOSITORY || detectRepoFromGit(options.cwd, options.execFileSync);
+  const repo =
+    options.repo || process.env.GITHUB_REPOSITORY || detectRepoFromGit(options.cwd, options.execFileSync);
   if (!repo) throw new Error('--repo ou GITHUB_REPOSITORY requerido (ou git remote origin configurado)');
   splitRepo(repo);
   return repo;

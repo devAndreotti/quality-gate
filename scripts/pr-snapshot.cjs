@@ -1,12 +1,7 @@
 #!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const {
-  resolveRepo,
-  runGhJson,
-  runGitHubApi,
-  splitRepo,
-} = require('./lib/github.cjs');
+const { resolveRepo, runGhJson, runGitHubApi, splitRepo } = require('./lib/github.cjs');
 
 const DEFAULT_ADVISORY_CHECKS = [
   'SonarCloud',
@@ -15,7 +10,13 @@ const DEFAULT_ADVISORY_CHECKS = [
 ];
 
 function parseArgs(argv) {
-  const args = { pr: null, repo: process.env.GITHUB_REPOSITORY || null, json: false, output: null, requiredChecks: null };
+  const args = {
+    pr: null,
+    repo: process.env.GITHUB_REPOSITORY || null,
+    json: false,
+    output: null,
+    requiredChecks: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--pr') args.pr = Number(argv[++index]);
@@ -26,7 +27,8 @@ function parseArgs(argv) {
     else if (arg === '--output') args.output = argv[++index];
     else if (arg.startsWith('--output=')) args.output = arg.slice('--output='.length);
     else if (arg === '--required-checks') args.requiredChecks = argv[++index];
-    else if (arg.startsWith('--required-checks=')) args.requiredChecks = arg.slice('--required-checks='.length);
+    else if (arg.startsWith('--required-checks='))
+      args.requiredChecks = arg.slice('--required-checks='.length);
   }
   return args;
 }
@@ -109,7 +111,10 @@ function isFailed(job) {
 }
 
 function isPendingCheck(check) {
-  return !check?.conclusion || ['pending', 'queued', 'in_progress', 'requested', 'waiting', 'missing'].includes(check.status);
+  return (
+    !check?.conclusion ||
+    ['pending', 'queued', 'in_progress', 'requested', 'waiting', 'missing'].includes(check.status)
+  );
 }
 
 function normalizeCheckDetail(check) {
@@ -129,16 +134,22 @@ function normalizeCheckDetail(check) {
 function isAdvisoryCheck(name, requiredNames = []) {
   const normalized = normalizeCheckName(name);
   if (requiredNames.some((required) => normalizeCheckName(required) === normalized)) return false;
-  return DEFAULT_ADVISORY_CHECKS.some((advisory) => normalizeCheckName(advisory) === normalized)
-    || normalized.includes('sonarcloud')
-    || normalized.includes('sonarqube');
+  return (
+    DEFAULT_ADVISORY_CHECKS.some((advisory) => normalizeCheckName(advisory) === normalized) ||
+    normalized.includes('sonarcloud') ||
+    normalized.includes('sonarqube')
+  );
 }
 
 function normalizeRequiredCheckNames(protection) {
-  return [...new Set([
-    ...(protection?.requiredChecks || []),
-    ...(protection?.checks || []).map((check) => check.context || check.name).filter(Boolean),
-  ].filter(Boolean))];
+  return [
+    ...new Set(
+      [
+        ...(protection?.requiredChecks || []),
+        ...(protection?.checks || []).map((check) => check.context || check.name).filter(Boolean),
+      ].filter(Boolean),
+    ),
+  ];
 }
 
 function parseRequiredChecks(value) {
@@ -158,7 +169,10 @@ function readPolicyRequiredChecks(cwd = process.cwd()) {
     raw = fs.readFileSync(policyPath, 'utf8');
   } catch (error) {
     if (error.code === 'ENOENT') return { requiredChecks: [], error: null };
-    return { requiredChecks: null, error: `policy nao legivel em .quality-gate/policy.json: ${error.message}` };
+    return {
+      requiredChecks: null,
+      error: `policy nao legivel em .quality-gate/policy.json: ${error.message}`,
+    };
   }
   try {
     const policy = JSON.parse(raw);
@@ -203,7 +217,9 @@ function categorizeChecks(checks = [], branchProtection = {}) {
   const seenRequired = new Set();
 
   for (const check of normalizedChecks) {
-    const requiredName = requiredNames.find((name) => normalizeCheckName(name) === normalizeCheckName(check.name));
+    const requiredName = requiredNames.find(
+      (name) => normalizeCheckName(name) === normalizeCheckName(check.name),
+    );
     if (requiredName) {
       required.push({ ...check, required: true });
       seenRequired.add(normalizeCheckName(requiredName));
@@ -237,12 +253,20 @@ function categorizeChecks(checks = [], branchProtection = {}) {
 
 function fetchPrChecks({ prNumber, repo, headSha, ghJson, githubApi }) {
   try {
-    const items = queryGhOrApi({
-      ghJson,
-      githubApi,
-      args: ['pr', 'checks', String(prNumber), '--json', 'name,state,bucket,link,startedAt,completedAt,workflow'],
-      fallback: (api) => (headSha ? mapCheckRunsApi(api(`/repos/${repo}/commits/${headSha}/check-runs`)) : []),
-    }) || [];
+    const items =
+      queryGhOrApi({
+        ghJson,
+        githubApi,
+        args: [
+          'pr',
+          'checks',
+          String(prNumber),
+          '--json',
+          'name,state,bucket,link,startedAt,completedAt,workflow',
+        ],
+        fallback: (api) =>
+          headSha ? mapCheckRunsApi(api(`/repos/${repo}/commits/${headSha}/check-runs`)) : [],
+      }) || [];
     return { status: 'known', items: items.map(normalizePrCheck) };
   } catch (error) {
     return { status: 'unknown', items: [], error: error.message };
@@ -276,7 +300,9 @@ function deriveMergeActions(merge) {
 }
 
 function hasPendingJob(jobs) {
-  return Object.values(jobs).some((job) => !job.conclusion || ['queued', 'in_progress', 'pending'].includes(job.status));
+  return Object.values(jobs).some(
+    (job) => !job.conclusion || ['queued', 'in_progress', 'pending'].includes(job.status),
+  );
 }
 
 function addLegacyJobActions(actions, jobs) {
@@ -299,7 +325,10 @@ function deriveLegacyActions(snapshot) {
   if (snapshot.pr?.mergeable === 'CONFLICTING') addUnique(actions, 'escalate');
   addLegacyJobActions(actions, jobs);
   if (hasPendingJob(jobs)) addUnique(actions, 'wait_ci');
-  if (!Object.keys(jobs).length && ['queued', 'in_progress', 'pending'].includes(snapshot.latestRun?.status)) {
+  if (
+    !Object.keys(jobs).length &&
+    ['queued', 'in_progress', 'pending'].includes(snapshot.latestRun?.status)
+  ) {
     addUnique(actions, 'wait_ci');
   }
   if ((snapshot.copilotBlockers || []).length > 0) addUnique(actions, 'process_copilot');
@@ -319,10 +348,14 @@ function fetchBranchProtection({ repo, baseRefName, ghJson, githubApi, allowApiF
   const normalize = (result) => ({
     status: 'known',
     strict: Boolean(result?.strict),
-    requiredChecks: [...new Set([
-      ...(result?.contexts || []),
-      ...(result?.checks || []).map((check) => check.context || check.name).filter(Boolean),
-    ].filter(Boolean))],
+    requiredChecks: [
+      ...new Set(
+        [
+          ...(result?.contexts || []),
+          ...(result?.checks || []).map((check) => check.context || check.name).filter(Boolean),
+        ].filter(Boolean),
+      ),
+    ],
     checks: result?.checks || [],
   });
   try {
@@ -334,7 +367,12 @@ function fetchBranchProtection({ repo, baseRefName, ghJson, githubApi, allowApiF
     try {
       return normalize(githubApi(`/${apiPath}`));
     } catch (fallbackError) {
-      return { status: 'unknown', requiredChecks: [], checks: [], error: fallbackError.message || error.message };
+      return {
+        status: 'unknown',
+        requiredChecks: [],
+        checks: [],
+        error: fallbackError.message || error.message,
+      };
     }
   }
 }
@@ -412,26 +450,42 @@ function collectCheckFindings({ checks, block, advise }) {
     });
   }
   for (const check of failedRequiredChecks(checks)) {
-    block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', { check });
+    block('required_check_failed', `check obrigatorio falhou: ${check.name}`, 'fix_required_check', {
+      check,
+    });
   }
   for (const check of pendingRequiredChecks(checks)) {
-    block('required_check_pending', `check obrigatorio pendente/ausente: ${check.name}`, 'wait_ci', { check });
+    block('required_check_pending', `check obrigatorio pendente/ausente: ${check.name}`, 'wait_ci', {
+      check,
+    });
   }
   for (const check of failedAdvisoryChecks(checks)) {
-    advise('advisory_check_failed', `check opcional falhou: ${check.name}`, 'diagnose_optional_check', { check });
+    advise('advisory_check_failed', `check opcional falhou: ${check.name}`, 'diagnose_optional_check', {
+      check,
+    });
   }
 }
 
 function collectReviewFindings({ reviewThreads, copilotBlockers, humanBlockers, block }) {
   if (reviewThreads.status === 'unknown') {
-    block('review_threads_unknown', 'review threads nao puderam ser confirmadas via GraphQL', 'verify_review_threads_manual', {
-      error: reviewThreads.error || null,
-    });
+    block(
+      'review_threads_unknown',
+      'review threads nao puderam ser confirmadas via GraphQL',
+      'verify_review_threads_manual',
+      {
+        error: reviewThreads.error || null,
+      },
+    );
     for (const blocker of copilotBlockers) block('copilot_blocker', blocker, 'process_copilot');
   } else if (reviewThreads.unresolved.length > 0) {
-    block('unresolved_review_threads', `${reviewThreads.unresolved.length} review thread(s) unresolved`, 'resolve_review_threads', {
-      unresolved: reviewThreads.unresolved,
-    });
+    block(
+      'unresolved_review_threads',
+      `${reviewThreads.unresolved.length} review thread(s) unresolved`,
+      'resolve_review_threads',
+      {
+        unresolved: reviewThreads.unresolved,
+      },
+    );
   }
   for (const blocker of humanBlockers) block('human_review_blocker', blocker, 'process_human');
 }
@@ -447,11 +501,22 @@ function collectMergeStateFindings({ mergeState, branchProtection, block, advise
   } else if (mergeState === 'UNKNOWN' && branchProtection.status === 'unknown') {
     block('merge_state_unknown', 'merge state e branch protection desconhecidos', 'escalate_manual');
   } else if (mergeState === 'UNSTABLE') {
-    advise('merge_unstable', 'GitHub mergeStateStatus=UNSTABLE; confira checks opcionais', 'diagnose_optional_check');
+    advise(
+      'merge_unstable',
+      'GitHub mergeStateStatus=UNSTABLE; confira checks opcionais',
+      'diagnose_optional_check',
+    );
   }
 }
 
-function evaluateMerge({ pr, checks, reviewThreads, branchProtection, copilotBlockers = [], humanBlockers = [] }) {
+function evaluateMerge({
+  pr,
+  checks,
+  reviewThreads,
+  branchProtection,
+  copilotBlockers = [],
+  humanBlockers = [],
+}) {
   const blockers = [];
   const advisories = [];
   const mergeState = String(pr.mergeStateStatus || 'UNKNOWN').toUpperCase();
@@ -476,7 +541,9 @@ function evaluateMerge({ pr, checks, reviewThreads, branchProtection, copilotBlo
   }
 
   const ready = blockers.length === 0;
-  const hasAdvisoryFailure = advisories.some((advisory) => advisory.type === 'advisory_check_failed' || advisory.type === 'merge_unstable');
+  const hasAdvisoryFailure = advisories.some(
+    (advisory) => advisory.type === 'advisory_check_failed' || advisory.type === 'merge_unstable',
+  );
   return {
     state: mergeState,
     mergeable,
@@ -510,7 +577,10 @@ function collectCopilotBlockers(inlineComments) {
 function collectHumanBlockers(reviews) {
   return (reviews || [])
     .filter((review) => review?.state === 'CHANGES_REQUESTED')
-    .map((review) => `${review.user?.login || 'reviewer'} - ${String(review.body || 'requested changes').split(/\r?\n/)[0]}`);
+    .map(
+      (review) =>
+        `${review.user?.login || 'reviewer'} - ${String(review.body || 'requested changes').split(/\r?\n/)[0]}`,
+    );
 }
 
 function mapPullApi(pr) {
@@ -570,7 +640,13 @@ function buildSnapshot(options) {
   const pr = queryGhOrApi({
     ghJson,
     githubApi,
-    args: ['pr', 'view', String(prNumber), '--json', 'number,title,state,mergeable,mergeStateStatus,headRefName,headRefOid,baseRefName,url,isDraft'],
+    args: [
+      'pr',
+      'view',
+      String(prNumber),
+      '--json',
+      'number,title,state,mergeable,mergeStateStatus,headRefName,headRefOid,baseRefName,url,isDraft',
+    ],
     fallback: (api) => mapPullApi(api(`/repos/${repo}/pulls/${prNumber}`)),
   });
   const headSha = pr.headRefOid || pr.headSha || null;
@@ -588,41 +664,63 @@ function buildSnapshot(options) {
     githubApi,
     allowApiFallback,
   });
-  const requiredResolution = resolveRequiredChecks({ requiredChecks: options.requiredChecks, cwd: options.cwd });
-  const effectiveBranchProtection = applyRequiredChecksFallback(branchProtection, requiredResolution.requiredChecks);
+  const requiredResolution = resolveRequiredChecks({
+    requiredChecks: options.requiredChecks,
+    cwd: options.cwd,
+  });
+  const effectiveBranchProtection = applyRequiredChecksFallback(
+    branchProtection,
+    requiredResolution.requiredChecks,
+  );
   const categorizedChecks = {
     ...categorizeChecks(checkQuery.items, effectiveBranchProtection),
     status: checkQuery.status,
     error: checkQuery.error || null,
   };
   const reviewThreads = fetchReviewThreads({ repo, prNumber, ghJson });
-  const inlineComments = queryGhOrApi({
-    ghJson,
-    githubApi,
-    args: ['api', `repos/${repo}/pulls/${prNumber}/comments`],
-    fallback: (api) => api(`/repos/${repo}/pulls/${prNumber}/comments`),
-  }) || [];
-  const reviews = queryGhOrApi({
-    ghJson,
-    githubApi,
-    args: ['api', `repos/${repo}/pulls/${prNumber}/reviews`],
-    fallback: (api) => api(`/repos/${repo}/pulls/${prNumber}/reviews`),
-  }) || [];
-  const runList = queryGhOrApi({
-    ghJson,
-    githubApi,
-    args: ['run', 'list', '--branch', pr.headRefName, '--limit', '1', '--json', 'databaseId,status,conclusion,workflowName,displayTitle,headBranch'],
-    fallback: (api) => mapRunsApi(api(`/repos/${repo}/actions/runs?branch=${encodeURIComponent(pr.headRefName)}&per_page=1`), pr.headRefName),
-  }) || [];
+  const inlineComments =
+    queryGhOrApi({
+      ghJson,
+      githubApi,
+      args: ['api', `repos/${repo}/pulls/${prNumber}/comments`],
+      fallback: (api) => api(`/repos/${repo}/pulls/${prNumber}/comments`),
+    }) || [];
+  const reviews =
+    queryGhOrApi({
+      ghJson,
+      githubApi,
+      args: ['api', `repos/${repo}/pulls/${prNumber}/reviews`],
+      fallback: (api) => api(`/repos/${repo}/pulls/${prNumber}/reviews`),
+    }) || [];
+  const runList =
+    queryGhOrApi({
+      ghJson,
+      githubApi,
+      args: [
+        'run',
+        'list',
+        '--branch',
+        pr.headRefName,
+        '--limit',
+        '1',
+        '--json',
+        'databaseId,status,conclusion,workflowName,displayTitle,headBranch',
+      ],
+      fallback: (api) =>
+        mapRunsApi(
+          api(`/repos/${repo}/actions/runs?branch=${encodeURIComponent(pr.headRefName)}&per_page=1`),
+          pr.headRefName,
+        ),
+    }) || [];
   const latestRun = runList[0]
     ? {
-      id: runList[0].databaseId,
-      status: normalizeValue(runList[0].status),
-      conclusion: normalizeValue(runList[0].conclusion),
-      workflowName: runList[0].workflowName || null,
-      displayTitle: runList[0].displayTitle || null,
-      headBranch: runList[0].headBranch || pr.headRefName,
-    }
+        id: runList[0].databaseId,
+        status: normalizeValue(runList[0].status),
+        conclusion: normalizeValue(runList[0].conclusion),
+        workflowName: runList[0].workflowName || null,
+        displayTitle: runList[0].displayTitle || null,
+        headBranch: runList[0].headBranch || pr.headRefName,
+      }
     : null;
   let artifacts = [];
   if (latestRun?.id) {
@@ -685,7 +783,10 @@ function printHuman(snapshot) {
   console.log(` CI: ${snapshot.ci.overall}`);
   console.log(` Actions: ${snapshot.actions.join(', ')}`);
   for (const error of snapshot.errors || []) console.log(` ⚠️  ${error}`);
-  if (snapshot.latestRun) console.log(` Run: ${snapshot.latestRun.id} (${snapshot.latestRun.conclusion || snapshot.latestRun.status})`);
+  if (snapshot.latestRun)
+    console.log(
+      ` Run: ${snapshot.latestRun.id} (${snapshot.latestRun.conclusion || snapshot.latestRun.status})`,
+    );
 }
 
 function main(argv = process.argv.slice(2)) {

@@ -8,18 +8,38 @@ const path = require('node:path');
 
 const SECRET_PATTERNS = [
   { id: 'openai_key', name: 'OpenAI API Key', regex: /\bsk-(?:proj-|ant-)?[A-Za-z0-9_\-]{20,}\b/g },
-  { id: 'github_pat', name: 'GitHub Personal Access Token', regex: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b/g },
+  {
+    id: 'github_pat',
+    name: 'GitHub Personal Access Token',
+    regex: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{36,}\b/g,
+  },
   { id: 'private_key', name: 'Private Key', regex: /-----BEGIN (?:[A-Z0-9_-]+ )?PRIVATE KEY-----/g },
   { id: 'aws_key', name: 'AWS Access Key ID', regex: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
-  { id: 'jwt_token', name: 'JSON Web Token', regex: /\beyJ[A-Za-z0-9\-_=]+\.eyJ[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_\.\+\/=]{10,}\b/g },
-  { id: 'slack_webhook', name: 'Slack/Discord Webhook', regex: /https:\/\/(?:hooks\.slack\.com|discord(?:app)?\.com\/api\/webhooks)\/[A-Za-z0-9\/_\.\-]+/g },
+  {
+    id: 'jwt_token',
+    name: 'JSON Web Token',
+    regex: /\beyJ[A-Za-z0-9\-_=]+\.eyJ[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_\.\+\/=]{10,}\b/g,
+  },
+  {
+    id: 'slack_webhook',
+    name: 'Slack/Discord Webhook',
+    regex: /https:\/\/(?:hooks\.slack\.com|discord(?:app)?\.com\/api\/webhooks)\/[A-Za-z0-9\/_\.\-]+/g,
+  },
   { id: 'stripe_key', name: 'Stripe API Key', regex: /\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b/g },
   { id: 'google_api_key', name: 'Google API Key', regex: /\bAIza[0-9A-Za-z\-_]{35}\b/g },
   { id: 'slack_token', name: 'Slack Token', regex: /\bxox[baprs]-[A-Za-z0-9\-]{10,}/g },
   { id: 'npm_token', name: 'npm Access Token', regex: /\bnpm_[A-Za-z0-9]{36}\b/g },
   { id: 'gitlab_pat', name: 'GitLab Personal Access Token', regex: /\bglpat-[A-Za-z0-9_\-]{20}\b/g },
-  { id: 'pgp_private_key', name: 'PGP Private Key Block', regex: /-----BEGIN PGP (?:PRIVATE KEY BLOCK)-----/g },
-  { id: 'db_uri_password', name: 'URI Password', regex: /\b[a-zA-Z][a-zA-Z0-9+.\-]*:\/\/[^\s:\/@]+:([^\s@]{4,})@/g },
+  {
+    id: 'pgp_private_key',
+    name: 'PGP Private Key Block',
+    regex: /-----BEGIN PGP (?:PRIVATE KEY BLOCK)-----/g,
+  },
+  {
+    id: 'db_uri_password',
+    name: 'URI Password',
+    regex: /\b[a-zA-Z][a-zA-Z0-9+.\-]*:\/\/[^\s:\/@]+:([^\s@]{4,})@/g,
+  },
 ];
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'coverage', 'dist', 'build', '.venv', '.pytest_cache']);
@@ -231,12 +251,22 @@ function runSecretScan(options = {}) {
   const scanOptions = { ...options, skipped };
   let findings;
   try {
-    findings = mode === 'diff'
-      ? scanGitDiff(root, options.execFileSync || childProcess.execFileSync, scanOptions)
-      : scanDirectory(root, [], scanOptions);
+    findings =
+      mode === 'diff'
+        ? scanGitDiff(root, options.execFileSync || childProcess.execFileSync, scanOptions)
+        : scanDirectory(root, [], scanOptions);
   } catch (err) {
     const message = String((err && err.message) || err).split(/\r?\n/)[0];
-    return { status: 'error', mode, root, findingsCount: 0, findings: [], skippedCount: 0, skipped: [], error: message };
+    return {
+      status: 'error',
+      mode,
+      root,
+      findingsCount: 0,
+      findings: [],
+      skippedCount: 0,
+      skipped: [],
+      error: message,
+    };
   }
   let status = 'passed';
   if (findings.length > 0) status = 'failed';

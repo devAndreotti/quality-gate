@@ -127,7 +127,9 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   try {
     const base = readLockAtRef(args.base, cwd);
     if (!base) {
-      console.log(`install-scripts-audit: ${LOCKFILE} ausente em ${args.base}; auditoria pulada (aviso, não é erro).`);
+      console.log(
+        `install-scripts-audit: ${LOCKFILE} ausente em ${args.base}; auditoria pulada (aviso, não é erro).`,
+      );
       return 0;
     }
     const head = readLockAtRef('HEAD', cwd);
@@ -136,18 +138,24 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
       return 0;
     }
     if (!isPlainObject(head.packages)) {
-      console.log('install-scripts-audit: lockfile em HEAD sem mapa "packages" (lockfileVersion < 2); nada a auditar.');
+      console.log(
+        'install-scripts-audit: lockfile em HEAD sem mapa "packages" (lockfileVersion < 2); nada a auditar.',
+      );
       return 0;
     }
 
     const basePackages = isPlainObject(base.packages) ? base.packages : {};
     const findings = auditInstallScripts(basePackages, head.packages, cwd);
     if (findings.length === 0) {
-      console.log(`install-scripts-audit: nenhum pacote novo ou alterado com script de instalação (base ${args.base}).`);
+      console.log(
+        `install-scripts-audit: nenhum pacote novo ou alterado com script de instalação (base ${args.base}).`,
+      );
       return 0;
     }
 
-    console.log(`install-scripts-audit: ${findings.length} pacote(s) novo(s) ou alterado(s) com script de instalação:`);
+    console.log(
+      `install-scripts-audit: ${findings.length} pacote(s) novo(s) ou alterado(s) com script de instalação:`,
+    );
     for (const f of findings) {
       console.log(`  - ${f.name}@${f.version} (${f.change}; ${f.reasons.join('; ')})`);
     }

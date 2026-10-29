@@ -1,10 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const {
-  validateCommitMessage,
-  parseArgs,
-} = require('./commit-lint.cjs');
+const { validateCommitMessage, parseArgs } = require('./commit-lint.cjs');
 
 test('validateCommitMessage accepts conventional commits with and without scope', () => {
   assert.equal(validateCommitMessage('feat(auth): add login endpoint').valid, true);
@@ -37,7 +34,10 @@ test('readRangeCommits parses sha and multi-line body per commit and skips merge
     return '\naaa111\x1efeat(api): add route\n\nbody line\n\x1f\nbbb222\x1efix: patch parser\n\x1f';
   };
   const commits = readRangeCommits('base..HEAD', fakeExec);
-  assert.deepEqual(commits.map((c) => c.sha), ['aaa111', 'bbb222']);
+  assert.deepEqual(
+    commits.map((c) => c.sha),
+    ['aaa111', 'bbb222'],
+  );
   assert.match(commits[0].message, /^feat\(api\): add route/);
   assert.deepEqual(calls[0][1].slice(0, 2), ['log', '--no-merges']);
   assert.equal(calls[0][1].at(-1), 'base..HEAD');
@@ -57,7 +57,8 @@ test('validateRange reports invalid commits and fails the whole range', () => {
 
 test('runRange validates a real git range end to end', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-lint-range-'));
-  const git = (...args) => childProcess.execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
+  const git = (...args) =>
+    childProcess.execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
   git('init', '-q');
   git('config', 'user.email', 'test@example.invalid');
   git('config', 'user.name', 'test');

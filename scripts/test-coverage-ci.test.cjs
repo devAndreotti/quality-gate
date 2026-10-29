@@ -13,17 +13,11 @@ const {
 } = require('./test-coverage-ci.cjs');
 
 test('parseLcov totals lcov counters', () => {
-  const totals = parseLcov([
-    'TN:',
-    'SF:scripts/a.cjs',
-    'FNF:4',
-    'FNH:3',
-    'BRF:10',
-    'BRH:7',
-    'LH:8',
-    'LF:10',
-    'end_of_record',
-  ].join('\n'));
+  const totals = parseLcov(
+    ['TN:', 'SF:scripts/a.cjs', 'FNF:4', 'FNH:3', 'BRF:10', 'BRH:7', 'LH:8', 'LF:10', 'end_of_record'].join(
+      '\n',
+    ),
+  );
 
   assert.deepEqual(totals, {
     lines: { covered: 8, total: 10 },
@@ -90,6 +84,13 @@ test('production file absent from lcov fails and is named', () => {
   const evaluation = evaluateCoverage({ lcovText, root });
 
   assert.equal(evaluation.passed, false);
-  assert.ok(evaluation.failures.some((failure) => failure.file === 'scripts/b.js' && /not covered/.test(failure.reason)));
-  assert.equal(evaluation.failures.some((failure) => String(failure.file).includes('a.test.cjs')), false);
+  assert.ok(
+    evaluation.failures.some(
+      (failure) => failure.file === 'scripts/b.js' && /not covered/.test(failure.reason),
+    ),
+  );
+  assert.equal(
+    evaluation.failures.some((failure) => String(failure.file).includes('a.test.cjs')),
+    false,
+  );
 });

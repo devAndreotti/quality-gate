@@ -54,25 +54,32 @@ function renderRatchet(ratchet, root) {
     .map((row) => {
       const cls = row.passed ? 'ok' : 'fail';
       const label = row.passed ? 'passou' : 'falhou';
-      return `<tr class="${cls}"><td>${escapeHtml(`${row.group}/${row.metric}`)}</td>` +
+      return (
+        `<tr class="${cls}"><td>${escapeHtml(`${row.group}/${row.metric}`)}</td>` +
         `<td>${escapeHtml(row.baseline)}</td><td>${escapeHtml(row.current)}</td>` +
-        `<td>${escapeHtml(row.delta)}</td><td>${label}</td></tr>`;
+        `<td>${escapeHtml(row.delta)}</td><td>${label}</td></tr>`
+      );
     })
     .join('\n');
-  return '<table><thead><tr><th>Métrica</th><th>Baseline</th><th>Atual</th><th>Delta</th><th>Situação</th></tr></thead>' +
-    `<tbody>\n${body}\n</tbody></table>`;
+  return (
+    '<table><thead><tr><th>Métrica</th><th>Baseline</th><th>Atual</th><th>Delta</th><th>Situação</th></tr></thead>' +
+    `<tbody>\n${body}\n</tbody></table>`
+  );
 }
 
 function renderSnapshot(snapshot, root) {
   if (!snapshot) return '<p class="muted">Nenhum snapshot de PR salvo.</p>';
   const merge = snapshot.merge || {};
-  const status = merge.status === 'ready' ? 'pronto' : merge.status === 'ready_with_advisory' ? 'com avisos' : 'bloqueado';
+  const status =
+    merge.status === 'ready' ? 'pronto' : merge.status === 'ready_with_advisory' ? 'com avisos' : 'bloqueado';
   const blockers = (merge.blockers || [])
     .map((b) => `<li>${escapeHtml(scrubPaths(b.message, root))}</li>`)
     .join('');
-  return `<p>#${escapeHtml(snapshot.pr?.number ?? '?')} ${escapeHtml(scrubPaths(snapshot.pr?.title ?? '', root))}</p>` +
+  return (
+    `<p>#${escapeHtml(snapshot.pr?.number ?? '?')} ${escapeHtml(scrubPaths(snapshot.pr?.title ?? '', root))}</p>` +
     `<p>Situação para merge: <strong>${status}</strong></p>` +
-    (blockers ? `<ul>${blockers}</ul>` : '');
+    (blockers ? `<ul>${blockers}</ul>` : '')
+  );
 }
 
 function buildHtml(state, root) {

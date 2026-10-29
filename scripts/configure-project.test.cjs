@@ -4,10 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const {
-  configureProject,
-  detectProjectProfile,
-} = require('./configure-project.cjs');
+const { configureProject, detectProjectProfile } = require('./configure-project.cjs');
 
 function tempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qg-configure-'));
@@ -16,38 +13,51 @@ function tempProject() {
 function writePackagedFiles(project) {
   fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
   fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
-  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'name: Quality Gate\njobs: {}\n');
-  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), JSON.stringify({
-    schemaVersion: 1,
-    profile: 'strict-node',
-    ci: {
-      requiredChecks: ['Security audit', 'Lint', 'Tests & ratchet', 'SonarCloud', 'Docker image gate'],
-      coverageRatchet: true,
-      maxFileLines: 300,
-    },
-    bootstrap: {
-      license: { enabled: true, type: 'MIT' },
-      funding: { enabled: true, buyMeACoffee: 'ricardo230a' },
-      dependabot: { enabled: true },
-      readme: { enabled: true, style: 'devandreotti' },
-    },
-    github: {
-      copilotReview: true,
-      branchProtection: true,
-      requireConversationResolution: true,
-    },
-    dockerImageDoctor: {
-      enabled: 'auto',
-      runWhen: 'docker-files-present',
-      scriptPath: 'C:\\tools\\18-Docker-Image-Doctor.ps1',
-      agentArgs: ['-Preset', 'AI', '-ForAI', '-Json', '-FixPlan', '-NoPrompt'],
-      interactiveAllowed: false,
-      blockOn: ['Critical'],
-      warnOn: ['High', 'Medium'],
-      fallbackWhenUnavailable: 'static-advisory',
-    },
-  }, null, 2));
-  fs.writeFileSync(path.join(project, 'sonar-project.properties'), 'sonar.sources=src\nsonar.javascript.lcov.reportPaths=coverage/lcov.info\n');
+  fs.writeFileSync(
+    path.join(project, '.github/workflows/quality-gate.yml'),
+    'name: Quality Gate\njobs: {}\n',
+  );
+  fs.writeFileSync(
+    path.join(project, '.quality-gate/policy.json'),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        profile: 'strict-node',
+        ci: {
+          requiredChecks: ['Security audit', 'Lint', 'Tests & ratchet', 'SonarCloud', 'Docker image gate'],
+          coverageRatchet: true,
+          maxFileLines: 300,
+        },
+        bootstrap: {
+          license: { enabled: true, type: 'MIT' },
+          funding: { enabled: true, buyMeACoffee: 'ricardo230a' },
+          dependabot: { enabled: true },
+          readme: { enabled: true, style: 'devandreotti' },
+        },
+        github: {
+          copilotReview: true,
+          branchProtection: true,
+          requireConversationResolution: true,
+        },
+        dockerImageDoctor: {
+          enabled: 'auto',
+          runWhen: 'docker-files-present',
+          scriptPath: 'C:\\tools\\18-Docker-Image-Doctor.ps1',
+          agentArgs: ['-Preset', 'AI', '-ForAI', '-Json', '-FixPlan', '-NoPrompt'],
+          interactiveAllowed: false,
+          blockOn: ['Critical'],
+          warnOn: ['High', 'Medium'],
+          fallbackWhenUnavailable: 'static-advisory',
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(project, 'sonar-project.properties'),
+    'sonar.sources=src\nsonar.javascript.lcov.reportPaths=coverage/lcov.info\n',
+  );
 }
 
 test('detectProjectProfile detects python uv project under pipeline', () => {
@@ -84,7 +94,10 @@ test('configureProject writes python uv workflow, policy, and sonar paths', () =
   assert.match(workflow, /pytest --basetemp \.pytest-tmp-qg/);
   assert.match(workflow, /--cov=src --cov-report=json:\.\.\/coverage\/coverage\.json/);
   assert.match(workflow, /node scripts\/quality-gate\.js check/);
-  assert.match(workflow, /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(
+    workflow,
+    /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/,
+  );
   assert.match(workflow, /SNAPSHOT_PATH: \.quality-gate\/reports\/pr-snapshot\.json/);
   assert.match(workflow, /sonarsource\/sonarqube-quality-gate-action@v1\.2\.0/);
   assert.equal(policy.profile, 'python-uv');
@@ -115,13 +128,20 @@ test('configureProject omits SonarCloud when skipSonar is true', () => {
 test('configureProject writes node workflow for consumer project commands', () => {
   const project = tempProject();
   writePackagedFiles(project);
-  fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({
-    scripts: {
-      test: 'node --test test/*.test.js',
-      lint: 'node --check src/index.js',
-      build: 'node src/index.js',
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'package.json'),
+    JSON.stringify(
+      {
+        scripts: {
+          test: 'node --test test/*.test.js',
+          lint: 'node --check src/index.js',
+          build: 'node src/index.js',
+        },
+      },
+      null,
+      2,
+    ),
+  );
 
   const result = configureProject({ projectRoot: project, profile: 'node', skipSonar: true });
 
@@ -137,18 +157,20 @@ test('configureProject writes node workflow for consumer project commands', () =
   assert.doesNotMatch(workflow, /scripts\/\*\.test\.cjs/);
   assert.doesNotMatch(workflow, /name: SonarCloud/);
   assert.equal(policy.profile, 'strict-node');
-  assert.deepEqual(policy.project.surfaces, [{
-    type: 'node',
-    root: '.',
-    required: true,
-    commands: {
-      install: 'npm ci',
-      test: 'npm run test --if-present',
-      lint: 'npm run lint --if-present',
-      build: 'npm run build --if-present',
-      audit: 'npm audit --audit-level=moderate',
+  assert.deepEqual(policy.project.surfaces, [
+    {
+      type: 'node',
+      root: '.',
+      required: true,
+      commands: {
+        install: 'npm ci',
+        test: 'npm run test --if-present',
+        lint: 'npm run lint --if-present',
+        build: 'npm run build --if-present',
+        audit: 'npm audit --audit-level=moderate',
+      },
     },
-  }]);
+  ]);
   assert.equal(policy.ci.requiredChecks.includes('SonarCloud'), false);
   assert.match(sonar, /sonar\.sources=src/);
   assert.match(sonar, /sonar\.javascript\.lcov\.reportPaths=coverage\/lcov\.info/);

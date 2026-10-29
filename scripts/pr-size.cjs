@@ -80,9 +80,7 @@ function evaluatePrSize({ entries, config }) {
     .filter((entry) => !isExcluded(entry.file))
     .map((entry) => ({ file: entry.file, changed: entry.added + entry.deleted }));
   const total = counted.reduce((sum, entry) => sum + entry.changed, 0);
-  const top = [...counted]
-    .sort((a, b) => b.changed - a.changed || a.file.localeCompare(b.file))
-    .slice(0, 5);
+  const top = [...counted].sort((a, b) => b.changed - a.changed || a.file.localeCompare(b.file)).slice(0, 5);
   return {
     total,
     limit: config.maxChangedLines,
@@ -128,7 +126,11 @@ function runPrSize(options = {}) {
     return { status: 'error', exitCode: 2, reason: 'ci.prSize.maxChangedLines deve ser inteiro >= 1' };
   }
   if (!options.base) {
-    return { status: 'error', exitCode: 2, reason: 'base ausente: passe --base ou defina BASE_SHA. Falha fechada.' };
+    return {
+      status: 'error',
+      exitCode: 2,
+      reason: 'base ausente: passe --base ou defina BASE_SHA. Falha fechada.',
+    };
   }
 
   let numstatText = options.numstatText;
@@ -141,13 +143,17 @@ function runPrSize(options = {}) {
         maxBuffer: 64 * 1024 * 1024,
       });
     } catch (err) {
-      return { status: 'error', exitCode: 2, reason: `git diff falhou contra ${options.base}: ${err.message.split('\n')[0]}. Em CI, use fetch-depth: 0.` };
+      return {
+        status: 'error',
+        exitCode: 2,
+        reason: `git diff falhou contra ${options.base}: ${err.message.split('\n')[0]}. Em CI, use fetch-depth: 0.`,
+      };
     }
   }
 
   const evaluation = evaluatePrSize({ entries: parseNumstatZ(numstatText), config });
   const blocking = config.blockOnFailure === true;
-  const status = !evaluation.over ? 'passed' : (blocking ? 'failed' : 'advisory');
+  const status = !evaluation.over ? 'passed' : blocking ? 'failed' : 'advisory';
   return { status, exitCode: status === 'failed' ? 1 : 0, blocking, base: options.base, ...evaluation };
 }
 

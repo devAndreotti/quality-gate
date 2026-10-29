@@ -56,10 +56,30 @@ function detectPackageManager(root) {
 }
 
 const NODE_COMMANDS = {
-  npm: { bin: 'npm', install: ['ci'], run: (script) => ['run', script, '--if-present'], audit: ['audit', '--audit-level=moderate'] },
-  pnpm: { bin: 'pnpm', install: ['install', '--frozen-lockfile'], run: (script) => ['run', '--if-present', script], audit: ['audit', '--audit-level', 'moderate'] },
-  yarn: { bin: 'yarn', install: ['install', '--immutable'], run: (script) => ['run', script], audit: ['npm', 'audit', '--all', '--recursive', '--severity', 'moderate'] },
-  yarn1: { bin: 'yarn', install: ['install', '--frozen-lockfile'], run: (script) => ['run', script], audit: ['audit', '--level', 'moderate'] },
+  npm: {
+    bin: 'npm',
+    install: ['ci'],
+    run: (script) => ['run', script, '--if-present'],
+    audit: ['audit', '--audit-level=moderate'],
+  },
+  pnpm: {
+    bin: 'pnpm',
+    install: ['install', '--frozen-lockfile'],
+    run: (script) => ['run', '--if-present', script],
+    audit: ['audit', '--audit-level', 'moderate'],
+  },
+  yarn: {
+    bin: 'yarn',
+    install: ['install', '--immutable'],
+    run: (script) => ['run', script],
+    audit: ['npm', 'audit', '--all', '--recursive', '--severity', 'moderate'],
+  },
+  yarn1: {
+    bin: 'yarn',
+    install: ['install', '--frozen-lockfile'],
+    run: (script) => ['run', script],
+    audit: ['audit', '--level', 'moderate'],
+  },
 };
 
 function packageScripts(root) {
@@ -245,13 +265,14 @@ function buildValidationPlan(options = {}) {
     commands.push(step('node:install', tool.install, 'install'));
     // Yarn não tem --if-present: só roda o script que existe.
     for (const script of ['test', 'lint', 'build']) {
-      if (pm === 'npm' || pm === 'pnpm' || scripts[script]) commands.push(step(`node:${script}`, tool.run(script), script));
+      if (pm === 'npm' || pm === 'pnpm' || scripts[script])
+        commands.push(step(`node:${script}`, tool.run(script), script));
     }
     commands.push(step('node:audit', tool.audit, 'audit'));
   }
 
   commands.push(
-        command('secret-scan', projectRoot, 'node scripts/secret-scan.cjs --all', {
+    command('secret-scan', projectRoot, 'node scripts/secret-scan.cjs --all', {
       artifact: path.join(reportsRoot, 'secret-scan.log'),
       file: process.execPath,
       args: [path.join(scriptsRoot, 'secret-scan.cjs'), '--all'],
@@ -400,7 +421,8 @@ function shouldSkipStep({ step, output, plan, pytestSucceeded }) {
   if (!step.requiresFreshCoverage) return { skip: false, error: null };
 
   const pytestStep = findPytestStep(plan);
-  if (!pytestStep || isCoverageFresh(pytestStep.coverageJson, plan.startedAt)) return { skip: false, error: null };
+  if (!pytestStep || isCoverageFresh(pytestStep.coverageJson, plan.startedAt))
+    return { skip: false, error: null };
 
   output.skipped = true;
   output.skipReason = 'coverage_stale';
@@ -470,7 +492,13 @@ function printHuman(result) {
   for (const step of result.commands) {
     // WARN: passo opcional (não reprova o status) que falhou.
     const failMarker = step.required === false ? 'WARN' : 'FAIL';
-    const marker = step.skipped ? 'SKIP' : step.exitCode == null ? 'PLAN' : step.exitCode === 0 ? 'OK' : failMarker;
+    const marker = step.skipped
+      ? 'SKIP'
+      : step.exitCode == null
+        ? 'PLAN'
+        : step.exitCode === 0
+          ? 'OK'
+          : failMarker;
     console.log(`${marker} ${step.name}: ${step.commandLine}`);
   }
 }

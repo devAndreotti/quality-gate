@@ -24,7 +24,13 @@ function write(root, rel, content) {
 }
 
 // Repo gerenciado; cada opção remove ou altera uma peça para testar o diagnóstico.
-function makeRepo({ git = true, policy = JSON.stringify({ schemaVersion: 1 }), baseline = JSON.stringify({ coverage: { lines: 88 } }), hook = true, ci = true } = {}) {
+function makeRepo({
+  git = true,
+  policy = JSON.stringify({ schemaVersion: 1 }),
+  baseline = JSON.stringify({ coverage: { lines: 88 } }),
+  hook = true,
+  ci = true,
+} = {}) {
   const root = tmp('qg-fleet-');
   if (git) childProcess.execFileSync('git', ['init', '-q', root]);
   if (policy !== null) write(root, '.quality-gate/policy.json', policy);
@@ -120,10 +126,15 @@ test('loadCatalog reports a missing catalog with a clear code', () => {
 });
 
 test('auditFleet keeps catalog names and uses the injected auditor', () => {
-  const rows = auditFleet(
-    [{ name: 'one', path: '/x' }],
-    () => ({ path: '/x', status: 'ok', policy: 'ok', baseline: 'ok', hooks: 'ok', ci: 'ok', issues: [] }),
-  );
+  const rows = auditFleet([{ name: 'one', path: '/x' }], () => ({
+    path: '/x',
+    status: 'ok',
+    policy: 'ok',
+    baseline: 'ok',
+    hooks: 'ok',
+    ci: 'ok',
+    issues: [],
+  }));
   assert.equal(rows[0].name, 'one');
   assert.equal(rows[0].status, 'ok');
 });
@@ -131,7 +142,15 @@ test('auditFleet keeps catalog names and uses the injected auditor', () => {
 test('formatTable lists problems and totals', () => {
   const rows = [
     { name: 'a', status: 'ok', policy: 'ok', baseline: 'ok', hooks: 'ok', ci: 'ok', issues: [] },
-    { name: 'b', status: 'atencao', policy: 'ok', baseline: 'ausente', hooks: 'falta', ci: 'ok', issues: ['sem scripts/baseline.json'] },
+    {
+      name: 'b',
+      status: 'atencao',
+      policy: 'ok',
+      baseline: 'ausente',
+      hooks: 'falta',
+      ci: 'ok',
+      issues: ['sem scripts/baseline.json'],
+    },
   ];
   const text = formatTable(rows);
   assert.match(text, /repo\s+policy\s+baseline/);
@@ -159,7 +178,9 @@ test('CLI is read-only and --strict exits 1 when a repo has problems', () => {
   assert.equal(normal.status, 0);
   assert.match(normal.stdout, /1 com atencao/);
 
-  const strict = childProcess.spawnSync('node', [script, '--catalog', catalog, '--strict'], { encoding: 'utf8' });
+  const strict = childProcess.spawnSync('node', [script, '--catalog', catalog, '--strict'], {
+    encoding: 'utf8',
+  });
   assert.equal(strict.status, 1);
 
   assert.equal(fs.readFileSync(path.join(broken, '.quality-gate/policy.json'), 'utf8'), before);
@@ -167,7 +188,11 @@ test('CLI is read-only and --strict exits 1 when a repo has problems', () => {
 
 test('CLI exits 2 when the catalog is missing', () => {
   const script = path.join(__dirname, 'fleet.cjs');
-  const r = childProcess.spawnSync('node', [script, '--catalog', path.join(tmp('qg-fleet-miss-'), 'x.json')], { encoding: 'utf8' });
+  const r = childProcess.spawnSync(
+    'node',
+    [script, '--catalog', path.join(tmp('qg-fleet-miss-'), 'x.json')],
+    { encoding: 'utf8' },
+  );
   assert.equal(r.status, 2);
   assert.match(r.stderr, /catalogo nao encontrado/);
 });

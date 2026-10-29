@@ -84,9 +84,10 @@ function calculateDiffCoverage({ diffText, lcovText, minDiffCoverage = 80 }) {
     }
   }
 
-  const pct = totalChangedExecutableLines === 0
-    ? 100
-    : Number(((coveredChangedLines / totalChangedExecutableLines) * 100).toFixed(2));
+  const pct =
+    totalChangedExecutableLines === 0
+      ? 100
+      : Number(((coveredChangedLines / totalChangedExecutableLines) * 100).toFixed(2));
 
   return {
     pct,
@@ -172,7 +173,8 @@ function evaluateDiffCoverage({ diffText, lcovText, minDiffCoverage = 90, includ
       if (meaningful.length === 0) continue;
       untestedFiles.push(file);
       totalLines += meaningful.length;
-      for (const [lineNum] of meaningful) uncovered.push({ file, line: lineNum, status: 'no-coverage-record' });
+      for (const [lineNum] of meaningful)
+        uncovered.push({ file, line: lineNum, status: 'no-coverage-record' });
       continue;
     }
 
@@ -187,9 +189,7 @@ function evaluateDiffCoverage({ diffText, lcovText, minDiffCoverage = 90, includ
     }
   }
 
-  const pct = totalLines === 0
-    ? 100
-    : Number(((coveredLines / totalLines) * 100).toFixed(2));
+  const pct = totalLines === 0 ? 100 : Number(((coveredLines / totalLines) * 100).toFixed(2));
 
   return {
     pct,

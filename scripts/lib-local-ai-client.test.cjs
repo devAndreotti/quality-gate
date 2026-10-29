@@ -21,7 +21,9 @@ function startFakeProvider({ models = [], content = 'ok', delayMs = 0, status = 
   const calls = [];
   const server = http.createServer((req, res) => {
     let raw = '';
-    req.on('data', (chunk) => { raw += chunk; });
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
     req.on('end', () => {
       calls.push({
         method: req.method,
@@ -120,13 +122,19 @@ function tmpRoot() {
 
 test('resolveProviders has no 9Router default and uses only the public Ollama default', () => {
   const providers = resolveProviders({});
-  assert.deepEqual(providers.map((p) => p.id), ['ollama']);
+  assert.deepEqual(
+    providers.map((p) => p.id),
+    ['ollama'],
+  );
   assert.equal(providers[0].baseUrl, 'http://localhost:11434');
 });
 
 test('resolveProviders includes 9Router only when QG_9ROUTER_URL is set', () => {
   const providers = resolveProviders({ QG_9ROUTER_URL: 'http://gateway.example.test:8080' });
-  assert.deepEqual(providers.map((p) => p.id), ['9router', 'ollama']);
+  assert.deepEqual(
+    providers.map((p) => p.id),
+    ['9router', 'ollama'],
+  );
   assert.equal(providers[0].baseUrl, 'http://gateway.example.test:8080');
 });
 
@@ -218,7 +226,10 @@ test('non-2xx responses and invalid JSON map to specific error codes', async () 
   const fake = await startFakeProvider({ models: null });
   try {
     // /v1/models responde JSON sem campo data: invalid_response
-    await assert.rejects(listModels({ id: 'f', baseUrl: fake.url }), (err) => err.code === 'invalid_response');
+    await assert.rejects(
+      listModels({ id: 'f', baseUrl: fake.url }),
+      (err) => err.code === 'invalid_response',
+    );
   } finally {
     await fake.close();
   }
@@ -240,10 +251,13 @@ test('selectProvider falls back from 9Router to Ollama when 9Router is down', as
   const down = await closedUrl();
   const ollama = await startFakeProvider({ models: ['model-a'] });
   try {
-    const selection = await selectProvider([
-      { id: '9router', baseUrl: down },
-      { id: 'ollama', baseUrl: ollama.url },
-    ], 'model-a');
+    const selection = await selectProvider(
+      [
+        { id: '9router', baseUrl: down },
+        { id: 'ollama', baseUrl: ollama.url },
+      ],
+      'model-a',
+    );
     assert.equal(selection.provider.id, 'ollama');
     assert.equal(selection.attempts[0].reachable, false);
   } finally {
@@ -255,10 +269,13 @@ test('selectProvider prefers 9Router when both list the model', async () => {
   const router = await startFakeProvider({ models: ['model-a'] });
   const ollama = await startFakeProvider({ models: ['model-a'] });
   try {
-    const selection = await selectProvider([
-      { id: '9router', baseUrl: router.url },
-      { id: 'ollama', baseUrl: ollama.url },
-    ], 'model-a');
+    const selection = await selectProvider(
+      [
+        { id: '9router', baseUrl: router.url },
+        { id: 'ollama', baseUrl: ollama.url },
+      ],
+      'model-a',
+    );
     assert.equal(selection.provider.id, '9router');
   } finally {
     await router.close();
@@ -269,10 +286,16 @@ test('selectProvider prefers 9Router when both list the model', async () => {
 test('selectProvider returns no provider when every endpoint is unreachable', async () => {
   const first = await closedUrl();
   const second = await closedUrl();
-  const selection = await selectProvider([
-    { id: '9router', baseUrl: first },
-    { id: 'ollama', baseUrl: second },
-  ], 'model-a');
+  const selection = await selectProvider(
+    [
+      { id: '9router', baseUrl: first },
+      { id: 'ollama', baseUrl: second },
+    ],
+    'model-a',
+  );
   assert.equal(selection.provider, null);
-  assert.deepEqual(selection.attempts.map((a) => a.reachable), [false, false]);
+  assert.deepEqual(
+    selection.attempts.map((a) => a.reachable),
+    [false, false],
+  );
 });

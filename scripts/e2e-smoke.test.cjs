@@ -67,17 +67,25 @@ test('v1 package installs into a fresh repo and passes local smoke gates', () =>
     '.codex/skills/babysit-pr/SKILL.md',
     '.codex/skills/babysit-pr/references/pr-watcher.md',
     '.codex/skills/babysit-pr/references/fix-playbook.md',
-  ]) copyFile(file, project);
+  ])
+    copyFile(file, project);
 
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
-    total: {
-      lines: { pct: 81 },
-      statements: { pct: 82 },
-      functions: { pct: 83 },
-      branches: { pct: 84 },
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage-summary.json'),
+    JSON.stringify(
+      {
+        total: {
+          lines: { pct: 81 },
+          statements: { pct: 82 },
+          functions: { pct: 83 },
+          branches: { pct: 84 },
+        },
+      },
+      null,
+      2,
+    ),
+  );
 
   runBootstrap({ projectRoot: project });
   runQualityGate({ root: project, command: 'init', now: '2026-05-24T00:00:00.000Z' });

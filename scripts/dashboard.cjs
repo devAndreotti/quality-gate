@@ -91,7 +91,9 @@ function render(root, state) {
   } else if (state.ratchet) {
     for (const row of state.ratchet.rows || []) {
       const icon = row.passed ? '✅' : '❌';
-      lines.push(`    ${icon} ${padEnd(`${row.group}/${row.metric}`, 22)} ${row.baseline} -> ${row.current} (${row.delta})`);
+      lines.push(
+        `    ${icon} ${padEnd(`${row.group}/${row.metric}`, 22)} ${row.baseline} -> ${row.current} (${row.delta})`,
+      );
     }
     if (!state.ratchet.rows?.length) lines.push('    (sem metricas coletadas ainda)');
   } else {
@@ -102,7 +104,8 @@ function render(root, state) {
   lines.push(renderSection('PR (ultimo snapshot local)', '◇'));
   if (state.snapshot) {
     const merge = state.snapshot.merge || {};
-    const label = merge.status === 'ready' ? 'ready' : merge.status === 'ready_with_advisory' ? 'advisory' : 'blocked';
+    const label =
+      merge.status === 'ready' ? 'ready' : merge.status === 'ready_with_advisory' ? 'advisory' : 'blocked';
     lines.push(`    #${state.snapshot.pr?.number ?? '?'} ${state.snapshot.pr?.title ?? ''}`);
     lines.push(`    ${padEnd('Status', 12)} ${label}  (${formatAge(state.snapshotAge)})`);
     for (const blocker of merge.blockers || []) {
@@ -113,7 +116,9 @@ function render(root, state) {
   }
 
   lines.push('');
-  lines.push(`  atualizado ${state.now.toLocaleTimeString()} — a cada ${REFRESH_MS / 1000}s — [r] refresh agora  [q] sair`);
+  lines.push(
+    `  atualizado ${state.now.toLocaleTimeString()} — a cada ${REFRESH_MS / 1000}s — [r] refresh agora  [q] sair`,
+  );
   return lines.join('\n');
 }
 

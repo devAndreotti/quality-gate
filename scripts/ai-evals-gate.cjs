@@ -11,12 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const {
-  AiConfigError,
-  chat,
-  resolveAiSettings,
-  selectProvider,
-} = require('./lib/local-ai-client.cjs');
+const { AiConfigError, chat, resolveAiSettings, selectProvider } = require('./lib/local-ai-client.cjs');
 
 const POLICY_PATH = '.quality-gate/policy.json';
 const DATASET_PATH = '.quality-gate/evals/golden-dataset.json';
@@ -41,7 +36,9 @@ const AI_ASSET_PATTERNS = [
 const SYSTEM_PROMPT_NOTE = 'Responda de forma objetiva. Quando pedido, responda somente com JSON valido.';
 
 function isAiAssetPath(file) {
-  const normalized = String(file || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const normalized = String(file || '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '');
   return AI_ASSET_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
@@ -77,7 +74,12 @@ function loadAiEvalsConfig(root) {
   }
   const raw = policy.ci?.aiEvals;
   if (raw === undefined) {
-    return { enabled: false, minScore: DEFAULTS.minScore, blockOnFailure: DEFAULTS.blockOnFailure, budget: { ...DEFAULTS.budget } };
+    return {
+      enabled: false,
+      minScore: DEFAULTS.minScore,
+      blockOnFailure: DEFAULTS.blockOnFailure,
+      budget: { ...DEFAULTS.budget },
+    };
   }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new AiConfigError('ci.aiEvals precisa ser objeto');
@@ -99,8 +101,10 @@ function loadAiEvalsConfig(root) {
   }
   const maxCases = budgetRaw.maxCases ?? DEFAULTS.budget.maxCases;
   const maxOutputChars = budgetRaw.maxOutputChars ?? DEFAULTS.budget.maxOutputChars;
-  if (!isPositiveInteger(maxCases)) throw new AiConfigError('ci.aiEvals.budget.maxCases precisa ser inteiro positivo');
-  if (!isPositiveInteger(maxOutputChars)) throw new AiConfigError('ci.aiEvals.budget.maxOutputChars precisa ser inteiro positivo');
+  if (!isPositiveInteger(maxCases))
+    throw new AiConfigError('ci.aiEvals.budget.maxCases precisa ser inteiro positivo');
+  if (!isPositiveInteger(maxOutputChars))
+    throw new AiConfigError('ci.aiEvals.budget.maxOutputChars precisa ser inteiro positivo');
   return {
     enabled: raw.enabled === true,
     minScore,
@@ -114,7 +118,8 @@ function normalizeExpect(expect, caseId) {
   if (expect === null || typeof expect !== 'object' || Array.isArray(expect)) {
     throw new AiConfigError(`caso ${caseId}: expect precisa ser objeto`);
   }
-  const isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string' && item.length > 0);
+  const isStringArray = (value) =>
+    Array.isArray(value) && value.every((item) => typeof item === 'string' && item.length > 0);
   const jsonKeys = expect.jsonKeys;
   if (jsonKeys !== undefined && !isStringArray(jsonKeys)) {
     throw new AiConfigError(`caso ${caseId}: expect.jsonKeys precisa ser array de strings`);
@@ -147,11 +152,14 @@ function loadDataset(root, maxCases) {
     if (typeof item.id !== 'string' || !item.id) throw new AiConfigError(`caso ${index}: id obrigatorio`);
     if (seen.has(item.id)) throw new AiConfigError(`caso ${item.id}: id duplicado`);
     seen.add(item.id);
-    if (typeof item.input !== 'string' || !item.input) throw new AiConfigError(`caso ${item.id}: input obrigatorio`);
+    if (typeof item.input !== 'string' || !item.input)
+      throw new AiConfigError(`caso ${item.id}: input obrigatorio`);
     return { id: item.id, input: item.input, expect: normalizeExpect(item.expect, item.id) };
   });
   if (cases.length > maxCases) {
-    throw new AiConfigError(`dataset tem ${cases.length} casos, acima de ci.aiEvals.budget.maxCases (${maxCases})`);
+    throw new AiConfigError(
+      `dataset tem ${cases.length} casos, acima de ci.aiEvals.budget.maxCases (${maxCases})`,
+    );
   }
   return cases;
 }
@@ -189,7 +197,10 @@ function scoreCase(testCase, content) {
     const parsed = parseJsonObject(text);
     checks.push({ name: 'json_schema', ok: parsed !== null });
     for (const key of testCase.expect.jsonKeys) {
-      checks.push({ name: `json_key:${key}`, ok: parsed !== null && Object.prototype.hasOwnProperty.call(parsed, key) });
+      checks.push({
+        name: `json_key:${key}`,
+        ok: parsed !== null && Object.prototype.hasOwnProperty.call(parsed, key),
+      });
     }
   }
   for (const needle of testCase.expect.contains || []) {
@@ -236,7 +247,11 @@ async function runAiEvalsGate({ root = process.cwd(), changedFiles = [], env = p
   }
 
   if (!settings.model) {
-    return result('skipped', 'modelo nao configurado: defina QG_AI_MODEL ou "model" em .quality-gate/ai.local.json', 0);
+    return result(
+      'skipped',
+      'modelo nao configurado: defina QG_AI_MODEL ou "model" em .quality-gate/ai.local.json',
+      0,
+    );
   }
 
   const selection = await selectProvider(settings.providers, settings.model, { apiKey: settings.apiKey });
@@ -245,7 +260,9 @@ async function runAiEvalsGate({ root = process.cwd(), changedFiles = [], env = p
     if (reachable.length === 0) {
       return result('skipped', 'nenhum provedor local alcancavel (9Router, Ollama)', 0);
     }
-    const listing = reachable.map((attempt) => `${attempt.id}: ${formatModelList(attempt.models)}`).join('; ');
+    const listing = reachable
+      .map((attempt) => `${attempt.id}: ${formatModelList(attempt.models)}`)
+      .join('; ');
     return result('skipped', `modelo "${settings.model}" nao listado. Ids disponiveis: ${listing}`, 0);
   }
 
@@ -259,10 +276,15 @@ async function runAiEvalsGate({ root = process.cwd(), changedFiles = [], env = p
     }
     let content = '';
     try {
-      content = await chat(provider, settings.model, [
-        { role: 'system', content: SYSTEM_PROMPT_NOTE },
-        { role: 'user', content: testCase.input },
-      ], { apiKey: settings.apiKey });
+      content = await chat(
+        provider,
+        settings.model,
+        [
+          { role: 'system', content: SYSTEM_PROMPT_NOTE },
+          { role: 'user', content: testCase.input },
+        ],
+        { apiKey: settings.apiKey },
+      );
     } catch {
       content = '';
     }
@@ -274,15 +296,23 @@ async function runAiEvalsGate({ root = process.cwd(), changedFiles = [], env = p
   const passRate = Number((passedCount / outcomes.length).toFixed(4));
   const threshold = Math.max(config.minScore, baselineRate ?? 0);
   const summary = `pass-rate ${passRate} (${passedCount}/${outcomes.length}) via ${provider.id}, limite ${threshold}`;
-  const details = { provider: provider.id, model: settings.model, passRate, threshold, baseline: baselineRate, cases: outcomes };
+  const details = {
+    provider: provider.id,
+    model: settings.model,
+    passRate,
+    threshold,
+    baseline: baselineRate,
+    cases: outcomes,
+  };
 
   if (passRate < threshold) {
     const exitCode = config.blockOnFailure ? 1 : 0;
     return result('failed', `${summary}; abaixo do limite`, exitCode, details);
   }
-  const ratchetHint = baselineRate !== null && passRate > baselineRate
-    ? ` (acima do baseline ${baselineRate}; suba ${BASELINE_PATH} manualmente via update)`
-    : '';
+  const ratchetHint =
+    baselineRate !== null && passRate > baselineRate
+      ? ` (acima do baseline ${baselineRate}; suba ${BASELINE_PATH} manualmente via update)`
+      : '';
   return result('passed', `${summary}${ratchetHint}`, 0, details);
 }
 
@@ -297,7 +327,10 @@ function parseArgs(argv) {
     } else if (arg === '--changed-files') {
       const value = argv[++index];
       if (value === undefined) throw new AiConfigError('--changed-files exige uma lista');
-      args.changedFiles = value.split(',').map((item) => item.trim()).filter(Boolean);
+      args.changedFiles = value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
     } else {
       throw new AiConfigError(`argumento desconhecido: ${arg}`);
     }

@@ -6,10 +6,7 @@ const test = require('node:test');
 
 const { loadPolicy } = require('./lib/policy.cjs');
 const { detectDockerProject } = require('./lib/docker-detect.cjs');
-const {
-  buildDockerDoctorCommand,
-  runDockerGate,
-} = require('./docker-gate.cjs');
+const { buildDockerDoctorCommand, runDockerGate } = require('./docker-gate.cjs');
 
 const root = path.resolve(__dirname, '..');
 

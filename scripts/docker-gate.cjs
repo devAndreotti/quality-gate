@@ -246,7 +246,8 @@ function runDockerGate(options = {}) {
   if (resolvedScriptPath === projectRoot || resolvedScriptPath.startsWith(`${projectRoot}${path.sep}`)) {
     return {
       status: 'failed',
-      reason: 'dockerImageDoctor.scriptPath resolve para dentro do projeto sendo escaneado (recusado por seguranca)',
+      reason:
+        'dockerImageDoctor.scriptPath resolve para dentro do projeto sendo escaneado (recusado por seguranca)',
       detection,
       command,
     };

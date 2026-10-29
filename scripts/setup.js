@@ -65,7 +65,9 @@ function parseArgs(argv) {
 }
 
 function detectRepoFromRemote(remote) {
-  const match = String(remote || '').trim().match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
+  const match = String(remote || '')
+    .trim()
+    .match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
   if (!match) return null;
   return parseRepoSlug(`${match[1]}/${match[2].replace(/\.git$/, '')}`);
 }
@@ -106,9 +108,11 @@ function sanitizeErrorValue(value) {
   if (value && typeof value === 'object' && typeof value.message === 'string') {
     return sanitizeForLog(value.message);
   }
-  return sanitizeForLog(JSON.stringify(value, (_key, fieldValue) => (
-    typeof fieldValue === 'string' ? sanitizeForLog(fieldValue) : fieldValue
-  )));
+  return sanitizeForLog(
+    JSON.stringify(value, (_key, fieldValue) =>
+      typeof fieldValue === 'string' ? sanitizeForLog(fieldValue) : fieldValue,
+    ),
+  );
 }
 
 function detectRepo(projectRoot, args, execFileSync = childProcess.execFileSync) {
@@ -182,9 +186,10 @@ function configureSonarProperties({ projectRoot, owner, repo, sonarOrg, dryRun }
 
 function formatGitHubApiError(statusCode, parsed, apiPath) {
   const message = sanitizeForLog(parsed?.message || parsed?.raw || 'request failed');
-  const errors = Array.isArray(parsed?.errors) && parsed.errors.length > 0
-    ? ` — ${parsed.errors.map(sanitizeErrorValue).join('; ')}`
-    : '';
+  const errors =
+    Array.isArray(parsed?.errors) && parsed.errors.length > 0
+      ? ` — ${parsed.errors.map(sanitizeErrorValue).join('; ')}`
+      : '';
   return `GitHub API ${statusCode} ${sanitizeForLog(apiPath)}: ${message}${errors}`;
 }
 
@@ -206,37 +211,43 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
     const payload = body ? JSON.stringify(body) : null;
     const normalizedApiPath = normalizeGitHubApiPath(apiPath);
     const timeoutMs = 30000;
-    const req = https.request({
-      hostname: 'api.github.com',
-      path: normalizedApiPath,
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'quality-gate-setup/1.0',
-        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
+    const req = https.request(
+      {
+        hostname: 'api.github.com',
+        path: normalizedApiPath,
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'quality-gate-setup/1.0',
+          ...(payload
+            ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            : {}),
+        },
       },
-    }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        let parsed = {};
-        try {
-          parsed = data ? JSON.parse(data) : {};
-        } catch {
-          parsed = { raw: data };
-        }
-        if (res.statusCode >= 400) {
-          const error = new Error(formatGitHubApiError(res.statusCode, parsed, normalizedApiPath));
-          error.statusCode = res.statusCode;
-          error.apiPath = normalizedApiPath;
-          error.response = parsed;
-          reject(error);
-        }
-        else resolve({ status: res.statusCode, body: parsed });
-      });
-    });
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          let parsed = {};
+          try {
+            parsed = data ? JSON.parse(data) : {};
+          } catch {
+            parsed = { raw: data };
+          }
+          if (res.statusCode >= 400) {
+            const error = new Error(formatGitHubApiError(res.statusCode, parsed, normalizedApiPath));
+            error.statusCode = res.statusCode;
+            error.apiPath = normalizedApiPath;
+            error.response = parsed;
+            reject(error);
+          } else resolve({ status: res.statusCode, body: parsed });
+        });
+      },
+    );
     req.setTimeout(timeoutMs, () => {
       req.destroy(new Error(`GitHub API request timed out after ${timeoutMs}ms`));
     });
@@ -254,7 +265,8 @@ function setGitHubSecret({ owner, repo, name, value, spawnSync = childProcess.sp
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr || `gh secret set failed with status ${result.status}`);
+  if (result.status !== 0)
+    throw new Error(result.stderr || `gh secret set failed with status ${result.status}`);
   return { status: 'updated' };
 }
 
@@ -335,7 +347,10 @@ function buildSetupPlan({ args, projectRoot, env = process.env, execFileSync = c
     steps: [
       { name: 'bootstrap', mode: args.skipBootstrap ? 'skip' : args.dryRun ? 'plan' : 'apply' },
       { name: 'sonar-properties', mode: args.skipSonar ? 'skip' : args.dryRun ? 'plan' : 'apply' },
-      { name: 'sonar-secret', mode: args.skipSonar || !args.sonarToken ? 'skip' : args.dryRun ? 'plan' : 'apply' },
+      {
+        name: 'sonar-secret',
+        mode: args.skipSonar || !args.sonarToken ? 'skip' : args.dryRun ? 'plan' : 'apply',
+      },
       { name: 'pr-ruleset', mode: args.dryRun ? 'plan' : 'apply' },
       { name: 'branch-protection', mode: args.dryRun ? 'plan' : 'apply' },
     ],
@@ -345,7 +360,9 @@ function buildSetupPlan({ args, projectRoot, env = process.env, execFileSync = c
 async function upsertCopilotRuleset({ owner, repo, ghApi }) {
   const repoInfo = { owner, repo };
   const existing = await ghApi('GET', rulesetApiPath(repoInfo));
-  const ruleset = existing.body.find?.((item) => item.name === PR_RULESET_NAME || LEGACY_RULESET_NAMES.has(item.name));
+  const ruleset = existing.body.find?.(
+    (item) => item.name === PR_RULESET_NAME || LEGACY_RULESET_NAMES.has(item.name),
+  );
   if (ruleset) {
     await ghApi('PUT', rulesetApiPath(repoInfo, ruleset.id), copilotRulesetBody());
     return { status: 'updated', id: ruleset.id, detail: 'pull request policy configured' };
@@ -360,9 +377,11 @@ function plannedStepStatus(mode) {
 }
 
 function isBranchNotFoundForProtection(error, repoInfo, branch) {
-  return error?.statusCode === 404
-    && error?.apiPath === branchProtectionApiPath(repoInfo, branch)
-    && /branch not found/i.test(error.message || '');
+  return (
+    error?.statusCode === 404 &&
+    error?.apiPath === branchProtectionApiPath(repoInfo, branch) &&
+    /branch not found/i.test(error.message || '')
+  );
 }
 
 async function runSetup(options = {}) {
@@ -370,16 +389,22 @@ async function runSetup(options = {}) {
   const projectRoot = path.resolve(options.projectRoot || process.cwd());
   const env = options.env || process.env;
   const execFileSync = options.execFileSync || childProcess.execFileSync;
-  const ghApi = options.ghApi || ((method, apiPath, body) => ghAPI(method, apiPath, body, {
-    token: env.GITHUB_TOKEN,
-    verbose: args.verbose,
-  }));
-  const setSecret = options.setSecret || ((name, value) => setGitHubSecret({
-    owner: plan.repo.owner,
-    repo: plan.repo.repo,
-    name,
-    value,
-  }));
+  const ghApi =
+    options.ghApi ||
+    ((method, apiPath, body) =>
+      ghAPI(method, apiPath, body, {
+        token: env.GITHUB_TOKEN,
+        verbose: args.verbose,
+      }));
+  const setSecret =
+    options.setSecret ||
+    ((name, value) =>
+      setGitHubSecret({
+        owner: plan.repo.owner,
+        repo: plan.repo.repo,
+        name,
+        value,
+      }));
 
   const plan = buildSetupPlan({ args, projectRoot, env, execFileSync });
   const result = {
@@ -422,11 +447,14 @@ async function runSetup(options = {}) {
     result.steps.push({ name: 'sonar-secret', status: 'skipped' });
   }
 
-  result.steps.push({ name: 'pr-ruleset', ...(await upsertCopilotRuleset({
-    owner: plan.repo.owner,
-    repo: plan.repo.repo,
-    ghApi,
-  })) });
+  result.steps.push({
+    name: 'pr-ruleset',
+    ...(await upsertCopilotRuleset({
+      owner: plan.repo.owner,
+      repo: plan.repo.repo,
+      ghApi,
+    })),
+  });
 
   try {
     await ghApi(

@@ -1,19 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const IGNORED_DIRS = new Set([
-  '.git',
-  '.quality-gate',
-  'build',
-  'coverage',
-  'dist',
-  'node_modules',
-]);
+const IGNORED_DIRS = new Set(['.git', '.quality-gate', 'build', 'coverage', 'dist', 'node_modules']);
 
 function isDockerfile(name) {
-  return name === 'Dockerfile'
-    || name.startsWith('Dockerfile.')
-    || name.endsWith('.Dockerfile');
+  return name === 'Dockerfile' || name.startsWith('Dockerfile.') || name.endsWith('.Dockerfile');
 }
 
 function isComposeFile(name) {

@@ -21,14 +21,21 @@ function tempProject() {
 
 function writeBaseline(project) {
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: {
-      lines: 80,
-      statements: 80,
-      functions: 80,
-      branches: 70,
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify(
+      {
+        coverage: {
+          lines: 80,
+          statements: 80,
+          functions: 80,
+          branches: 70,
+        },
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 test('buildBody uses REQUIRED_CHECKS so skipped Sonar does not block all-green state', () => {
@@ -58,13 +65,19 @@ test('buildBody uses REQUIRED_CHECKS so skipped Sonar does not block all-green s
 test('root workflow passes explicit REQUIRED_CHECKS to PR report', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8');
 
-  assert.match(workflow, /REQUIRED_CHECKS:\s*['"]?Security audit,Lint,Tests & ratchet,Docker image gate['"]?/);
+  assert.match(
+    workflow,
+    /REQUIRED_CHECKS:\s*['"]?Security audit,Lint,Tests & ratchet,Docker image gate['"]?/,
+  );
 });
 
 test('root workflow generates and passes PR snapshot to report', () => {
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8');
 
-  assert.match(workflow, /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(
+    workflow,
+    /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/,
+  );
   assert.match(workflow, /SNAPSHOT_PATH:\s*\.quality-gate\/reports\/pr-snapshot\.json/);
 });
 
@@ -73,14 +86,17 @@ test('buildBody reads snapshotPath when provided', () => {
   writeBaseline(project);
   const snapshotPath = path.join(project, '.quality-gate', 'reports', 'pr-snapshot.json');
   fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
-  fs.writeFileSync(snapshotPath, JSON.stringify({
-    merge: {
-      ready: true,
-      status: 'ready',
-      blockers: [],
-      advisories: [],
-    },
-  }));
+  fs.writeFileSync(
+    snapshotPath,
+    JSON.stringify({
+      merge: {
+        ready: true,
+        status: 'ready',
+        blockers: [],
+        advisories: [],
+      },
+    }),
+  );
 
   const body = buildBody({
     root: project,
@@ -190,9 +206,7 @@ test('buildBody renders ready with advisory section', () => {
         ready: true,
         status: 'ready_with_advisory',
         blockers: [],
-        advisories: [
-          { type: 'sonar_advisory', message: 'SonarCloud was skipped' },
-        ],
+        advisories: [{ type: 'sonar_advisory', message: 'SonarCloud was skipped' }],
       },
     },
     env: {
@@ -264,18 +278,25 @@ test('readCoverageSection supports coverage.py JSON reports', () => {
   const project = tempProject();
   writeBaseline(project);
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage.json'), JSON.stringify({
-    meta: { format: 3 },
-    files: {
-      'src/free_plaud/good.py': { summary: { percent_covered: 92.25 } },
-      'src/free_plaud/low.py': { summary: { percent_covered: 41.5 } },
-    },
-    totals: {
-      percent_covered: 88.5,
-      num_branches: 40,
-      covered_branches: 34,
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage.json'),
+    JSON.stringify(
+      {
+        meta: { format: 3 },
+        files: {
+          'src/free_plaud/good.py': { summary: { percent_covered: 92.25 } },
+          'src/free_plaud/low.py': { summary: { percent_covered: 41.5 } },
+        },
+        totals: {
+          percent_covered: 88.5,
+          num_branches: 40,
+          covered_branches: 34,
+        },
+      },
+      null,
+      2,
+    ),
+  );
 
   const section = readCoverageSection({ root: project });
 
@@ -316,7 +337,11 @@ test('postStickyComment updates marker found on second comments page', async () 
 
   assert.equal(result.status, 'updated');
   assert.ok(requests.some((request) => request.url.includes('page=2')));
-  assert.ok(requests.some((request) => request.url.includes('/issues/comments/200') && request.request.method === 'PATCH'));
+  assert.ok(
+    requests.some(
+      (request) => request.url.includes('/issues/comments/200') && request.request.method === 'PATCH',
+    ),
+  );
 });
 
 test('handleCommentError supports warn and fail modes', () => {
@@ -356,15 +381,18 @@ test('writeStepSummary is a no-op without env var', () => {
 });
 
 test('renderAnnotations limits and escapes coverage warnings', () => {
-  const annotations = renderAnnotations({
-    coverage: {
-      worst: [
-        { file: 'src/a%bad.py', pct: 0 },
-        { file: 'src/b:bad,too.py', pct: 12.34 },
-        { file: 'src/c.py', pct: 99 },
-      ],
+  const annotations = renderAnnotations(
+    {
+      coverage: {
+        worst: [
+          { file: 'src/a%bad.py', pct: 0 },
+          { file: 'src/b:bad,too.py', pct: 12.34 },
+          { file: 'src/c.py', pct: 99 },
+        ],
+      },
     },
-  }, { limit: 2 });
+    { limit: 2 },
+  );
 
   assert.equal(annotations.length, 2);
   assert.match(annotations[0], /^::warning /);
@@ -377,9 +405,7 @@ test('renderAnnotations creates general blocker warning without file', () => {
   const annotations = renderAnnotations({
     snapshot: {
       merge: {
-        blockers: [
-          { type: 'blocked_by_policy', message: 'GitHub mergeStateStatus=BLOCKED' },
-        ],
+        blockers: [{ type: 'blocked_by_policy', message: 'GitHub mergeStateStatus=BLOCKED' }],
       },
     },
   });

@@ -18,13 +18,7 @@ const DEFAULT_ALLOWED_LICENSES = new Set([
   'PSF-2.0',
 ]);
 
-const DEFAULT_BLOCKED_LICENSES = new Set([
-  'GPL-2.0',
-  'GPL-3.0',
-  'AGPL-3.0',
-  'SSPL-1.0',
-  'CPAL-1.0',
-]);
+const DEFAULT_BLOCKED_LICENSES = new Set(['GPL-2.0', 'GPL-3.0', 'AGPL-3.0', 'SSPL-1.0', 'CPAL-1.0']);
 
 function extractNodeLicenses(packageLockJson) {
   const packages = packageLockJson.packages || {};

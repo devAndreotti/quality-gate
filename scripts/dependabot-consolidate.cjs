@@ -70,28 +70,23 @@ function normalizeFiles(result) {
 }
 
 function loadDependabotPulls({ repo, ghJson }) {
-  const pulls = ghJson([
-    'pr',
-    'list',
-    '--repo',
-    repo,
-    '--state',
-    'open',
-    '--author',
-    'app/dependabot',
-    '--json',
-    'number,title,headRefName,url',
-  ]) || [];
-  return pulls.map((pull) => {
-    const files = normalizeFiles(ghJson([
+  const pulls =
+    ghJson([
       'pr',
-      'view',
-      String(pull.number),
+      'list',
       '--repo',
       repo,
+      '--state',
+      'open',
+      '--author',
+      'app/dependabot',
       '--json',
-      'files',
-    ]));
+      'number,title,headRefName,url',
+    ]) || [];
+  return pulls.map((pull) => {
+    const files = normalizeFiles(
+      ghJson(['pr', 'view', String(pull.number), '--repo', repo, '--json', 'files']),
+    );
     return { ...pull, files };
   });
 }
@@ -135,7 +130,10 @@ function runDependabotConsolidate(options = {}) {
 
 async function runDependabotConsolidateAsync(options = {}) {
   if (options.pullRequests || options.ghJson) return runDependabotConsolidate(options);
-  const pullRequests = await loadDependabotPullsFromApi({ repo: options.repo, env: options.env || process.env });
+  const pullRequests = await loadDependabotPullsFromApi({
+    repo: options.repo,
+    env: options.env || process.env,
+  });
   return runDependabotConsolidate({ ...options, pullRequests });
 }
 

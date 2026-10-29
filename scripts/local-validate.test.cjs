@@ -36,17 +36,40 @@ test('buildValidationPlan detects python uv and node UI surfaces', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
   fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
-  writeJson(path.join(project, 'UI', 'package.json'), { scripts: { test: 'vitest', lint: 'eslint .', build: 'vite build' } });
+  writeJson(path.join(project, 'UI', 'package.json'), {
+    scripts: { test: 'vitest', lint: 'eslint .', build: 'vite build' },
+  });
 
-  const plan = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  const plan = buildValidationPlan({
+    projectRoot: project,
+    profile: 'pr',
+    now: '2026-05-26T00:00:00.000Z',
+    pid: 123,
+  });
 
   assert.ok(plan.commands.some((command) => command.name === 'ruff'));
   assert.ok(plan.commands.some((command) => command.name === 'pytest'));
-  assert.ok(plan.commands.some((command) => command.name === 'node:test' && command.cwd.endsWith(`${path.sep}UI`)));
+  assert.ok(
+    plan.commands.some((command) => command.name === 'node:test' && command.cwd.endsWith(`${path.sep}UI`)),
+  );
   assert.ok(plan.commands.some((command) => command.name === 'node:build'));
-  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-check' && command.commandLine === 'node scripts/quality-gate.js check'));
-  assert.ok(plan.commands.some((command) => command.name === 'quality-gate-doctor' && command.commandLine === 'node scripts/doctor.cjs --dry-run --root .'));
-  assert.equal(plan.commands.some((command) => command.commandLine === 'qg-chk' || command.commandLine === 'qg-doc'), false);
+  assert.ok(
+    plan.commands.some(
+      (command) =>
+        command.name === 'quality-gate-check' && command.commandLine === 'node scripts/quality-gate.js check',
+    ),
+  );
+  assert.ok(
+    plan.commands.some(
+      (command) =>
+        command.name === 'quality-gate-doctor' &&
+        command.commandLine === 'node scripts/doctor.cjs --dry-run --root .',
+    ),
+  );
+  assert.equal(
+    plan.commands.some((command) => command.commandLine === 'qg-chk' || command.commandLine === 'qg-doc'),
+    false,
+  );
   assert.equal(
     path.basename(plan.commands.find((command) => command.name === 'quality-gate-check').file),
     path.basename(process.execPath),
@@ -54,11 +77,9 @@ test('buildValidationPlan detects python uv and node UI surfaces', () => {
 });
 
 test('buildSpawnInvocation routes Windows command shims through cmd.exe', () => {
-  const invocation = buildSpawnInvocation(
-    { file: 'npm', args: ['run', 'test', '--if-present'] },
-    'win32',
-    { ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
-  );
+  const invocation = buildSpawnInvocation({ file: 'npm', args: ['run', 'test', '--if-present'] }, 'win32', {
+    ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+  });
 
   assert.equal(invocation.file, 'C:\\Windows\\System32\\cmd.exe');
   assert.deepEqual(invocation.args, ['/d', '/s', '/c', 'npm.cmd', 'run', 'test', '--if-present']);
@@ -82,7 +103,8 @@ test('buildValidationPlan uses the package manager of the lockfile', () => {
   fs.writeFileSync(path.join(project, 'legacy', 'yarn.lock'), '');
 
   const plan = buildValidationPlan({ projectRoot: project, now: '2026-05-26T00:00:00.000Z', pid: 123 });
-  const lines = (cwd) => plan.commands.filter((command) => command.cwd === cwd).map((command) => command.commandLine);
+  const lines = (cwd) =>
+    plan.commands.filter((command) => command.cwd === cwd).map((command) => command.commandLine);
 
   assert.deepEqual(lines(project).slice(0, 4), [
     'yarn install --immutable',
@@ -102,7 +124,10 @@ test('buildValidationPlan uses the package manager of the lockfile', () => {
     'yarn run lint',
     'yarn audit --level moderate',
   ]);
-  assert.equal(plan.commands.some((command) => command.file === 'npm'), false);
+  assert.equal(
+    plan.commands.some((command) => command.file === 'npm'),
+    false,
+  );
 });
 
 test('buildSpawnInvocation routes npx, yarn and pnpm shims through cmd.exe on Windows', () => {
@@ -139,7 +164,12 @@ test('--scripts-root resolves quality-gate.js/doctor.cjs from an external script
   const project = tempProject();
   const scriptsRoot = tempProject();
 
-  const plan = buildValidationPlan({ projectRoot: project, scriptsRoot, now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  const plan = buildValidationPlan({
+    projectRoot: project,
+    scriptsRoot,
+    now: '2026-05-26T00:00:00.000Z',
+    pid: 123,
+  });
 
   const check = plan.commands.find((command) => command.name === 'quality-gate-check');
   const doctor = plan.commands.find((command) => command.name === 'quality-gate-doctor');
@@ -151,14 +181,27 @@ test('--scripts-root resolves quality-gate.js/doctor.cjs from an external script
 test('company profile adds an optional jscpd duplication step, pr profile does not', () => {
   const project = tempProject();
 
-  const companyPlan = buildValidationPlan({ projectRoot: project, profile: 'company', now: '2026-05-26T00:00:00.000Z', pid: 123 });
+  const companyPlan = buildValidationPlan({
+    projectRoot: project,
+    profile: 'company',
+    now: '2026-05-26T00:00:00.000Z',
+    pid: 123,
+  });
   const jscpd = companyPlan.commands.find((command) => command.name === 'jscpd');
   assert.ok(jscpd);
   assert.equal(jscpd.required, false);
   assert.equal(jscpd.file, 'npx');
 
-  const prPlan = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 123 });
-  assert.equal(prPlan.commands.some((command) => command.name === 'jscpd'), false);
+  const prPlan = buildValidationPlan({
+    projectRoot: project,
+    profile: 'pr',
+    now: '2026-05-26T00:00:00.000Z',
+    pid: 123,
+  });
+  assert.equal(
+    prPlan.commands.some((command) => command.name === 'jscpd'),
+    false,
+  );
 
   // Repo de empresa não tem baseline nem os arquivos do qg-init.
   for (const name of ['quality-gate-check', 'quality-gate-doctor']) {
@@ -215,8 +258,18 @@ test('pytest basetemp is unique per execution context', () => {
   fs.mkdirSync(path.join(project, 'pipeline'), { recursive: true });
   fs.writeFileSync(path.join(project, 'pipeline', 'pyproject.toml'), '[project]\nname="sample"\n');
 
-  const first = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:00.000Z', pid: 111 });
-  const second = buildValidationPlan({ projectRoot: project, profile: 'pr', now: '2026-05-26T00:00:01.000Z', pid: 222 });
+  const first = buildValidationPlan({
+    projectRoot: project,
+    profile: 'pr',
+    now: '2026-05-26T00:00:00.000Z',
+    pid: 111,
+  });
+  const second = buildValidationPlan({
+    projectRoot: project,
+    profile: 'pr',
+    now: '2026-05-26T00:00:01.000Z',
+    pid: 222,
+  });
   const firstPytest = first.commands.find((command) => command.name === 'pytest').commandLine;
   const secondPytest = second.commands.find((command) => command.name === 'pytest').commandLine;
 
@@ -251,20 +304,29 @@ test('buildFixPlan detects fixers for python and node surfaces', () => {
   const root = tempProject();
   fs.mkdirSync(path.join(root, 'pipeline'), { recursive: true });
   fs.writeFileSync(path.join(root, 'pipeline/pyproject.toml'), '[project]\nname = "app"');
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
-    scripts: { lint: 'eslint .', format: 'prettier --write .' }
-  }));
+  fs.writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({
+      scripts: { lint: 'eslint .', format: 'prettier --write .' },
+    }),
+  );
 
   const plan = buildFixPlan({ projectRoot: root });
   assert.equal(plan.commands.length, 4);
-  assert.deepEqual(plan.commands.map((c) => c.name), ['ruff-fix', 'ruff-format', 'node:lint-fix', 'node:format']);
+  assert.deepEqual(
+    plan.commands.map((c) => c.name),
+    ['ruff-fix', 'ruff-format', 'node:lint-fix', 'node:format'],
+  );
 });
 
 test('runAutoFix executes fix commands or plans dry-run', () => {
   const root = tempProject();
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
-    scripts: { lint: 'eslint .' }
-  }));
+  fs.writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({
+      scripts: { lint: 'eslint .' },
+    }),
+  );
 
   const dryRun = runAutoFix({ projectRoot: root, dryRun: true });
   assert.equal(dryRun.actions[0].status, 'planned');

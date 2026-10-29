@@ -15,7 +15,10 @@ after(() => {
 });
 
 function git(dir, args) {
-  return childProcess.execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return childProcess.execFileSync('git', ['-C', dir, ...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 // Sem teto, git sobe a arvore e acha um .git que contenha o tmp. O teto e o pai de dir.
@@ -55,18 +58,24 @@ function writeFile(dir, rel, content) {
  * Entende só o subconjunto usado nos testes, linha a linha.
  */
 function parseParams(text) {
-  return text.split(',').map((p) => p.trim()).filter(Boolean).map((p) => {
-    if (p.startsWith('...')) return { type: 'RestElement' };
-    if (p.includes('=')) return { type: 'AssignmentPattern' };
-    if (p.endsWith('?')) return { type: 'Identifier', name: p.slice(0, -1), optional: true };
-    return { type: 'Identifier', name: p };
-  });
+  return text
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => {
+      if (p.startsWith('...')) return { type: 'RestElement' };
+      if (p.includes('=')) return { type: 'AssignmentPattern' };
+      if (p.endsWith('?')) return { type: 'Identifier', name: p.slice(0, -1), optional: true };
+      return { type: 'Identifier', name: p };
+    });
 }
 
 function parseArgsList(text) {
-  return text.split(',').map((a) => a.trim()).filter(Boolean).map((a) => (
-    a.startsWith('...') ? { type: 'SpreadElement' } : { type: 'Literal', value: a }
-  ));
+  return text
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean)
+    .map((a) => (a.startsWith('...') ? { type: 'SpreadElement' } : { type: 'Literal', value: a }));
 }
 
 function fakeParseSync(filename, source) {
@@ -80,63 +89,157 @@ function fakeParseSync(filename, source) {
     offset += line.length + 1;
     let m;
     if ((m = /^export\s+function\s+([\w$]+)\s*\(([^)]*)\)/.exec(line))) {
-      body.push({ type: 'ExportNamedDeclaration', start, source: null, specifiers: [], declaration: {
-        type: 'FunctionDeclaration', id: { type: 'Identifier', name: m[1] }, params: parseParams(m[2]),
-      } });
-    } else if ((m = /^export\s+const\s+([\w$]+)\s*=\s*\(([^)]*)\)\s*=>/.exec(line))) {
-      body.push({ type: 'ExportNamedDeclaration', start, source: null, specifiers: [], declaration: {
-        type: 'VariableDeclaration', declarations: [{ id: { type: 'Identifier', name: m[1] },
-          init: { type: 'ArrowFunctionExpression', params: parseParams(m[2]) } }],
-      } });
-    } else if ((m = /^export\s+const\s+([\w$]+)\s*=/.exec(line))) {
-      body.push({ type: 'ExportNamedDeclaration', start, source: null, specifiers: [], declaration: {
-        type: 'VariableDeclaration', declarations: [{ id: { type: 'Identifier', name: m[1] }, init: { type: 'Literal' } }],
-      } });
-    } else if ((m = /^export\s*\{([^}]*)\}(?:\s*from\s*['"]([^'"]+)['"])?/.exec(line))) {
-      const specifiers = m[1].split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
-        const [local, exported = local] = s.split(/\s+as\s+/).map((x) => x.trim());
-        return { type: 'ExportSpecifier', local: { name: local }, exported: { name: exported } };
+      body.push({
+        type: 'ExportNamedDeclaration',
+        start,
+        source: null,
+        specifiers: [],
+        declaration: {
+          type: 'FunctionDeclaration',
+          id: { type: 'Identifier', name: m[1] },
+          params: parseParams(m[2]),
+        },
       });
-      body.push({ type: 'ExportNamedDeclaration', start, declaration: null, specifiers,
-        source: m[2] ? { value: m[2] } : null });
+    } else if ((m = /^export\s+const\s+([\w$]+)\s*=\s*\(([^)]*)\)\s*=>/.exec(line))) {
+      body.push({
+        type: 'ExportNamedDeclaration',
+        start,
+        source: null,
+        specifiers: [],
+        declaration: {
+          type: 'VariableDeclaration',
+          declarations: [
+            {
+              id: { type: 'Identifier', name: m[1] },
+              init: { type: 'ArrowFunctionExpression', params: parseParams(m[2]) },
+            },
+          ],
+        },
+      });
+    } else if ((m = /^export\s+const\s+([\w$]+)\s*=/.exec(line))) {
+      body.push({
+        type: 'ExportNamedDeclaration',
+        start,
+        source: null,
+        specifiers: [],
+        declaration: {
+          type: 'VariableDeclaration',
+          declarations: [{ id: { type: 'Identifier', name: m[1] }, init: { type: 'Literal' } }],
+        },
+      });
+    } else if ((m = /^export\s*\{([^}]*)\}(?:\s*from\s*['"]([^'"]+)['"])?/.exec(line))) {
+      const specifiers = m[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => {
+          const [local, exported = local] = s.split(/\s+as\s+/).map((x) => x.trim());
+          return { type: 'ExportSpecifier', local: { name: local }, exported: { name: exported } };
+        });
+      body.push({
+        type: 'ExportNamedDeclaration',
+        start,
+        declaration: null,
+        specifiers,
+        source: m[2] ? { value: m[2] } : null,
+      });
     } else if ((m = /^export\s*\*\s*from\s*['"]([^'"]+)['"]/.exec(line))) {
       body.push({ type: 'ExportAllDeclaration', start, source: { value: m[1] }, exported: null });
     } else if ((m = /^import\s*\*\s*as\s+([\w$]+)\s+from\s*['"]([^'"]+)['"]/.exec(line))) {
-      body.push({ type: 'ImportDeclaration', start, source: { value: m[2] }, importKind: 'value',
-        specifiers: [{ type: 'ImportNamespaceSpecifier', local: { name: m[1] } }] });
-    } else if ((m = /^import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/.exec(line))) {
-      const specifiers = m[1].split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
-        const [imported, local = imported] = s.split(/\s+as\s+/).map((x) => x.trim());
-        return { type: 'ImportSpecifier', imported: { name: imported }, local: { name: local } };
+      body.push({
+        type: 'ImportDeclaration',
+        start,
+        source: { value: m[2] },
+        importKind: 'value',
+        specifiers: [{ type: 'ImportNamespaceSpecifier', local: { name: m[1] } }],
       });
-      body.push({ type: 'ImportDeclaration', start, source: { value: m[2] }, importKind: 'value', specifiers });
+    } else if ((m = /^import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]/.exec(line))) {
+      const specifiers = m[1]
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => {
+          const [imported, local = imported] = s.split(/\s+as\s+/).map((x) => x.trim());
+          return { type: 'ImportSpecifier', imported: { name: imported }, local: { name: local } };
+        });
+      body.push({
+        type: 'ImportDeclaration',
+        start,
+        source: { value: m[2] },
+        importKind: 'value',
+        specifiers,
+      });
     }
     if ((m = /^module\.exports\s*=\s*\{([^}]*)\}/.exec(line))) {
-      const properties = m[1].split(",").map((x) => x.trim()).filter(Boolean).map((name) => ({ key: { type: "Identifier", name } }));
-      body.push({ type: "ExpressionStatement", start, expression: { type: "AssignmentExpression", operator: "=",
-        left: { type: "MemberExpression", computed: false, object: { type: "Identifier", name: "module" }, property: { type: "Identifier", name: "exports" } },
-        right: { type: "ObjectExpression", properties } } });
+      const properties = m[1]
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .map((name) => ({ key: { type: 'Identifier', name } }));
+      body.push({
+        type: 'ExpressionStatement',
+        start,
+        expression: {
+          type: 'AssignmentExpression',
+          operator: '=',
+          left: {
+            type: 'MemberExpression',
+            computed: false,
+            object: { type: 'Identifier', name: 'module' },
+            property: { type: 'Identifier', name: 'exports' },
+          },
+          right: { type: 'ObjectExpression', properties },
+        },
+      });
     } else if ((m = /^module\.exports\s*=\s*([\w$.]+)/.exec(line))) {
-      body.push({ type: "ExpressionStatement", start, expression: { type: "AssignmentExpression", operator: "=",
-        left: { type: "MemberExpression", computed: false, object: { type: "Identifier", name: "module" }, property: { type: "Identifier", name: "exports" } },
-        right: { type: "Identifier", name: m[1] } } });
+      body.push({
+        type: 'ExpressionStatement',
+        start,
+        expression: {
+          type: 'AssignmentExpression',
+          operator: '=',
+          left: {
+            type: 'MemberExpression',
+            computed: false,
+            object: { type: 'Identifier', name: 'module' },
+            property: { type: 'Identifier', name: 'exports' },
+          },
+          right: { type: 'Identifier', name: m[1] },
+        },
+      });
     }
     // chamadas: identificador(...) fora de declaração "function NAME(", e obj.metodo(...)
     const callRe = /(?<![\w$.])(?<!function\s)([A-Za-z_$][\w$]*)\(([^()]*)\)/g;
     let c;
     while ((c = callRe.exec(line)) !== null) {
-      body.push({ type: 'ExpressionStatement', start: start + c.index, expression: {
-        type: 'CallExpression', start: start + c.index, callee: { type: 'Identifier', name: c[1] },
-        arguments: parseArgsList(c[2]),
-      } });
+      body.push({
+        type: 'ExpressionStatement',
+        start: start + c.index,
+        expression: {
+          type: 'CallExpression',
+          start: start + c.index,
+          callee: { type: 'Identifier', name: c[1] },
+          arguments: parseArgsList(c[2]),
+        },
+      });
     }
     const memberRe = /(?<![\w$.])([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\(([^()]*)\)/g;
     while ((c = memberRe.exec(line)) !== null) {
-      body.push({ type: 'ExpressionStatement', start: start + c.index, expression: {
-        type: 'CallExpression', start: start + c.index,
-        callee: { type: 'MemberExpression', computed: false, object: { type: 'Identifier', name: c[1] }, property: { type: 'Identifier', name: c[2] } },
-        arguments: parseArgsList(c[3]),
-      } });
+      body.push({
+        type: 'ExpressionStatement',
+        start: start + c.index,
+        expression: {
+          type: 'CallExpression',
+          start: start + c.index,
+          callee: {
+            type: 'MemberExpression',
+            computed: false,
+            object: { type: 'Identifier', name: c[1] },
+            property: { type: 'Identifier', name: c[2] },
+          },
+          arguments: parseArgsList(c[3]),
+        },
+      });
     }
   }
   return { program: { body }, errors: [] };
@@ -166,7 +269,13 @@ describe('lib/ast-parser analyzeSource (parser injetado)', () => {
     const names = r.exports.map((e) => `${e.name}:${e.kind}`);
     assert.deepEqual(names, ['run:function', 'add:variable', 'runAlias:reexport']);
     assert.deepEqual(r.exports[0].arity, { min: 1, max: 2 });
-    assert.deepEqual(r.imports[0].specifiers.map((s) => [s.imported, s.local]), [['foo', 'bar'], ['baz', 'baz']]);
+    assert.deepEqual(
+      r.imports[0].specifiers.map((s) => [s.imported, s.local]),
+      [
+        ['foo', 'bar'],
+        ['baz', 'baz'],
+      ],
+    );
     assert.equal(r.imports[0].line, 1);
     const bar = r.calls.find((c) => c.callee === 'bar');
     assert.equal(bar.line, 3);
@@ -182,7 +291,11 @@ describe('lib/ast-parser analyzeSource (parser injetado)', () => {
   });
 
   test('parser que lança vira ok=false', () => {
-    const throwing = { parseSync() { throw new Error('boom'); } };
+    const throwing = {
+      parseSync() {
+        throw new Error('boom');
+      },
+    };
     const r = analyzeSource('export const a = 1;', { filename: 'a.js', parser: throwing });
     assert.equal(r.ok, false);
     assert.equal(r.error, 'boom');
@@ -248,7 +361,10 @@ describe('ast-graph run', () => {
     });
     writeFile(dir, 'a.js', 'export function other() {}\n');
     const report = JSON.parse(runOn(dir, ['--json']).stdout);
-    assert.deepEqual(report.violations.map((v) => `${v.file}:${v.symbol}`), ['b.js:foo', 'c.js:foo']);
+    assert.deepEqual(
+      report.violations.map((v) => `${v.file}:${v.symbol}`),
+      ['b.js:foo', 'c.js:foo'],
+    );
   });
 
   test('arquivo que não parseia vira aviso, não crash, e não gera violação contra ele', () => {
@@ -262,7 +378,10 @@ describe('ast-graph run', () => {
     assert.equal(result.exitCode, 0);
     const report = JSON.parse(result.stdout);
     assert.equal(report.status, 'ok');
-    assert.deepEqual(report.warnings.map((w) => w.file), ['broken.js']);
+    assert.deepEqual(
+      report.warnings.map((w) => w.file),
+      ['broken.js'],
+    );
     assert.deepEqual(report.violations, []);
   });
 
@@ -290,10 +409,13 @@ describe('ast-graph run', () => {
   });
 
   test('--base: mudança de aridade quebra chamadas incompatíveis', () => {
-    const dir = makeRepo({
-      'a.js': 'export function f(a, b) {\n  return a + b;\n}\n',
-      'b.js': "import { f } from './a.js';\nf(1, 2);\nf(1);\n",
-    }, { commit: true });
+    const dir = makeRepo(
+      {
+        'a.js': 'export function f(a, b) {\n  return a + b;\n}\n',
+        'b.js': "import { f } from './a.js';\nf(1, 2);\nf(1);\n",
+      },
+      { commit: true },
+    );
     writeFile(dir, 'a.js', 'export function f(a) {\n  return a;\n}\n');
     const report = JSON.parse(runOn(dir, ['--base', 'HEAD', '--json']).stdout);
     assert.equal(report.status, 'violations');
@@ -326,24 +448,34 @@ describe('ast-graph run', () => {
     assert.equal(runOn(dir, ['--base', 'ref-que-nao-existe']).exitCode, 2);
     const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'ast-graph-norepo-'));
     tempDirs.push(notRepo);
-    assert.equal(withGitCeiling(notRepo, () => run(['--root', notRepo], { loadParser: injected }).exitCode), 2);
+    assert.equal(
+      withGitCeiling(notRepo, () => run(['--root', notRepo], { loadParser: injected }).exitCode),
+      2,
+    );
   });
 
   test('--root sem repo continua exit 2 mesmo com tmp aninhado sob diretorio com .git', () => {
     const parent = makeRepo({ 'a.js': 'export const x = 1;\n' });
     const nested = fs.mkdtempSync(path.join(parent, 'ast-graph-nested-'));
-    assert.equal(withGitCeiling(nested, () => run(['--root', nested], { loadParser: injected }).exitCode), 2);
+    assert.equal(
+      withGitCeiling(nested, () => run(['--root', nested], { loadParser: injected }).exitCode),
+      2,
+    );
   });
 
   test('CommonJS: export nomeado de .cjs é checado; module.exports não literal fica opaco', () => {
     const dir = makeRepo({
       'lib.cjs': 'function foo() {}\nmodule.exports = { foo };\n',
       'opaque.cjs': 'module.exports = loadSomething();\n',
-      'b.js': "import { foo } from './lib.cjs';\nimport { anything } from './opaque.cjs';\nimport def from './lib.cjs';\n",
+      'b.js':
+        "import { foo } from './lib.cjs';\nimport { anything } from './opaque.cjs';\nimport def from './lib.cjs';\n",
     });
     writeFile(dir, 'lib.cjs', 'function bar() {}\nmodule.exports = { bar };\n');
     const report = JSON.parse(runOn(dir, ['--json']).stdout);
-    assert.deepEqual(report.violations.map((v) => `${v.file}:${v.symbol}`), ['b.js:foo']);
+    assert.deepEqual(
+      report.violations.map((v) => `${v.file}:${v.symbol}`),
+      ['b.js:foo'],
+    );
   });
 
   test('parseArgs aceita --root=valor e rejeita valor em flag booleana', () => {
@@ -356,15 +488,22 @@ describe('ast-graph com oxc-parser real', () => {
   const real = loadOxcParser();
   const realAvailable = Boolean(real.parser);
 
-  test('renomeação detectada com o parser real (pulado se oxc-parser não instalado)', { skip: !realAvailable }, () => {
-    const dir = makeRepo({
-      'a.ts': 'export function foo(x: number): number {\n  return x;\n}\n',
-      'b.ts': "import { foo } from './a.js';\nexport const v = foo(1);\n",
-    });
-    writeFile(dir, 'a.ts', 'export function renamed(x: number): number {\n  return x;\n}\n');
-    const result = run(['--root', dir, '--json'], { loadParser: () => real });
-    const report = JSON.parse(result.stdout);
-    assert.equal(report.parser.name, 'oxc-parser');
-    assert.deepEqual(report.violations.map((v) => `${v.file}:${v.symbol}`), ['b.ts:foo']);
-  });
+  test(
+    'renomeação detectada com o parser real (pulado se oxc-parser não instalado)',
+    { skip: !realAvailable },
+    () => {
+      const dir = makeRepo({
+        'a.ts': 'export function foo(x: number): number {\n  return x;\n}\n',
+        'b.ts': "import { foo } from './a.js';\nexport const v = foo(1);\n",
+      });
+      writeFile(dir, 'a.ts', 'export function renamed(x: number): number {\n  return x;\n}\n');
+      const result = run(['--root', dir, '--json'], { loadParser: () => real });
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.parser.name, 'oxc-parser');
+      assert.deepEqual(
+        report.violations.map((v) => `${v.file}:${v.symbol}`),
+        ['b.ts:foo'],
+      );
+    },
+  );
 });

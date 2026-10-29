@@ -27,7 +27,8 @@ function validateRules(rules) {
   if (!Array.isArray(rules)) return 'rules deve ser uma lista';
   for (const [i, rule] of rules.entries()) {
     if (!rule || typeof rule.from !== 'string' || !rule.from) return `rules[${i}].from ausente`;
-    if (!Array.isArray(rule.disallow) || rule.disallow.length === 0) return `rules[${i}].disallow deve ser lista não vazia`;
+    if (!Array.isArray(rule.disallow) || rule.disallow.length === 0)
+      return `rules[${i}].disallow deve ser lista não vazia`;
   }
   return null;
 }
@@ -45,7 +46,8 @@ function runBoundaryGate(options = {}) {
   const config = options.config || readConfig(policyPath);
 
   if (!config.enabled) return { status: 'skipped', reason: 'ci.architectureBoundary.enabled = false' };
-  if (!config.rules || config.rules.length === 0) return { status: 'skipped', reason: 'nenhuma regra definida' };
+  if (!config.rules || config.rules.length === 0)
+    return { status: 'skipped', reason: 'nenhuma regra definida' };
 
   const invalid = validateRules(config.rules);
   if (invalid) return { status: 'error', reason: `regras invalidas: ${invalid}` };
@@ -65,14 +67,16 @@ function runBoundaryGate(options = {}) {
 
   const violations = evaluateBoundaries({ files: sources, rules: config.rules });
   const blocking = config.blockOnFailure !== false;
-  const status = violations.length === 0 ? 'passed' : (blocking ? 'failed' : 'advisory');
+  const status = violations.length === 0 ? 'passed' : blocking ? 'failed' : 'advisory';
   return { status, blocking, scannedFiles: sources.length, violations };
 }
 
 function formatReport(result) {
   if (result.status === 'skipped') return `Architecture boundary: SKIPPED (${result.reason})`;
   if (result.status === 'error') return `Architecture boundary: ERROR — ${result.reason}`;
-  const lines = [`Architecture boundary: ${result.status.toUpperCase()} — ${result.scannedFiles} arquivos, ${result.violations.length} violacoes`];
+  const lines = [
+    `Architecture boundary: ${result.status.toUpperCase()} — ${result.scannedFiles} arquivos, ${result.violations.length} violacoes`,
+  ];
   for (const v of result.violations.slice(0, 50)) {
     lines.push(`  - ${v.file}:${v.line} importa "${v.specifier}" (${v.rule})`);
   }

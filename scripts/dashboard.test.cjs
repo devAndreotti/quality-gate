@@ -79,14 +79,17 @@ test('collectState captures a ratchet error when scripts/quality-gate.js throws'
 });
 
 test('render shows ratchet rows with pass and fail icons and the metric label', () => {
-  const output = render('/repo', baseState({
-    ratchet: {
-      rows: [
-        { group: 'cov', metric: 'lines', baseline: 80, current: 85, delta: '+5', passed: true },
-        { group: 'cov', metric: 'branches', baseline: 70, current: 60, delta: '-10', passed: false },
-      ],
-    },
-  }));
+  const output = render(
+    '/repo',
+    baseState({
+      ratchet: {
+        rows: [
+          { group: 'cov', metric: 'lines', baseline: 80, current: 85, delta: '+5', passed: true },
+          { group: 'cov', metric: 'branches', baseline: 70, current: 60, delta: '-10', passed: false },
+        ],
+      },
+    }),
+  );
 
   assert.match(output, /✅ cov\/lines\s+80 -> 85 \(\+5\)/);
   assert.match(output, /❌ cov\/branches\s+70 -> 60 \(-10\)/);
@@ -94,12 +97,15 @@ test('render shows ratchet rows with pass and fail icons and the metric label', 
 });
 
 test('render handles empty input: no ratchet rows, no snapshot, unknown branch and remote', () => {
-  const output = render('/repo', baseState({
-    branch: null,
-    remote: null,
-    ratchet: { rows: [] },
-    snapshot: null,
-  }));
+  const output = render(
+    '/repo',
+    baseState({
+      branch: null,
+      remote: null,
+      ratchet: { rows: [] },
+      snapshot: null,
+    }),
+  );
 
   assert.match(output, /\(sem metricas coletadas ainda\)/);
   assert.match(output, /nenhum snapshot salvo ainda/);
@@ -116,27 +122,36 @@ test('render reports a missing quality-gate script and a ratchet error', () => {
 });
 
 test('render shows snapshot status label, PR header and merge blockers', () => {
-  const ready = render('/repo', baseState({
-    snapshot: { pr: { number: 7, title: 'Feature' }, merge: { status: 'ready' } },
-    snapshotAge: new Date(Date.now() - 5 * 60 * 1000),
-  }));
+  const ready = render(
+    '/repo',
+    baseState({
+      snapshot: { pr: { number: 7, title: 'Feature' }, merge: { status: 'ready' } },
+      snapshotAge: new Date(Date.now() - 5 * 60 * 1000),
+    }),
+  );
   assert.match(ready, /#7 Feature/);
   assert.match(ready, /Status\s+ready\s+\(5min atras\)/);
 
-  const blocked = render('/repo', baseState({
-    snapshot: {
-      pr: { number: 8, title: 'Bloqueado' },
-      merge: { status: 'blocked', blockers: [{ message: 'CI vermelho' }] },
-    },
-    snapshotAge: new Date(Date.now() - 30 * 1000),
-  }));
+  const blocked = render(
+    '/repo',
+    baseState({
+      snapshot: {
+        pr: { number: 8, title: 'Bloqueado' },
+        merge: { status: 'blocked', blockers: [{ message: 'CI vermelho' }] },
+      },
+      snapshotAge: new Date(Date.now() - 30 * 1000),
+    }),
+  );
   assert.match(blocked, /Status\s+blocked/);
   assert.match(blocked, /⚠️ {2}CI vermelho/);
 
-  const advisory = render('/repo', baseState({
-    snapshot: { merge: { status: 'ready_with_advisory' } },
-    snapshotAge: new Date(Date.now() - 60 * 1000),
-  }));
+  const advisory = render(
+    '/repo',
+    baseState({
+      snapshot: { merge: { status: 'ready_with_advisory' } },
+      snapshotAge: new Date(Date.now() - 60 * 1000),
+    }),
+  );
   assert.match(advisory, /Status\s+advisory/);
   assert.match(advisory, /#\? /, 'missing PR number falls back to ?');
 });
