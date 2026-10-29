@@ -448,13 +448,19 @@ describe('ast-graph run', () => {
     assert.equal(runOn(dir, ['--base', 'ref-que-nao-existe']).exitCode, 2);
     const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'ast-graph-norepo-'));
     tempDirs.push(notRepo);
-    assert.equal(withGitCeiling(notRepo, () => run(['--root', notRepo], { loadParser: injected }).exitCode), 2);
+    assert.equal(
+      withGitCeiling(notRepo, () => run(['--root', notRepo], { loadParser: injected }).exitCode),
+      2,
+    );
   });
 
   test('--root sem repo continua exit 2 mesmo com tmp aninhado sob diretorio com .git', () => {
     const parent = makeRepo({ 'a.js': 'export const x = 1;\n' });
     const nested = fs.mkdtempSync(path.join(parent, 'ast-graph-nested-'));
-    assert.equal(withGitCeiling(nested, () => run(['--root', nested], { loadParser: injected }).exitCode), 2);
+    assert.equal(
+      withGitCeiling(nested, () => run(['--root', nested], { loadParser: injected }).exitCode),
+      2,
+    );
   });
 
   test('CommonJS: export nomeado de .cjs é checado; module.exports não literal fica opaco', () => {

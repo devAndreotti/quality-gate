@@ -320,7 +320,10 @@ test('git failure outside InputError exits 1 with a runtime message and no repor
   const file = writeFindings(dir, [{ file: 'src/a.js', line: 1, message: 'm', rule: 'r' }]);
   const io = captureIo();
   // Base inexistente: git diff falha de verdade, sem mock.
-  const code = main(['--findings', file, '--base', 'refs/qg-missing-base', '--head', 'HEAD'], { ...io.deps, cwd: dir });
+  const code = main(['--findings', file, '--base', 'refs/qg-missing-base', '--head', 'HEAD'], {
+    ...io.deps,
+    cwd: dir,
+  });
   assert.equal(code, 1);
   assert.match(io.err, /não foi possível calcular o diff refs\/qg-missing-base\.\.\.HEAD/);
   assert.doesNotMatch(io.err, /entrada inválida/);

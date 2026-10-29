@@ -293,9 +293,13 @@ test('withEnv restores the environment even when fn throws', () => {
   const previous = process.env.GITHUB_ACTIONS;
   process.env.GITHUB_ACTIONS = 'sentinel';
   try {
-    assert.throws(() => withEnv({ GITHUB_ACTIONS: undefined }, () => {
-      throw new Error('boom');
-    }), /boom/);
+    assert.throws(
+      () =>
+        withEnv({ GITHUB_ACTIONS: undefined }, () => {
+          throw new Error('boom');
+        }),
+      /boom/,
+    );
     assert.equal(process.env.GITHUB_ACTIONS, 'sentinel');
   } finally {
     restoreEnv('GITHUB_ACTIONS', previous);
