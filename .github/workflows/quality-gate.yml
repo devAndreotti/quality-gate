@@ -70,6 +70,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      # Lint real: ESLint 9 (eslint.config.js). Qualquer erro reprova o job.
+      - name: ESLint
+        run: npm run lint
 
       - name: Node syntax check
         run: node scripts/check-syntax.cjs
