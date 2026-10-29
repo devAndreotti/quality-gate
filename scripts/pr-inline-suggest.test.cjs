@@ -33,8 +33,12 @@ function finding(overrides = {}) {
 function captureIo() {
   const io = { out: '', err: '' };
   io.deps = {
-    out: (text) => { io.out += text; },
-    err: (text) => { io.err += text; },
+    out: (text) => {
+      io.out += text;
+    },
+    err: (text) => {
+      io.err += text;
+    },
   };
   return io;
 }
@@ -60,9 +64,21 @@ function tmp(prefix) {
 }
 
 function git(cwd, args) {
-  return childProcess.execFileSync('git', [
-    '-c', 'user.name=qg-test', '-c', 'user.email=qg-test@example.invalid', '-c', 'commit.gpgsign=false', ...args,
-  ], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return childProcess
+    .execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=qg-test',
+        '-c',
+        'user.email=qg-test@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
+      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    .trim();
 }
 
 test('finding on an added line becomes a review comment on RIGHT side', () => {
@@ -132,14 +148,20 @@ test('dry-run prints comments and never calls a POST', () => {
   const file = writeFindings(dir, [finding({ fix: 'const x = 1;' }), finding({ line: 1 })]);
   const io = captureIo();
   const { gh, calls } = fakeGh();
-  const code = main(['--findings', file, '--base', 'base', '--head', 'head', '--repo', 'owner/repo', '--pr', '7'], {
-    ...io.deps,
-    gh,
-    readFile: (f) => fs.readFileSync(f, 'utf8'),
-    execFileSync: () => DIFF,
-  });
+  const code = main(
+    ['--findings', file, '--base', 'base', '--head', 'head', '--repo', 'owner/repo', '--pr', '7'],
+    {
+      ...io.deps,
+      gh,
+      readFile: (f) => fs.readFileSync(f, 'utf8'),
+      execFileSync: () => DIFF,
+    },
+  );
   assert.equal(code, 0);
-  assert.equal(calls.some((c) => c.args.includes('POST') || c.args.includes('--method')), false);
+  assert.equal(
+    calls.some((c) => c.args.includes('POST') || c.args.includes('--method')),
+    false,
+  );
   const report = JSON.parse(io.out);
   assert.equal(report.mode, 'dry-run');
   assert.equal(report.posted, false);
@@ -152,12 +174,15 @@ test('post mode creates one review with COMMENT event only', () => {
   const file = writeFindings(dir, [finding()]);
   const io = captureIo();
   const { gh, calls } = fakeGh();
-  const code = main(['--findings', file, '--repo', 'owner/repo', '--pr', '7', '--post', '--base', 'b', '--head', 'h'], {
-    ...io.deps,
-    gh,
-    readFile: (f) => fs.readFileSync(f, 'utf8'),
-    execFileSync: () => DIFF,
-  });
+  const code = main(
+    ['--findings', file, '--repo', 'owner/repo', '--pr', '7', '--post', '--base', 'b', '--head', 'h'],
+    {
+      ...io.deps,
+      gh,
+      readFile: (f) => fs.readFileSync(f, 'utf8'),
+      execFileSync: () => DIFF,
+    },
+  );
   assert.equal(code, 0);
   const posts = calls.filter((c) => c.args.includes('--method'));
   assert.equal(posts.length, 1);
@@ -175,14 +200,20 @@ test('post mode with only already-posted findings does not create a review', () 
   const file = writeFindings(dir, [finding()]);
   const io = captureIo();
   const { gh, calls } = fakeGh(markerFor(finding()));
-  const code = main(['--findings', file, '--repo', 'owner/repo', '--pr', '7', '--post', '--base', 'b', '--head', 'h'], {
-    ...io.deps,
-    gh,
-    readFile: (f) => fs.readFileSync(f, 'utf8'),
-    execFileSync: () => DIFF,
-  });
+  const code = main(
+    ['--findings', file, '--repo', 'owner/repo', '--pr', '7', '--post', '--base', 'b', '--head', 'h'],
+    {
+      ...io.deps,
+      gh,
+      readFile: (f) => fs.readFileSync(f, 'utf8'),
+      execFileSync: () => DIFF,
+    },
+  );
   assert.equal(code, 0);
-  assert.equal(calls.some((c) => c.args.includes('--method')), false);
+  assert.equal(
+    calls.some((c) => c.args.includes('--method')),
+    false,
+  );
 });
 
 test('malformed findings file exits 2', () => {
@@ -198,7 +229,10 @@ test('malformed findings file exits 2', () => {
     const dir = tmp('qg-inline-bad-');
     const file = writeFindings(dir, content);
     const io = captureIo();
-    const code = main(['--findings', file, '--base', 'b', '--head', 'h'], { ...io.deps, execFileSync: () => DIFF });
+    const code = main(['--findings', file, '--base', 'b', '--head', 'h'], {
+      ...io.deps,
+      execFileSync: () => DIFF,
+    });
     assert.equal(code, 2, `expected exit 2 for ${content}`);
     assert.match(io.err, /entrada inválida/);
   }
@@ -214,7 +248,10 @@ test('missing findings, conflicting flags and --post without --pr exit 2', () =>
 test('CLI exits 2 on malformed findings through a real process', () => {
   const dir = tmp('qg-inline-cli-');
   const file = writeFindings(dir, '[{"file": ');
-  const result = childProcess.spawnSync(process.execPath, [SCRIPT, '--findings', file], { encoding: 'utf8', cwd: dir });
+  const result = childProcess.spawnSync(process.execPath, [SCRIPT, '--findings', file], {
+    encoding: 'utf8',
+    cwd: dir,
+  });
   assert.equal(result.status, 2);
 });
 
@@ -234,10 +271,14 @@ test('real git repo: added line becomes comment, unchanged line goes to summary'
     { file: 'src/a.js', line: 2, message: 'use const', rule: 'lint/prefer-const', fix: 'const added = 1;' },
     { file: 'src/a.js', line: 1, message: 'unused var', rule: 'lint/no-unused' },
   ]);
-  const result = childProcess.spawnSync(process.execPath, [SCRIPT, '--findings', file, '--base', base, '--head', 'HEAD'], {
-    encoding: 'utf8',
-    cwd: dir,
-  });
+  const result = childProcess.spawnSync(
+    process.execPath,
+    [SCRIPT, '--findings', file, '--base', base, '--head', 'HEAD'],
+    {
+      encoding: 'utf8',
+      cwd: dir,
+    },
+  );
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.comments.length, 1);
@@ -259,7 +300,10 @@ test('"\\ No newline" markers do not shift added line numbers', () => {
     '\\ No newline at end of file',
     '',
   ].join('\n');
-  const { items } = buildReviewItems({ findings: [{ file: 'n.txt', line: 2, message: 'm', rule: 'r' }], diffText: diff });
+  const { items } = buildReviewItems({
+    findings: [{ file: 'n.txt', line: 2, message: 'm', rule: 'r' }],
+    diffText: diff,
+  });
   assert.equal(items.length, 1);
   assert.equal(items[0].comment.line, 2);
 });

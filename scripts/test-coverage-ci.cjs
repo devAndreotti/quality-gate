@@ -69,7 +69,8 @@ function parseLcovFiles(text, root = DEFAULT_ROOT) {
 function listProductionFiles(root = DEFAULT_ROOT) {
   const scriptsRoot = path.join(root, 'scripts');
   if (!fs.existsSync(scriptsRoot)) return [];
-  return fs.readdirSync(scriptsRoot)
+  return fs
+    .readdirSync(scriptsRoot)
     .filter((name) => /\.(cjs|js)$/.test(name) && !/\.test\./.test(name))
     .sort((left, right) => left.localeCompare(right))
     .map((name) => `scripts/${name}`);
@@ -95,7 +96,8 @@ function evaluateCoverage({ lcovText, root = DEFAULT_ROOT, summary = lcovToCover
 
 function collectTestFiles(root = DEFAULT_ROOT) {
   const scriptsRoot = path.join(root, 'scripts');
-  return fs.readdirSync(scriptsRoot)
+  return fs
+    .readdirSync(scriptsRoot)
     .filter((name) => name.endsWith('.test.cjs'))
     .sort((left, right) => left.localeCompare(right))
     .map((name) => path.join('scripts', name));

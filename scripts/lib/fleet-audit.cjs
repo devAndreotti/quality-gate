@@ -16,7 +16,11 @@ function defaultIo(repoPath) {
     readJson: (p) => JSON.parse(fs.readFileSync(path.join(repoPath, p), 'utf8')),
     readText: (p) => fs.readFileSync(path.join(repoPath, p), 'utf8'),
     prePushHookPath: () => {
-      const out = childProcess.execFileSync('git', ['-C', repoPath, 'rev-parse', '--git-path', 'hooks/pre-push'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const out = childProcess.execFileSync(
+        'git',
+        ['-C', repoPath, 'rev-parse', '--git-path', 'hooks/pre-push'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      );
       return path.resolve(repoPath, out.trim());
     },
   };
@@ -32,7 +36,15 @@ function isZeroBaseline(baseline) {
 
 function auditRepo(repoPath, io = defaultIo(repoPath)) {
   const issues = [];
-  const report = { path: repoPath, status: 'ok', policy: 'ausente', baseline: 'ausente', hooks: 'falta', ci: 'falta', issues };
+  const report = {
+    path: repoPath,
+    status: 'ok',
+    policy: 'ausente',
+    baseline: 'ausente',
+    hooks: 'falta',
+    ci: 'falta',
+    issues,
+  };
 
   if (!io.isDir(repoPath)) {
     report.status = 'caminho ausente';

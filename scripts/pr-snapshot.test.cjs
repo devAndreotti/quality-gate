@@ -4,12 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const {
-  buildSnapshot,
-  deriveActions,
-  normalizeChecks,
-  parseArgs,
-} = require('./pr-snapshot.cjs');
+const { buildSnapshot, deriveActions, normalizeChecks, parseArgs } = require('./pr-snapshot.cjs');
 
 const CHECK_QUERY = 'pr checks 42 --json name,state,bucket,link,startedAt,completedAt,workflow';
 
@@ -59,7 +54,10 @@ function createGhJson(fixture = {}, calls = []) {
       if (data.graphqlError) throw data.graphqlError;
       return data.threads;
     }
-    if (key === `run list --branch ${data.pr.headRefName} --limit 1 --json databaseId,status,conclusion,workflowName,displayTitle,headBranch`) {
+    if (
+      key ===
+      `run list --branch ${data.pr.headRefName} --limit 1 --json databaseId,status,conclusion,workflowName,displayTitle,headBranch`
+    ) {
       return data.runs;
     }
     throw new Error(`unexpected gh call: ${key}`);
@@ -133,9 +131,7 @@ test('buildSnapshot normalizes current gh pr checks fields', () => {
 
 test('buildSnapshot infers repo from git origin when repo is omitted', () => {
   const ghJson = createGhJson({
-    checks: [
-      { name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' },
-    ],
+    checks: [{ name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' }],
   });
   const githubApi = createGithubApi({
     '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: ['Lint'], checks: [] },
@@ -182,8 +178,14 @@ test('buildSnapshot uses required checks fallback when branch protection is inac
 
   assert.deepEqual(snapshot.branchProtection.requiredChecks, ['Lint']);
   assert.equal(snapshot.branchProtection.requiredChecksSource, 'fallback');
-  assert.equal(snapshot.checks.required.some((check) => check.name === 'PR report'), false);
-  assert.equal(snapshot.checks.unknown.some((check) => check.name === 'PR report'), true);
+  assert.equal(
+    snapshot.checks.required.some((check) => check.name === 'PR report'),
+    false,
+  );
+  assert.equal(
+    snapshot.checks.unknown.some((check) => check.name === 'PR report'),
+    true,
+  );
   assert.equal(snapshot.merge.ready, true);
   assert.equal(snapshot.merge.status, 'ready_with_advisory');
 });
@@ -229,21 +231,34 @@ test('deriveActions waits when latest workflow run is still pending without chec
 
 test('buildSnapshot collects PR metadata, checks, comments, blockers, and latest run', () => {
   const calls = [];
-  const ghJson = createGhJson({
-    pr: pr({ title: 'Add auth', mergeStateStatus: 'BLOCKED', headRefName: 'feature/auth' }),
-    checks: [
-      { name: 'Lint', status: 'COMPLETED', conclusion: 'FAILURE' },
-      { name: 'Tests & ratchet', status: 'COMPLETED', conclusion: 'SUCCESS' },
-    ],
-    comments: [{ user: { login: 'Copilot' }, path: 'src/auth.ts', line: 42, body: 'Bloqueador: falta tratar erro' }],
-    reviews: [{ user: { login: 'human' }, state: 'CHANGES_REQUESTED', body: 'Ajuste contrato publico' }],
-    runs: [{ databaseId: 123, status: 'completed', conclusion: 'failure', workflowName: 'Quality Gate' }],
-  }, calls);
+  const ghJson = createGhJson(
+    {
+      pr: pr({ title: 'Add auth', mergeStateStatus: 'BLOCKED', headRefName: 'feature/auth' }),
+      checks: [
+        { name: 'Lint', status: 'COMPLETED', conclusion: 'FAILURE' },
+        { name: 'Tests & ratchet', status: 'COMPLETED', conclusion: 'SUCCESS' },
+      ],
+      comments: [
+        { user: { login: 'Copilot' }, path: 'src/auth.ts', line: 42, body: 'Bloqueador: falta tratar erro' },
+      ],
+      reviews: [{ user: { login: 'human' }, state: 'CHANGES_REQUESTED', body: 'Ajuste contrato publico' }],
+      runs: [{ databaseId: 123, status: 'completed', conclusion: 'failure', workflowName: 'Quality Gate' }],
+    },
+    calls,
+  );
   const githubApi = createGithubApi({
-    '/repos/owner/repo/actions/runs/123/artifacts': { artifacts: [{ name: 'coverage-report', sizeInBytes: 1000 }] },
+    '/repos/owner/repo/actions/runs/123/artifacts': {
+      artifacts: [{ name: 'coverage-report', sizeInBytes: 1000 }],
+    },
   });
 
-  const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi, now: '2026-05-24T00:00:00.000Z' });
+  const snapshot = buildSnapshot({
+    pr: 42,
+    repo: 'owner/repo',
+    ghJson,
+    githubApi,
+    now: '2026-05-24T00:00:00.000Z',
+  });
 
   assert.equal(snapshot.pr.number, 42);
   assert.equal(snapshot.ci.overall, 'failure');
@@ -259,12 +274,14 @@ test('buildSnapshot does not treat Copilot advisory comments as blockers', () =>
   const ghJson = createGhJson({
     pr: pr({ title: 'Setup gate', headRefName: 'codex/qg-setup' }),
     checks: [{ name: 'Lint', status: 'completed', conclusion: 'success' }],
-    comments: [{
-      user: { login: 'Copilot' },
-      path: 'scripts/doctor.test.cjs',
-      line: 30,
-      body: 'Sugestao: validar policy.ci.requiredChecks contra os job names.',
-    }],
+    comments: [
+      {
+        user: { login: 'Copilot' },
+        path: 'scripts/doctor.test.cjs',
+        line: 30,
+        body: 'Sugestao: validar policy.ci.requiredChecks contra os job names.',
+      },
+    ],
     runs: [{ databaseId: 456, status: 'completed', conclusion: 'success', workflowName: 'Quality Gate' }],
   });
   const githubApi = createGithubApi({
@@ -300,7 +317,10 @@ test('buildSnapshot treats optional Sonar failure as advisory when required chec
     ],
   });
   const githubApi = createGithubApi({
-    '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: ['Lint', 'Tests & ratchet'], checks: [] },
+    '/repos/owner/repo/branches/main/protection/required_status_checks': {
+      contexts: ['Lint', 'Tests & ratchet'],
+      checks: [],
+    },
   });
 
   const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi });
@@ -315,13 +335,15 @@ test('buildSnapshot blocks on unresolved review threads', () => {
   const ghJson = createGhJson({
     pr: pr({ title: 'Review thread', headRefName: 'feature/review' }),
     checks: [{ name: 'Lint', status: 'COMPLETED', conclusion: 'SUCCESS' }],
-    threads: threads([{
-      isResolved: false,
-      isOutdated: false,
-      path: 'src/auth.ts',
-      line: 42,
-      comments: { nodes: [{ bodyText: 'Tratar erro antes de seguir', author: { login: 'reviewer' } }] },
-    }]),
+    threads: threads([
+      {
+        isResolved: false,
+        isOutdated: false,
+        path: 'src/auth.ts',
+        line: 42,
+        comments: { nodes: [{ bodyText: 'Tratar erro antes de seguir', author: { login: 'reviewer' } }] },
+      },
+    ]),
   });
 
   const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson });
@@ -352,7 +374,9 @@ test('buildSnapshot does not crash when check details are inaccessible', () => {
   });
   const githubApi = createGithubApi({
     '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: [], checks: [] },
-    '/repos/owner/repo/commits/abc123/check-runs': new Error('Resource not accessible by personal access token'),
+    '/repos/owner/repo/commits/abc123/check-runs': new Error(
+      'Resource not accessible by personal access token',
+    ),
   });
 
   const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi });
@@ -381,7 +405,15 @@ test('buildSnapshot falls back to GitHub API when gh is unavailable', () => {
     '/repos/owner/repo/pulls/42/comments': [],
     '/repos/owner/repo/pulls/42/reviews': [],
     '/repos/owner/repo/actions/runs?branch=feature%2Ffallback&per_page=1': {
-      workflow_runs: [{ id: 321, status: 'completed', conclusion: 'success', name: 'Quality Gate', display_title: 'Fallback' }],
+      workflow_runs: [
+        {
+          id: 321,
+          status: 'completed',
+          conclusion: 'success',
+          name: 'Quality Gate',
+          display_title: 'Fallback',
+        },
+      ],
     },
     '/repos/owner/repo/actions/runs/321/artifacts': { artifacts: [] },
   });
@@ -389,7 +421,9 @@ test('buildSnapshot falls back to GitHub API when gh is unavailable', () => {
   const snapshot = buildSnapshot({
     pr: 42,
     repo: 'owner/repo',
-    ghJson: () => { throw new Error('gh unavailable'); },
+    ghJson: () => {
+      throw new Error('gh unavailable');
+    },
     githubApi,
   });
 
@@ -421,7 +455,10 @@ test('PR-1: invalid policy file is reported in errors and leaves requiredChecks 
 test('PR-1: valid or absent policy keeps errors empty', () => {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-snapshot-policy-ok-'));
   fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
-  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), JSON.stringify({ ci: { requiredChecks: ['Lint'] } }));
+  fs.writeFileSync(
+    path.join(project, '.quality-gate/policy.json'),
+    JSON.stringify({ ci: { requiredChecks: ['Lint'] } }),
+  );
   const ghJson = createGhJson({
     checks: [{ name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' }],
   });

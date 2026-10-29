@@ -13,11 +13,7 @@ const {
   parseWorkflowJobNames,
 } = require('./doctor.cjs');
 
-const {
-  buildState,
-  loadPolicy,
-  validatePolicy,
-} = require('./lib/policy.cjs');
+const { buildState, loadPolicy, validatePolicy } = require('./lib/policy.cjs');
 
 const root = path.resolve(__dirname, '..');
 
@@ -28,10 +24,7 @@ test('branch protection contexts match workflow job names', () => {
   const workflowJobNames = parseWorkflowJobNames(workflow);
   const requiredContexts = parseSetupRequiredContexts(setup);
 
-  assert.deepEqual(
-    findMissingRequiredContexts(requiredContexts, workflowJobNames),
-    [],
-  );
+  assert.deepEqual(findMissingRequiredContexts(requiredContexts, workflowJobNames), []);
 });
 
 test('doctor fails when required UI surface has no workflow job', () => {
@@ -147,7 +140,9 @@ test('doctor detects missing declared Node surface for project with UI package',
   });
 
   assert.deepEqual(
-    detected.map((surface) => `${surface.type}:${surface.root}`).sort((left, right) => left.localeCompare(right)),
+    detected
+      .map((surface) => `${surface.type}:${surface.root}`)
+      .sort((left, right) => left.localeCompare(right)),
     ['node:UI', 'python-uv:pipeline'],
   );
   assert.equal(check.level, 'warn');

@@ -86,7 +86,13 @@ function evaluateBoundaries({ files, rules }) {
         const target = candidatePaths(resolved).find((c) => disallow.some((g) => matchesGlob(c, g))) || null;
         if (!target) continue;
         const blockedBy = disallow.find((g) => matchesGlob(target, g));
-        violations.push({ file: normalize(file), line, specifier, resolved: target, rule: `${rule.from} -> ${blockedBy}` });
+        violations.push({
+          file: normalize(file),
+          line,
+          specifier,
+          resolved: target,
+          rule: `${rule.from} -> ${blockedBy}`,
+        });
       }
     }
   }

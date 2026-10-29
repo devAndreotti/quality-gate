@@ -52,7 +52,10 @@ function isPathAllowedByPattern(filePath, pattern) {
 }
 
 function parseGitStatusPath(line) {
-  return String(line || '').slice(3).trim().replace(/^"|"$/g, '');
+  return String(line || '')
+    .slice(3)
+    .trim()
+    .replace(/^"|"$/g, '');
 }
 
 function filterGitStatusEntries(lines, allowlist = []) {
@@ -99,9 +102,10 @@ function collectPythonCoverage(root) {
 
   const linePct = Number(totals.percent_covered);
   if (!Number.isFinite(linePct)) return null;
-  const branchPct = Number(totals.num_branches) > 0
-    ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
-    : null;
+  const branchPct =
+    Number(totals.num_branches) > 0
+      ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
+      : null;
   return {
     lines: linePct,
     statements: null,
@@ -145,7 +149,9 @@ function collectFileSizes(root, maxFileLines = 300) {
 function collectAll(root) {
   const coverage = collectCoverage(root) || collectPythonCoverage(root);
   if (!coverage) {
-    const missing = new Error('coverage nao encontrado. Rode node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
+    const missing = new Error(
+      'coverage nao encontrado. Rode node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json',
+    );
     missing.code = 'COVERAGE_MISSING';
     throw missing;
   }
@@ -165,28 +171,61 @@ function compareMetrics(current, baseline) {
     const cur = current.coverage?.[key] ?? null;
     const base = baseline.coverage?.[key] ?? null;
     if (notApplicable.has(key)) {
-      rows.push({ group: 'Coverage', metric: key, baseline: pct(base), current: pct(cur), delta: '-', passed: true, status: 'pass' });
+      rows.push({
+        group: 'Coverage',
+        metric: key,
+        baseline: pct(base),
+        current: pct(cur),
+        delta: '-',
+        passed: true,
+        status: 'pass',
+      });
       continue;
     }
     // Baseline 0 ou ausente: null segue não aplicável. Baseline > 0 sem medição: falha.
     const passed = cur == null ? !(base > 0) : base == null || cur >= base - 0.01;
     if (!passed) {
       const failure = { group: 'coverage', metric: key, baseline: base, current: cur };
-      if (cur == null) failure.message = `${key} não medido: baseline ${base}% exige medição, mas a métrica veio nula`;
+      if (cur == null)
+        failure.message = `${key} não medido: baseline ${base}% exige medição, mas a métrica veio nula`;
       failures.push(failure);
     }
-    rows.push({ group: 'Coverage', metric: key, baseline: pct(base), current: pct(cur), delta: delta(cur, base), passed, status: passed ? 'pass' : 'fail' });
+    rows.push({
+      group: 'Coverage',
+      metric: key,
+      baseline: pct(base),
+      current: pct(cur),
+      delta: delta(cur, base),
+      passed,
+      status: passed ? 'pass' : 'fail',
+    });
   }
 
   if (current.lintErrors != null) {
     const cur = current.lintErrors;
     const base = baseline.lintErrors ?? null;
     if (base == null) {
-      rows.push({ group: 'Lint', metric: 'errors', baseline: 'sem baseline', current: count(cur), delta: '-', passed: true, status: 'warn' });
+      rows.push({
+        group: 'Lint',
+        metric: 'errors',
+        baseline: 'sem baseline',
+        current: count(cur),
+        delta: '-',
+        passed: true,
+        status: 'warn',
+      });
     } else {
       const passed = cur <= base;
       if (!passed) failures.push({ group: 'lint', metric: 'errors', baseline: base, current: cur });
-      rows.push({ group: 'Lint', metric: 'errors', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed, status: passed ? 'pass' : 'fail' });
+      rows.push({
+        group: 'Lint',
+        metric: 'errors',
+        baseline: count(base),
+        current: count(cur),
+        delta: delta(cur, base, false),
+        passed,
+        status: passed ? 'pass' : 'fail',
+      });
     }
   }
 
@@ -194,11 +233,28 @@ function compareMetrics(current, baseline) {
     const cur = current.oversizedFiles;
     const base = baseline.oversizedFiles ?? null;
     if (base == null) {
-      rows.push({ group: 'Files', metric: 'oversized (>300 linhas)', baseline: 'sem baseline', current: count(cur), delta: '-', passed: true, status: 'warn' });
+      rows.push({
+        group: 'Files',
+        metric: 'oversized (>300 linhas)',
+        baseline: 'sem baseline',
+        current: count(cur),
+        delta: '-',
+        passed: true,
+        status: 'warn',
+      });
     } else {
       const passed = cur <= base;
-      if (!passed) failures.push({ group: 'files', metric: 'oversized (>300 linhas)', baseline: base, current: cur });
-      rows.push({ group: 'Files', metric: 'oversized (>300 linhas)', baseline: count(base), current: count(cur), delta: delta(cur, base, false), passed, status: passed ? 'pass' : 'fail' });
+      if (!passed)
+        failures.push({ group: 'files', metric: 'oversized (>300 linhas)', baseline: base, current: cur });
+      rows.push({
+        group: 'Files',
+        metric: 'oversized (>300 linhas)',
+        baseline: count(base),
+        current: count(cur),
+        delta: delta(cur, base, false),
+        passed,
+        status: passed ? 'pass' : 'fail',
+      });
     }
   }
 
@@ -251,7 +307,15 @@ function runQualityGate(options = {}) {
   } catch (error) {
     // report é consulta: sem coverage ele avisa e sai 0. check continua falhando.
     if (command === 'report' && error.code === 'COVERAGE_MISSING') {
-      return { status: 'warning', command, current: null, baseline: existing, rows: [], failures: [], warning: error.message };
+      return {
+        status: 'warning',
+        command,
+        current: null,
+        baseline: existing,
+        rows: [],
+        failures: [],
+        warning: error.message,
+      };
     }
     throw error;
   }
@@ -264,7 +328,8 @@ function runQualityGate(options = {}) {
         metric: 'baseline.json ausente',
         baseline: null,
         current: null,
-        message: 'scripts/baseline.json nao encontrado. Rode "node scripts/quality-gate.js init" e commite o arquivo.',
+        message:
+          'scripts/baseline.json nao encontrado. Rode "node scripts/quality-gate.js init" e commite o arquivo.',
       });
     }
     return {
@@ -312,7 +377,12 @@ function renderWorkflowAnnotations(failures = []) {
 function printReport(result) {
   console.log('\nQuality Gate — Ratchet\n');
   if ((result.rows || []).length > 0) {
-    console.log(renderTable(['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'], toMetricsTableRows(result.rows)));
+    console.log(
+      renderTable(
+        ['Status', 'Grupo', 'Métrica', 'Baseline', 'Atual', 'Delta'],
+        toMetricsTableRows(result.rows),
+      ),
+    );
   }
   // check e report leem o mesmo compareMetrics; a unica diferenca real e o exit code
   // (main() abaixo). Essa linha final deixa isso visivel pra quem so olha o terminal.
@@ -322,9 +392,11 @@ function printReport(result) {
       if (failure.message) console.log(`❌ ${failure.message}`);
     }
     console.log('');
-    console.log(result.status === 'failed'
-      ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`
-      : '✅ GATE PASSOU — nenhuma métrica regrediu');
+    console.log(
+      result.status === 'failed'
+        ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`
+        : '✅ GATE PASSOU — nenhuma métrica regrediu',
+    );
   } else if (result.command === 'report') {
     if (result.warning) console.log(`⚠️  ${result.warning}`);
     console.log('');

@@ -46,18 +46,11 @@ function renderHeaderBox(title, { icon = '◆', right = '', width = 60 } = {}) {
   const line = left + ' '.repeat(pad) + right;
   const tailPad = Math.max(0, width - displayWidth(line));
   const filled = line + ' '.repeat(tailPad);
-  return [
-    `  ╭${'─'.repeat(width)}╮`,
-    `  │${filled}│`,
-    `  ╰${'─'.repeat(width)}╯`,
-  ].join('\n');
+  return [`  ╭${'─'.repeat(width)}╮`, `  │${filled}│`, `  ╰${'─'.repeat(width)}╯`].join('\n');
 }
 
 function renderSection(title, icon = '◆') {
-  return [
-    `  ${icon} ${title.toUpperCase()}`,
-    `  ${'─'.repeat(60)}`,
-  ].join('\n');
+  return [`  ${icon} ${title.toUpperCase()}`, `  ${'─'.repeat(60)}`].join('\n');
 }
 
 module.exports = { displayWidth, padEnd, renderTable, renderHeaderBox, renderSection };

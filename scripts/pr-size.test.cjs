@@ -11,7 +11,10 @@ const numstat = (rows) => rows.map(([added, deleted, file]) => `${added}\t${dele
 
 test('disabled config skips without calling git and exits 0', () => {
   let called = false;
-  const exec = () => { called = true; return ''; };
+  const exec = () => {
+    called = true;
+    return '';
+  };
   const result = runPrSize({ config: { enabled: false }, base: 'abc', execFileSync: exec });
   assert.equal(result.status, 'skipped');
   assert.equal(result.exitCode, 0);
@@ -20,14 +23,22 @@ test('disabled config skips without calling git and exits 0', () => {
 });
 
 test('under limit passes with exit 0', () => {
-  const result = runPrSize({ config: ENABLED, base: 'abc', numstatText: numstat([[100, 50, 'scripts/a.cjs']]) });
+  const result = runPrSize({
+    config: ENABLED,
+    base: 'abc',
+    numstatText: numstat([[100, 50, 'scripts/a.cjs']]),
+  });
   assert.equal(result.status, 'passed');
   assert.equal(result.exitCode, 0);
   assert.equal(result.total, 150);
 });
 
 test('over limit with advisory mode reports top files and exits 0', () => {
-  const rows = [[500, 100, 'scripts/big.cjs'], [200, 0, 'scripts/mid.cjs'], [10, 10, 'src/small.js']];
+  const rows = [
+    [500, 100, 'scripts/big.cjs'],
+    [200, 0, 'scripts/mid.cjs'],
+    [10, 10, 'src/small.js'],
+  ];
   const result = runPrSize({ config: ENABLED, base: 'abc', numstatText: numstat(rows) });
   assert.equal(result.status, 'advisory');
   assert.equal(result.exitCode, 0);
@@ -40,7 +51,11 @@ test('over limit with advisory mode reports top files and exits 0', () => {
 });
 
 test('over limit with blockOnFailure exits 1', () => {
-  const result = runPrSize({ config: BLOCKING, base: 'abc', numstatText: numstat([[900, 0, 'scripts/x.cjs']]) });
+  const result = runPrSize({
+    config: BLOCKING,
+    base: 'abc',
+    numstatText: numstat([[900, 0, 'scripts/x.cjs']]),
+  });
   assert.equal(result.status, 'failed');
   assert.equal(result.exitCode, 1);
 });
@@ -63,7 +78,10 @@ test('excluded files do not count toward the total', () => {
   assert.equal(result.total, 60);
   assert.equal(result.exitCode, 0);
   assert.equal(result.excludedCount, 9);
-  assert.deepEqual(result.top.map((entry) => entry.file), ['scripts/real.cjs', 'docs/notes.txt']);
+  assert.deepEqual(
+    result.top.map((entry) => entry.file),
+    ['scripts/real.cjs', 'docs/notes.txt'],
+  );
 });
 
 test('isExcluded matches the documented patterns only', () => {
@@ -92,7 +110,10 @@ test('evaluatePrSize sorts top files by size and caps at five', () => {
 
 test('missing base fails closed with exit 2 and never calls git', () => {
   let called = false;
-  const exec = () => { called = true; return ''; };
+  const exec = () => {
+    called = true;
+    return '';
+  };
   const result = runPrSize({ config: ENABLED, base: undefined, execFileSync: exec });
   assert.equal(result.status, 'error');
   assert.equal(result.exitCode, 2);
@@ -100,7 +121,9 @@ test('missing base fails closed with exit 2 and never calls git', () => {
 });
 
 test('git failure against the base also fails closed with exit 2', () => {
-  const exec = () => { throw new Error('fatal: bad revision'); };
+  const exec = () => {
+    throw new Error('fatal: bad revision');
+  };
   const result = runPrSize({ config: ENABLED, base: 'deadbeef', execFileSync: exec });
   assert.equal(result.exitCode, 2);
   assert.match(result.reason, /fetch-depth: 0/);
@@ -108,6 +131,9 @@ test('git failure against the base also fails closed with exit 2', () => {
 
 test('CLI in this repo prints SKIPPED while ci.prSize is disabled', () => {
   const script = path.join(__dirname, 'pr-size.cjs');
-  const out = childProcess.execFileSync(process.execPath, [script], { encoding: 'utf8', env: { ...process.env, BASE_SHA: '' } });
+  const out = childProcess.execFileSync(process.execPath, [script], {
+    encoding: 'utf8',
+    env: { ...process.env, BASE_SHA: '' },
+  });
   assert.match(out, /PR size: SKIPPED/);
 });

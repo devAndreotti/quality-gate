@@ -1,11 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const {
-  classifyFailure,
-  diagnoseRun,
-  parseArgs,
-} = require('./ci-diagnose.cjs');
+const { classifyFailure, diagnoseRun, parseArgs } = require('./ci-diagnose.cjs');
 
 test('parseArgs supports run, repo, json, snapshot, and output', () => {
   const args = parseArgs([
@@ -30,12 +26,35 @@ test('parseArgs supports run, repo, json, snapshot, and output', () => {
 test('classifyFailure maps known logs to deterministic actions', () => {
   assert.equal(classifyFailure({ name: 'Lint', log: 'ESLint: no-unused-vars' }).action, 'fix_lint');
   assert.equal(classifyFailure({ name: 'Security audit', log: '' }).action, 'fix_security');
-  assert.equal(classifyFailure({ name: 'Security audit', log: 'npm audit found critical severity vulnerability' }).action, 'fix_security');
-  assert.equal(classifyFailure({ name: 'Tests & ratchet', log: 'Quality Gate — Ratchet\ncoverage lines regressed' }).action, 'fix_ratchet');
-  assert.equal(classifyFailure({ name: 'Tests & ratchet', log: 'coverage.json is stale; pytest failed before writing coverage' }).category, 'coverage_stale');
-  assert.equal(classifyFailure({ name: 'SonarCloud', log: 'QUALITY GATE STATUS: FAILED' }).action, 'diagnose_sonar');
-  assert.equal(classifyFailure({ name: 'Docker image gate', log: 'Docker Image Doctor Critical finding' }).action, 'diagnose_docker');
-  assert.equal(classifyFailure({ name: 'Tests', log: 'ECONNRESET while downloading package' }).action, 'rerun_flaky');
+  assert.equal(
+    classifyFailure({ name: 'Security audit', log: 'npm audit found critical severity vulnerability' })
+      .action,
+    'fix_security',
+  );
+  assert.equal(
+    classifyFailure({ name: 'Tests & ratchet', log: 'Quality Gate — Ratchet\ncoverage lines regressed' })
+      .action,
+    'fix_ratchet',
+  );
+  assert.equal(
+    classifyFailure({
+      name: 'Tests & ratchet',
+      log: 'coverage.json is stale; pytest failed before writing coverage',
+    }).category,
+    'coverage_stale',
+  );
+  assert.equal(
+    classifyFailure({ name: 'SonarCloud', log: 'QUALITY GATE STATUS: FAILED' }).action,
+    'diagnose_sonar',
+  );
+  assert.equal(
+    classifyFailure({ name: 'Docker image gate', log: 'Docker Image Doctor Critical finding' }).action,
+    'diagnose_docker',
+  );
+  assert.equal(
+    classifyFailure({ name: 'Tests', log: 'ECONNRESET while downloading package' }).action,
+    'rerun_flaky',
+  );
 });
 
 test('diagnoseRun reads failed jobs and logs through gh', () => {
@@ -130,7 +149,9 @@ test('diagnoseRun treats failed advisory Sonar check as optional diagnostic', ()
         ready: true,
         status: 'ready_with_advisory',
         blockers: [],
-        advisories: [{ type: 'advisory_check_failed', action: 'diagnose_optional_check', message: 'Sonar failed' }],
+        advisories: [
+          { type: 'advisory_check_failed', action: 'diagnose_optional_check', message: 'Sonar failed' },
+        ],
       },
       copilotBlockers: [],
       humanBlockers: [],
@@ -169,8 +190,12 @@ test('diagnoseRun falls back to GitHub API job metadata when gh is unavailable',
   const result = diagnoseRun({
     run: 123,
     repo: 'owner/repo',
-    ghJson: () => { throw new Error('gh unavailable'); },
-    ghText: () => { throw new Error('logs unavailable'); },
+    ghJson: () => {
+      throw new Error('gh unavailable');
+    },
+    ghText: () => {
+      throw new Error('logs unavailable');
+    },
     githubApi: (apiPath) => {
       if (apiPath === '/repos/owner/repo/actions/runs/123/jobs') {
         return {
@@ -196,11 +221,17 @@ test('diagnoseRun falls back to GitHub API job metadata when gh is unavailable',
 });
 
 test('diagnoseRun does not silently pass when gh and API fallback both lack jobs', () => {
-  assert.throws(() => diagnoseRun({
-    run: 123,
-    repo: 'owner/repo',
-    ghJson: () => { throw new Error('gh unavailable'); },
-    ghText: () => '',
-    githubApi: () => null,
-  }), /gh unavailable/);
+  assert.throws(
+    () =>
+      diagnoseRun({
+        run: 123,
+        repo: 'owner/repo',
+        ghJson: () => {
+          throw new Error('gh unavailable');
+        },
+        ghText: () => '',
+        githubApi: () => null,
+      }),
+    /gh unavailable/,
+  );
 });

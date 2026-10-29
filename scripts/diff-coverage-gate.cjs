@@ -23,7 +23,12 @@ function readConfig(policyPath) {
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
-  const args = { root: process.cwd(), base: process.env.BASE_SHA || 'origin/main', lcov: 'coverage/lcov.info', json: false };
+  const args = {
+    root: process.cwd(),
+    base: process.env.BASE_SHA || 'origin/main',
+    lcov: 'coverage/lcov.info',
+    json: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--base') args.base = argv[++i];
@@ -51,23 +56,37 @@ function runDiffCoverageGate(options = {}) {
   let diffText = options.diffText;
   if (diffText === undefined) {
     try {
-      diffText = exec('git', ['diff', '--unified=0', `${options.base || 'origin/main'}...HEAD`], { cwd: root, encoding: 'utf8' });
+      diffText = exec('git', ['diff', '--unified=0', `${options.base || 'origin/main'}...HEAD`], {
+        cwd: root,
+        encoding: 'utf8',
+      });
     } catch (err) {
-      return { status: 'error', reason: `git diff falhou contra ${options.base}: ${err.message.split('\n')[0]}. Em CI, use fetch-depth: 0.` };
+      return {
+        status: 'error',
+        reason: `git diff falhou contra ${options.base}: ${err.message.split('\n')[0]}. Em CI, use fetch-depth: 0.`,
+      };
     }
   }
 
   let lcovText = options.lcovText;
   if (lcovText === undefined) {
     if (!fs.existsSync(lcovPath)) {
-      return { status: 'error', reason: `LCOV nao encontrado em ${lcovPath}. Gere com: node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs` };
+      return {
+        status: 'error',
+        reason: `LCOV nao encontrado em ${lcovPath}. Gere com: node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs`,
+      };
     }
     lcovText = fs.readFileSync(lcovPath, 'utf8');
   }
 
-  const result = evaluateDiffCoverage({ diffText, lcovText, minDiffCoverage: config.minPercentage, include: config.include || [] });
+  const result = evaluateDiffCoverage({
+    diffText,
+    lcovText,
+    minDiffCoverage: config.minPercentage,
+    include: config.include || [],
+  });
   const blocking = config.blockOnFailure !== false;
-  const status = result.passed ? 'passed' : (blocking ? 'failed' : 'advisory');
+  const status = result.passed ? 'passed' : blocking ? 'failed' : 'advisory';
   return { status, blocking, base: options.base, ...result };
 }
 

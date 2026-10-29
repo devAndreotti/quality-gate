@@ -72,7 +72,10 @@ test('shouldIgnore only skips paths matching explicit custom patterns', () => {
 test('runSecretScan does not exempt test files or fixture dirs', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-strict-'));
   fs.mkdirSync(path.join(dir, 'fixtures'));
-  fs.writeFileSync(path.join(dir, 'payment.test.js'), `const token = "${GH}111111111111111111111111111111111111";`);
+  fs.writeFileSync(
+    path.join(dir, 'payment.test.js'),
+    `const token = "${GH}111111111111111111111111111111111111";`,
+  );
   fs.writeFileSync(path.join(dir, 'fixtures', 'prod.env'), `AWS_KEY=${AWS}REALKEYREALKEY12\n`);
   const res = runSecretScan({ root: dir, mode: 'all' });
   assert.equal(res.status, 'failed');
@@ -81,8 +84,14 @@ test('runSecretScan does not exempt test files or fixture dirs', () => {
 
 test('runSecretScan honors only explicit --ignore patterns', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-ignore-'));
-  fs.writeFileSync(path.join(dir, 'app.test.js'), `const token = "${GH}111111111111111111111111111111111111";`);
-  fs.writeFileSync(path.join(dir, 'sample.txt'), `const token = "${GH}222222222222222222222222222222222222";`);
+  fs.writeFileSync(
+    path.join(dir, 'app.test.js'),
+    `const token = "${GH}111111111111111111111111111111111111";`,
+  );
+  fs.writeFileSync(
+    path.join(dir, 'sample.txt'),
+    `const token = "${GH}222222222222222222222222222222222222";`,
+  );
   const res = runSecretScan({ root: dir, mode: 'all', ignore: ['sample.txt'] });
   assert.equal(res.status, 'failed');
   assert.equal(res.findingsCount, 1);
@@ -271,6 +280,12 @@ test('SS-8 quoted git headers resolve to the unescaped filename, including after
     '',
   ].join('\n');
   const findings = scanGitDiff(process.cwd(), fakeGit(diff));
-  assert.deepEqual(findings.map((f) => f.file), ['plain.txt', 'dir with space/café "q".txt']);
-  assert.deepEqual(findings.map((f) => f.line), [1, 1]);
+  assert.deepEqual(
+    findings.map((f) => f.file),
+    ['plain.txt', 'dir with space/café "q".txt'],
+  );
+  assert.deepEqual(
+    findings.map((f) => f.line),
+    [1, 1],
+  );
 });

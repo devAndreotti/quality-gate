@@ -36,15 +36,21 @@ function normalizeFile(file) {
 
 function validateFinding(item, index) {
   const where = `achado #${index}`;
-  if (!item || typeof item !== 'object' || Array.isArray(item)) throw new InputError(`${where}: precisa ser objeto`);
+  if (!item || typeof item !== 'object' || Array.isArray(item))
+    throw new InputError(`${where}: precisa ser objeto`);
   const { file, line, message, rule, fix } = item;
   if (typeof file !== 'string' || !file.trim()) throw new InputError(`${where}: campo "file" obrigatório`);
   const normalized = normalizeFile(file.trim());
-  if (path.posix.isAbsolute(normalized) || normalized.split('/').includes('..') || /[\r\n]|-->/.test(normalized)) {
+  if (
+    path.posix.isAbsolute(normalized) ||
+    normalized.split('/').includes('..') ||
+    /[\r\n]|-->/.test(normalized)
+  ) {
     throw new InputError(`${where}: "file" precisa ser caminho relativo sem ".." nem quebra de linha`);
   }
   if (!Number.isInteger(line) || line < 1) throw new InputError(`${where}: "line" precisa ser inteiro >= 1`);
-  if (typeof message !== 'string' || !message.trim()) throw new InputError(`${where}: campo "message" obrigatório`);
+  if (typeof message !== 'string' || !message.trim())
+    throw new InputError(`${where}: campo "message" obrigatório`);
   if (typeof rule !== 'string' || !/^[A-Za-z0-9_./-]+$/.test(rule)) {
     throw new InputError(`${where}: "rule" obrigatório (letras, números, _ . / -)`);
   }
@@ -82,7 +88,10 @@ function buildBody(finding, marker) {
 // git diff com `\ No newline at end of file` quebra a contagem de parseDiffLineNumbers
 // (a linha de marcação é contada como linha de contexto). Removemos antes de parsear.
 function stripNoNewlineMarkers(diffText) {
-  return String(diffText || '').split(/\r?\n/).filter((line) => !line.startsWith('\\')).join('\n');
+  return String(diffText || '')
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith('\\'))
+    .join('\n');
 }
 
 function buildReviewItems({ findings, diffText }) {
@@ -136,7 +145,15 @@ function buildReviewPayload(comments, summary) {
 }
 
 function parseArgs(argv) {
-  const args = { findings: null, base: 'origin/main', head: 'HEAD', repo: null, pr: null, post: false, dryRun: false };
+  const args = {
+    findings: null,
+    base: 'origin/main',
+    head: 'HEAD',
+    repo: null,
+    pr: null,
+    post: false,
+    dryRun: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const next = () => {
@@ -239,7 +256,10 @@ function main(argv = process.argv.slice(2), deps = {}) {
 
     if (args.post && comments.length > 0) {
       const payload = buildReviewPayload(comments, summary);
-      gh(['api', '--method', 'POST', `repos/${repo}/pulls/${args.pr}/reviews`, '--input', '-'], JSON.stringify(payload));
+      gh(
+        ['api', '--method', 'POST', `repos/${repo}/pulls/${args.pr}/reviews`, '--input', '-'],
+        JSON.stringify(payload),
+      );
       report.posted = true;
     }
 

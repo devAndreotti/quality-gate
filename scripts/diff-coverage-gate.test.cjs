@@ -21,7 +21,9 @@ function diffFor(file, addedLines, startLine = 1) {
 }
 
 function lcovFor(file, hits) {
-  const da = Object.entries(hits).map(([line, h]) => `DA:${line},${h}`).join('\n');
+  const da = Object.entries(hits)
+    .map(([line, h]) => `DA:${line},${h}`)
+    .join('\n');
   return `SF:${file}\n${da}\nend_of_record\n`;
 }
 
@@ -53,7 +55,11 @@ test('evaluateDiffCoverage fails when a new executable line has zero hits', () =
 
 test('evaluateDiffCoverage counts a changed production file with no LCOV record as untested', () => {
   const diff = diffFor('scripts/new-feature.cjs', ['function f() {', '  return 1;', '}']);
-  const r = evaluateDiffCoverage({ diffText: diff, lcovText: lcovFor('scripts/other.cjs', { 1: 1 }), minDiffCoverage: 90 });
+  const r = evaluateDiffCoverage({
+    diffText: diff,
+    lcovText: lcovFor('scripts/other.cjs', { 1: 1 }),
+    minDiffCoverage: 90,
+  });
   assert.equal(r.passed, false);
   assert.deepEqual(r.untestedFiles, ['scripts/new-feature.cjs']);
   assert.equal(r.totalLines, 3);
@@ -77,7 +83,11 @@ test('evaluateDiffCoverage ignores test files in the diff', () => {
 test('evaluateDiffCoverage does not match a file by partial name suffix', () => {
   // "a.cjs" no diff não pode casar com "scripts/data.cjs" no LCOV.
   const diff = diffFor('a.cjs', ['const x = 1;']);
-  const r = evaluateDiffCoverage({ diffText: diff, lcovText: lcovFor('scripts/data.cjs', { 1: 1 }), minDiffCoverage: 90 });
+  const r = evaluateDiffCoverage({
+    diffText: diff,
+    lcovText: lcovFor('scripts/data.cjs', { 1: 1 }),
+    minDiffCoverage: 90,
+  });
   assert.deepEqual(r.untestedFiles, ['a.cjs']);
 });
 
@@ -91,7 +101,11 @@ test('runDiffCoverageGate reports failed when blocking and advisory when not blo
   const lcov = lcovFor('scripts/a.cjs', { 1: 0 });
   const blocking = runDiffCoverageGate({ config: ENABLED, diffText: diff, lcovText: lcov });
   assert.equal(blocking.status, 'failed');
-  const advisory = runDiffCoverageGate({ config: { ...ENABLED, blockOnFailure: false }, diffText: diff, lcovText: lcov });
+  const advisory = runDiffCoverageGate({
+    config: { ...ENABLED, blockOnFailure: false },
+    diffText: diff,
+    lcovText: lcov,
+  });
   assert.equal(advisory.status, 'advisory');
   assert.equal(advisory.blocking, false);
 });
@@ -112,7 +126,9 @@ test('runDiffCoverageGate fails closed when git diff cannot run', () => {
     config: ENABLED,
     base: 'origin/nao-existe',
     lcovText: '',
-    execFileSync: () => { throw new Error('fatal: bad revision'); },
+    execFileSync: () => {
+      throw new Error('fatal: bad revision');
+    },
   });
   assert.equal(r.status, 'error');
   assert.match(r.reason, /git diff falhou/);
@@ -180,7 +196,9 @@ test('formatReport truncates long uncovered lists and marks advisory mode', () =
 });
 
 test('evaluateDiffCoverage only gates files under include prefixes when set', () => {
-  const diff = [diffFor('scripts/tool.cjs', ['const a = 1;']), diffFor('src/app.js', ['const b = 2;'])].join('\n');
+  const diff = [diffFor('scripts/tool.cjs', ['const a = 1;']), diffFor('src/app.js', ['const b = 2;'])].join(
+    '\n',
+  );
   const r = evaluateDiffCoverage({
     diffText: diff,
     lcovText: lcovFor('src/app.js', { 1: 1 }),

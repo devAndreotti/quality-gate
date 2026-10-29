@@ -74,9 +74,9 @@ function diff(current, baseline) {
 }
 
 function renderCoverageSummary(rows) {
-  const summaryRows = rows.filter(([metric, current]) => (
-    ['lines', 'branches'].includes(metric) && current != null
-  ));
+  const summaryRows = rows.filter(
+    ([metric, current]) => ['lines', 'branches'].includes(metric) && current != null,
+  );
   if (summaryRows.length === 0) return '';
 
   return `**Coverage:** ${summaryRows.map(([metric, current, base]) => `${metric} ${fmt(current)} (baseline ${fmt(base)}, ${diff(current, base) || 'n/a'})`).join(' | ')}`;
@@ -116,9 +116,10 @@ function readPythonCoverage(root) {
   if (!totals || typeof totals.percent_covered !== 'number') return null;
 
   const linePct = totals.percent_covered;
-  const branchPct = Number(totals.num_branches) > 0
-    ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
-    : null;
+  const branchPct =
+    Number(totals.num_branches) > 0
+      ? (Number(totals.covered_branches || 0) / Number(totals.num_branches)) * 100
+      : null;
 
   return {
     totals: {
@@ -167,9 +168,10 @@ function readCoverageSection(options = {}) {
     '',
     '| Métrica | Baseline | Atual | Delta |',
     '|---------|----------|-------|-------|',
-    ...rows.map(([metric, current, base]) => (
-      `| \`${metric}\` | ${fmt(base)} | ${fmt(current)} | ${diff(current, base)} |`
-    )),
+    ...rows.map(
+      ([metric, current, base]) =>
+        `| \`${metric}\` | ${fmt(base)} | ${fmt(current)} | ${diff(current, base)} |`,
+    ),
     '',
     '</details>',
   ];
@@ -199,9 +201,7 @@ function readSnapshot(options = {}) {
   const snapshotPath = options.snapshotPath || env.SNAPSHOT_PATH;
   if (!snapshotPath) return null;
 
-  const resolvedPath = path.isAbsolute(snapshotPath)
-    ? snapshotPath
-    : path.resolve(root, snapshotPath);
+  const resolvedPath = path.isAbsolute(snapshotPath) ? snapshotPath : path.resolve(root, snapshotPath);
   return readJson(resolvedPath);
 }
 
@@ -240,9 +240,9 @@ function summarizeMergeState({ snapshot, allGreen, anyFail }) {
       icon: manual ? '⚠️' : '❌',
       status: manual ? 'manual verification' : status,
       canMerge: manual ? 'unknown' : 'no',
-      nextAction: blocker?.action || (manual
-        ? 'Verify GitHub mergeability and review threads manually.'
-        : 'Fix blocker before merge.'),
+      nextAction:
+        blocker?.action ||
+        (manual ? 'Verify GitHub mergeability and review threads manually.' : 'Fix blocker before merge.'),
       blocker,
       advisories,
     };
@@ -285,13 +285,12 @@ function renderNextAction(summary) {
 }
 
 function renderMergeSummary(summary) {
-  const lines = [
-    `**Can merge:** ${summary.canMerge}`,
-    renderNextAction(summary),
-  ];
+  const lines = [`**Can merge:** ${summary.canMerge}`, renderNextAction(summary)];
 
   if (summary.blocker) {
-    lines.push(`**Blocker:** \`${summary.blocker.type || 'unknown'}\` - ${summary.blocker.message || summary.blocker.action || 'Sem detalhes.'}`);
+    lines.push(
+      `**Blocker:** \`${summary.blocker.type || 'unknown'}\` - ${summary.blocker.message || summary.blocker.action || 'Sem detalhes.'}`,
+    );
   }
 
   if (summary.advisories.length > 0) {
@@ -337,9 +336,7 @@ function escapeWorkflowCommand(value) {
 }
 
 function escapeWorkflowProperty(value) {
-  return escapeWorkflowCommand(value)
-    .replace(/:/g, '%3A')
-    .replace(/,/g, '%2C');
+  return escapeWorkflowCommand(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
 }
 
 function workflowCommand(level, message, properties = {}) {
@@ -357,21 +354,24 @@ function renderAnnotations(input = {}, options = {}) {
   const blockers = input.snapshot?.merge?.blockers || [];
 
   for (const blocker of blockers) {
-    annotations.push(workflowCommand(
-      'warning',
-      `\`${blocker.type || 'unknown'}\` - ${blocker.message || blocker.action || 'Sem detalhes.'}`,
-      { title: 'Quality Gate blocker' },
-    ));
+    annotations.push(
+      workflowCommand(
+        'warning',
+        `\`${blocker.type || 'unknown'}\` - ${blocker.message || blocker.action || 'Sem detalhes.'}`,
+        { title: 'Quality Gate blocker' },
+      ),
+    );
     if (annotations.length >= limit) return annotations;
   }
 
   for (const item of input.coverage?.worst || []) {
     if (typeof item.pct !== 'number') continue;
-    annotations.push(workflowCommand(
-      'warning',
-      `${fmt(item.pct)} lines coverage in ${item.file}`,
-      { title: 'Low coverage', file: item.file },
-    ));
+    annotations.push(
+      workflowCommand('warning', `${fmt(item.pct)} lines coverage in ${item.file}`, {
+        title: 'Low coverage',
+        file: item.file,
+      }),
+    );
     if (annotations.length >= limit) return annotations;
   }
 
@@ -411,11 +411,12 @@ function buildBody(options = {}) {
   const root = path.resolve(options.root || process.cwd());
   const repo = env.GITHUB_REPOSITORY;
   const runId = env.RUN_ID;
-  const runUrl = runId && repo
-    ? `https://github.com/${repo}/actions/runs/${runId}`
-    : repo
-      ? `https://github.com/${repo}/actions`
-      : 'https://github.com/actions';
+  const runUrl =
+    runId && repo
+      ? `https://github.com/${repo}/actions/runs/${runId}`
+      : repo
+        ? `https://github.com/${repo}/actions`
+        : 'https://github.com/actions';
   const jobs = collectJobs(env);
   const requiredJobKeys = parseRequiredChecks(env.REQUIRED_CHECKS);
   const requiredResults = requiredJobKeys.map((key) => jobs[key] ?? 'skipped');

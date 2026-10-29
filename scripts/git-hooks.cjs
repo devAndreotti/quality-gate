@@ -43,7 +43,7 @@ function renderPrePushHook() {
     'fi',
     '',
     'exit 0',
-    ''
+    '',
   ].join('\n');
 }
 
@@ -57,7 +57,11 @@ function installHook(options = {}) {
   if (fs.existsSync(hookPath)) {
     const existing = fs.readFileSync(hookPath, 'utf8');
     if (!existing.includes(HOOK_MARKER) && !options.force) {
-      return { status: 'conflict', reason: 'pre-push hook customizado existente sem marker gerenciado. Use --force para sobrescrever.', path: hookPath };
+      return {
+        status: 'conflict',
+        reason: 'pre-push hook customizado existente sem marker gerenciado. Use --force para sobrescrever.',
+        path: hookPath,
+      };
     }
   }
   const hookContent = renderPrePushHook();
@@ -80,7 +84,11 @@ function uninstallHook(options = {}) {
   }
   const existing = fs.readFileSync(hookPath, 'utf8');
   if (!existing.includes(HOOK_MARKER) && !options.force) {
-    return { status: 'conflict', reason: 'pre-push hook customizado nao pertence ao Quality Gate', path: hookPath };
+    return {
+      status: 'conflict',
+      reason: 'pre-push hook customizado nao pertence ao Quality Gate',
+      path: hookPath,
+    };
   }
   if (!options.dryRun) {
     fs.unlinkSync(hookPath);

@@ -4,12 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const {
-  buildProjectPolicy,
-  buildReadmeScaffold,
-  parseArgs,
-  runBootstrap,
-} = require('./bootstrap-repo.cjs');
+const { buildProjectPolicy, buildReadmeScaffold, parseArgs, runBootstrap } = require('./bootstrap-repo.cjs');
 
 const root = path.resolve(__dirname, '..');
 
@@ -64,11 +59,18 @@ test('parseArgs supports dry-run, project, json, and skip flags', () => {
 
 test('runBootstrap creates deterministic bootstrap files', () => {
   const project = tempProject();
-  fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({
-    name: 'sample-app',
-    scripts: { test: 'node --test' },
-    dependencies: { express: '^5.0.0' },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'sample-app',
+        scripts: { test: 'node --test' },
+        dependencies: { express: '^5.0.0' },
+      },
+      null,
+      2,
+    ),
+  );
 
   const result = runBootstrap({
     projectRoot: project,
@@ -119,7 +121,10 @@ test('runBootstrap detects mixed project surfaces in generated policy', () => {
   assert.match(workflow, /working-directory: UI/);
   assert.match(workflow, /mkdir -p \.\.\/coverage/);
   assert.match(workflow, /pull-requests: write/);
-  assert.match(workflow, /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/);
+  assert.match(
+    workflow,
+    /node scripts\/pr-snapshot\.cjs --pr "\$PR_NUMBER" --json --output \.quality-gate\/reports\/pr-snapshot\.json/,
+  );
   assert.match(workflow, /SNAPSHOT_PATH: \.quality-gate\/reports\/pr-snapshot\.json/);
   assert.match(workflow, /PYTHON_RESULT: \$\{\{ needs\['python-validation'\]\.result \}\}/);
   assert.match(workflow, /UI_RESULT: \$\{\{ needs\['ui-validation'\]\.result \}\}/);
@@ -211,16 +216,19 @@ test('runBootstrap ignores README markers mentioned inline as documentation', ()
 
 test('runBootstrap replaces only managed README block', () => {
   const project = tempProject();
-  fs.writeFileSync(path.join(project, 'README.md'), [
-    '# Existing',
-    '',
-    '<!-- quality-gate:readme:start -->',
-    'old generated content',
-    '<!-- quality-gate:readme:end -->',
-    '',
-    'Manual tail.',
-    '',
-  ].join('\n'));
+  fs.writeFileSync(
+    path.join(project, 'README.md'),
+    [
+      '# Existing',
+      '',
+      '<!-- quality-gate:readme:start -->',
+      'old generated content',
+      '<!-- quality-gate:readme:end -->',
+      '',
+      'Manual tail.',
+      '',
+    ].join('\n'),
+  );
 
   runBootstrap({
     projectRoot: project,
@@ -257,20 +265,19 @@ test('runBootstrap upgrade dry-run plans managed workflow update without writing
 
   assert.equal(workflowStep.status, 'planned');
   assert.equal(workflowStep.detail, 'would update managed workflow');
-  assert.equal(fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8'), oldWorkflow);
+  assert.equal(
+    fs.readFileSync(path.join(project, '.github/workflows/quality-gate.yml'), 'utf8'),
+    oldWorkflow,
+  );
 });
 
 test('runBootstrap upgrade requires manual review for unmarked custom workflow', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, '.github/workflows'), { recursive: true });
-  fs.writeFileSync(path.join(project, '.github/workflows/quality-gate.yml'), [
-    'name: Custom CI',
-    'jobs:',
-    '  custom:',
-    '    steps:',
-    '      - run: echo custom',
-    '',
-  ].join('\n'));
+  fs.writeFileSync(
+    path.join(project, '.github/workflows/quality-gate.yml'),
+    ['name: Custom CI', 'jobs:', '  custom:', '    steps:', '      - run: echo custom', ''].join('\n'),
+  );
 
   const result = runBootstrap({
     projectRoot: project,

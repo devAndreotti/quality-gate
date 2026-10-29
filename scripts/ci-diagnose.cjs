@@ -1,12 +1,7 @@
 #!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const {
-  resolveRepo,
-  runGhJson,
-  runGhText,
-  runGitHubApi,
-} = require('./lib/github.cjs');
+const { resolveRepo, runGhJson, runGhText, runGitHubApi } = require('./lib/github.cjs');
 
 function parseArgs(argv) {
   const args = {
@@ -58,7 +53,16 @@ function classifyFailure({ name = '', log = '' }) {
       reason: 'coverage artifact is stale or was not refreshed after pytest',
     };
   }
-  if (textIncludes(source, [/ECONNRESET/i, /ETIMEDOUT/i, /timed out/i, /runner.*lost/i, /network/i, /502 Bad Gateway/i])) {
+  if (
+    textIncludes(source, [
+      /ECONNRESET/i,
+      /ETIMEDOUT/i,
+      /timed out/i,
+      /runner.*lost/i,
+      /network/i,
+      /502 Bad Gateway/i,
+    ])
+  ) {
     return {
       category: 'infra',
       action: 'rerun_flaky',
@@ -82,7 +86,9 @@ function classifyFailure({ name = '', log = '' }) {
       reason: 'npm audit or critical vulnerability detected',
     };
   }
-  if (textIncludes(source, [/ratchet/i, /coverage.*regress/i, /Quality Gate.*Ratchet/i, /coverage-summary/i])) {
+  if (
+    textIncludes(source, [/ratchet/i, /coverage.*regress/i, /Quality Gate.*Ratchet/i, /coverage-summary/i])
+  ) {
     return {
       category: 'coverage_ratchet',
       action: 'fix_ratchet',
@@ -133,9 +139,11 @@ function failedJobsFromSnapshot(snapshot) {
 }
 
 function failedAdvisoryNames(snapshot) {
-  return new Set((snapshot?.checks?.advisory || [])
-    .filter((check) => ['failure', 'cancelled', 'timed_out', 'action_required'].includes(check?.conclusion))
-    .map((check) => String(check.name || '').toLowerCase()));
+  return new Set(
+    (snapshot?.checks?.advisory || [])
+      .filter((check) => ['failure', 'cancelled', 'timed_out', 'action_required'].includes(check?.conclusion))
+      .map((check) => String(check.name || '').toLowerCase()),
+  );
 }
 
 function diagnoseSnapshot({ snapshot, logs = {}, now }) {
@@ -183,8 +191,9 @@ function diagnoseSnapshot({ snapshot, logs = {}, now }) {
     });
   }
 
-  const actions = unique([...(snapshot.actions || []), ...findings.map((finding) => finding.action)])
-    .filter((action) => !['ready', 'ready_with_advisory', 'wait_ci'].includes(action));
+  const actions = unique([...(snapshot.actions || []), ...findings.map((finding) => finding.action)]).filter(
+    (action) => !['ready', 'ready_with_advisory', 'wait_ci'].includes(action),
+  );
 
   return {
     schemaVersion: 1,
@@ -234,9 +243,10 @@ function collectArtifactsForRun({ runId, repo, ghJson, githubApi, reportsRoot })
 function diagnoseRun(options) {
   if (options.snapshot) {
     return diagnoseSnapshot({
-      snapshot: typeof options.snapshot === 'string'
-        ? JSON.parse(fs.readFileSync(options.snapshot, 'utf8'))
-        : options.snapshot,
+      snapshot:
+        typeof options.snapshot === 'string'
+          ? JSON.parse(fs.readFileSync(options.snapshot, 'utf8'))
+          : options.snapshot,
       logs: options.logs || {},
       now: options.now,
     });
@@ -249,14 +259,17 @@ function diagnoseRun(options) {
   const ghText = options.ghText || runGhText;
   const githubApi = options.githubApi || runGitHubApi;
 
-  const jobsResult = queryGhOrApi({
-    ghJson,
-    githubApi,
-    args: ['api', `repos/${repo}/actions/runs/${runId}/jobs`],
-    apiPath: `/repos/${repo}/actions/runs/${runId}/jobs`,
-  }) || {};
+  const jobsResult =
+    queryGhOrApi({
+      ghJson,
+      githubApi,
+      args: ['api', `repos/${repo}/actions/runs/${runId}/jobs`],
+      apiPath: `/repos/${repo}/actions/runs/${runId}/jobs`,
+    }) || {};
   const jobs = jobsResult.jobs || [];
-  const failedJobs = jobs.filter((job) => ['failure', 'cancelled', 'timed_out', 'action_required'].includes(job.conclusion));
+  const failedJobs = jobs.filter((job) =>
+    ['failure', 'cancelled', 'timed_out', 'action_required'].includes(job.conclusion),
+  );
   const artifacts = collectArtifactsForRun({
     runId,
     repo,

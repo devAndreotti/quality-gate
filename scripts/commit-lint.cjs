@@ -22,7 +22,9 @@ const ALLOWED_TYPES = new Set([
 const COMMIT_PATTERN = /^([a-z]+)(?:\(([a-zA-Z0-9_\-\.\/]+)\))?(!)?:\s+(.+)$/;
 
 function validateCommitMessage(message) {
-  const firstLine = String(message || '').split(/\r?\n/)[0].trim();
+  const firstLine = String(message || '')
+    .split(/\r?\n/)[0]
+    .trim();
   if (!firstLine) {
     return { valid: false, reason: 'mensagem de commit vazia', header: '' };
   }
@@ -33,7 +35,11 @@ function validateCommitMessage(message) {
   }
 
   if (firstLine.length > 100) {
-    return { valid: false, reason: `cabecalho excede 100 caracteres (${firstLine.length})`, header: firstLine };
+    return {
+      valid: false,
+      reason: `cabecalho excede 100 caracteres (${firstLine.length})`,
+      header: firstLine,
+    };
   }
 
   const match = firstLine.match(COMMIT_PATTERN);
@@ -112,7 +118,12 @@ function parseArgs(argv = process.argv.slice(2)) {
 function runRange(range, exec) {
   const commits = readRangeCommits(range, exec);
   const summary = validateRange(commits);
-  return { range, ...summary, total: commits.length, invalid: summary.results.filter((r) => !r.valid).length };
+  return {
+    range,
+    ...summary,
+    total: commits.length,
+    invalid: summary.results.filter((r) => !r.valid).length,
+  };
 }
 
 function main() {
@@ -134,7 +145,9 @@ function main() {
         if (r.valid) console.log(`✅ ${r.sha.slice(0, 8)} [${r.type}] ${r.header}`);
         else console.error(`❌ ${r.sha.slice(0, 8)} ${r.reason} | Recebido: "${r.header}"`);
       }
-      console.log(`${summary.invalid === 0 ? '✅' : '❌'} ${summary.total - summary.invalid}/${summary.total} commits validos em ${args.range}`);
+      console.log(
+        `${summary.invalid === 0 ? '✅' : '❌'} ${summary.total - summary.invalid}/${summary.total} commits validos em ${args.range}`,
+      );
     }
     process.exitCode = summary.valid ? 0 : 1;
     return;

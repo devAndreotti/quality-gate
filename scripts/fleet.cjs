@@ -36,7 +36,9 @@ function parseCatalog(data) {
 
 function loadCatalog(catalogPath) {
   if (!fs.existsSync(catalogPath)) {
-    const err = new Error(`catalogo nao encontrado: ${catalogPath}. Copie scripts/fleet.example.json e ajuste os caminhos.`);
+    const err = new Error(
+      `catalogo nao encontrado: ${catalogPath}. Copie scripts/fleet.example.json e ajuste os caminhos.`,
+    );
     err.code = 'NO_CATALOG';
     throw err;
   }
@@ -51,7 +53,11 @@ function formatTable(rows) {
   const header = ['repo', 'policy', 'baseline', 'hooks', 'ci', 'saude'];
   const body = rows.map((r) => [r.name, r.policy, r.baseline, r.hooks, r.ci, r.status]);
   const widths = header.map((h, i) => Math.max(h.length, ...body.map((row) => row[i].length)));
-  const fmt = (cols) => cols.map((c, i) => c.padEnd(widths[i])).join('  ').trimEnd();
+  const fmt = (cols) =>
+    cols
+      .map((c, i) => c.padEnd(widths[i]))
+      .join('  ')
+      .trimEnd();
   const lines = [fmt(header), fmt(widths.map((w) => '-'.repeat(w)))];
   for (const row of body) lines.push(fmt(row));
   const problems = rows.filter((r) => r.issues.length > 0);
@@ -97,4 +103,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { DEFAULT_CATALOG, auditFleet, expandHome, formatTable, loadCatalog, parseArgs, parseCatalog };
+module.exports = {
+  DEFAULT_CATALOG,
+  auditFleet,
+  expandHome,
+  formatTable,
+  loadCatalog,
+  parseArgs,
+  parseCatalog,
+};

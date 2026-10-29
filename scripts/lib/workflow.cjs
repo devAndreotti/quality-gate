@@ -55,9 +55,10 @@ function parseSetupRequiredContexts(setupText) {
   const variableName = variableMatch[1];
   const directArrayPattern = String.raw`const\s+${variableName}\s*=\s*\[([\s\S]*?)\]`;
   const defaultArrayPattern = String.raw`const\s+DEFAULT_${variableName}\s*=\s*\[([\s\S]*?)\]`;
-  const arrayMatch = setupText.match(new RegExp(directArrayPattern, 'm'))
-    || setupText.match(new RegExp(defaultArrayPattern, 'm'))
-    || setupText.match(/const\s+DEFAULT_REQUIRED_STATUS_CHECKS\s*=\s*\[([\s\S]*?)\]/m);
+  const arrayMatch =
+    setupText.match(new RegExp(directArrayPattern, 'm')) ||
+    setupText.match(new RegExp(defaultArrayPattern, 'm')) ||
+    setupText.match(/const\s+DEFAULT_REQUIRED_STATUS_CHECKS\s*=\s*\[([\s\S]*?)\]/m);
   if (!arrayMatch) return [];
 
   return parseStringArrayBody(arrayMatch[1]);
@@ -160,12 +161,9 @@ function renderQualityGateWorkflow(policy = {}) {
   jobs.push(`  summary:
     name: Quality gate summary
     runs-on: ubuntu-latest
-    needs: [${[
-    hasPython ? 'python-validation' : null,
-    hasNode ? 'ui-validation' : null,
-    'security',
-    'docker',
-  ].filter(Boolean).join(', ')}]
+    needs: [${[hasPython ? 'python-validation' : null, hasNode ? 'ui-validation' : null, 'security', 'docker']
+      .filter(Boolean)
+      .join(', ')}]
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read

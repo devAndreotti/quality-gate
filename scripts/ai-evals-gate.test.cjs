@@ -26,7 +26,9 @@ function startFakeProvider({ models = [], answers = {} } = {}) {
   const calls = [];
   const server = http.createServer((req, res) => {
     let raw = '';
-    req.on('data', (chunk) => { raw += chunk; });
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
     req.on('end', () => {
       calls.push({ method: req.method, url: req.url });
       res.setHeader('content-type', 'application/json');
@@ -67,14 +69,23 @@ function closedUrl() {
 }
 
 // Monta um repo temporario com policy, dataset e (opcionalmente) baseline.
-function makeRoot({ aiEvals = { enabled: true, minScore: 0.85, blockOnFailure: true }, cases, baseline, rawDataset } = {}) {
+function makeRoot({
+  aiEvals = { enabled: true, minScore: 0.85, blockOnFailure: true },
+  cases,
+  baseline,
+  rawDataset,
+} = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-ai-gate-'));
   const write = (rel, data) => {
     const full = path.join(root, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, typeof data === 'string' ? data : JSON.stringify(data, null, 2));
   };
-  const policy = { schemaVersion: 1, profile: 'test', ci: { requiredChecks: ['x'], coverageRatchet: false, maxFileLines: 300 } };
+  const policy = {
+    schemaVersion: 1,
+    profile: 'test',
+    ci: { requiredChecks: ['x'], coverageRatchet: false, maxFileLines: 300 },
+  };
   if (aiEvals !== undefined) policy.ci.aiEvals = aiEvals;
   write(POLICY_PATH, policy);
   if (rawDataset !== undefined) {
@@ -104,7 +115,10 @@ test('isAiAssetPath flags prompt, skill and agent files only', () => {
 });
 
 test('gate is skipped when ci.aiEvals is disabled, without touching the network', async () => {
-  const root = makeRoot({ aiEvals: { enabled: false, minScore: 0.85, blockOnFailure: true }, cases: fourCases() });
+  const root = makeRoot({
+    aiEvals: { enabled: false, minScore: 0.85, blockOnFailure: true },
+    cases: fourCases(),
+  });
   const outcome = await runAiEvalsGate({
     root,
     changedFiles: CHANGED,
@@ -187,7 +201,10 @@ test('pass rate below minScore fails and exits 1', async () => {
     assert.equal(outcome.exitCode, 1);
     assert.equal(outcome.passRate, 0.5);
 
-    const soft = makeRoot({ aiEvals: { enabled: true, minScore: 0.85, blockOnFailure: false }, cases: fourCases() });
+    const soft = makeRoot({
+      aiEvals: { enabled: true, minScore: 0.85, blockOnFailure: false },
+      cases: fourCases(),
+    });
     const advisory = await runAiEvalsGate({ root: soft, changedFiles: CHANGED, env });
     assert.equal(advisory.status, 'failed');
     assert.equal(advisory.exitCode, 0);
@@ -287,7 +304,12 @@ test('output budget stops calling the model and counts remaining cases as failed
   });
   try {
     const root = makeRoot({
-      aiEvals: { enabled: true, minScore: 0.5, blockOnFailure: true, budget: { maxCases: 10, maxOutputChars: 5 } },
+      aiEvals: {
+        enabled: true,
+        minScore: 0.5,
+        blockOnFailure: true,
+        budget: { maxCases: 10, maxOutputChars: 5 },
+      },
       cases: fourCases(),
     });
     const outcome = await runAiEvalsGate({
@@ -303,9 +325,17 @@ test('output budget stops calling the model and counts remaining cases as failed
 });
 
 test('invalid configuration exits 2', async () => {
-  const badScore = makeRoot({ aiEvals: { enabled: true, minScore: 2, blockOnFailure: true }, cases: fourCases() });
+  const badScore = makeRoot({
+    aiEvals: { enabled: true, minScore: 2, blockOnFailure: true },
+    cases: fourCases(),
+  });
   const outOfBudget = makeRoot({
-    aiEvals: { enabled: true, minScore: 0.5, blockOnFailure: true, budget: { maxCases: 2, maxOutputChars: 100 } },
+    aiEvals: {
+      enabled: true,
+      minScore: 0.5,
+      blockOnFailure: true,
+      budget: { maxCases: 2, maxOutputChars: 100 },
+    },
     cases: fourCases(),
   });
   const noDataset = makeRoot({});

@@ -15,9 +15,10 @@ function canonicalJson(value) {
     return `[${value.map(canonicalJson).join(',')}]`;
   }
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => (
-      `${JSON.stringify(key)}:${canonicalJson(value[key])}`
-    )).join(',')}}`;
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -36,9 +37,12 @@ function validatePolicy(policy) {
       errors.push('project.surfaces precisa ser array quando project existir');
     } else {
       for (const [index, surface] of policy.project.surfaces.entries()) {
-        if (!['python-uv', 'node'].includes(surface?.type)) errors.push(`project.surfaces[${index}].type precisa ser python-uv ou node`);
-        if (!surface?.root || typeof surface.root !== 'string') errors.push(`project.surfaces[${index}].root precisa ser string nao vazia`);
-        if (typeof surface?.required !== 'boolean') errors.push(`project.surfaces[${index}].required precisa ser boolean`);
+        if (!['python-uv', 'node'].includes(surface?.type))
+          errors.push(`project.surfaces[${index}].type precisa ser python-uv ou node`);
+        if (!surface?.root || typeof surface.root !== 'string')
+          errors.push(`project.surfaces[${index}].root precisa ser string nao vazia`);
+        if (typeof surface?.required !== 'boolean')
+          errors.push(`project.surfaces[${index}].required precisa ser boolean`);
       }
     }
   }
@@ -47,8 +51,11 @@ function validatePolicy(policy) {
   } else if (policy.ci.requiredChecks.some((check) => typeof check !== 'string' || !check.trim())) {
     errors.push('ci.requiredChecks aceita apenas strings nao vazias');
   }
-  if (policy?.ci?.advisoryChecks != null && (!Array.isArray(policy.ci.advisoryChecks)
-    || policy.ci.advisoryChecks.some((check) => typeof check !== 'string' || !check.trim()))) {
+  if (
+    policy?.ci?.advisoryChecks != null &&
+    (!Array.isArray(policy.ci.advisoryChecks) ||
+      policy.ci.advisoryChecks.some((check) => typeof check !== 'string' || !check.trim()))
+  ) {
     errors.push('ci.advisoryChecks aceita apenas strings nao vazias');
   }
   if (typeof policy?.ci?.coverageRatchet !== 'boolean') {
@@ -66,7 +73,10 @@ function validatePolicy(policy) {
   if (typeof policy?.bootstrap?.funding?.enabled !== 'boolean') {
     errors.push('bootstrap.funding.enabled precisa ser boolean');
   }
-  if (!policy?.bootstrap?.funding?.buyMeACoffee || typeof policy.bootstrap.funding.buyMeACoffee !== 'string') {
+  if (
+    !policy?.bootstrap?.funding?.buyMeACoffee ||
+    typeof policy.bootstrap.funding.buyMeACoffee !== 'string'
+  ) {
     errors.push('bootstrap.funding.buyMeACoffee precisa ser string nao vazia');
   }
   if (typeof policy?.bootstrap?.dependabot?.enabled !== 'boolean') {
@@ -90,7 +100,10 @@ function validatePolicy(policy) {
   if (!policy?.dockerImageDoctor?.scriptPath || typeof policy.dockerImageDoctor.scriptPath !== 'string') {
     errors.push('dockerImageDoctor.scriptPath precisa ser string');
   }
-  if (!Array.isArray(policy?.dockerImageDoctor?.agentArgs) || policy.dockerImageDoctor.agentArgs.length === 0) {
+  if (
+    !Array.isArray(policy?.dockerImageDoctor?.agentArgs) ||
+    policy.dockerImageDoctor.agentArgs.length === 0
+  ) {
     errors.push('dockerImageDoctor.agentArgs precisa ser array nao vazio');
   }
   if (policy?.dockerImageDoctor?.interactiveAllowed !== false) {
@@ -106,11 +119,17 @@ function validatePolicy(policy) {
     errors.push('dockerImageDoctor.fallbackWhenUnavailable precisa ser static-advisory, skip ou fail');
   }
   if (policy?.localValidation != null) {
-    if (policy.localValidation.untrackedAllowlist != null && (!Array.isArray(policy.localValidation.untrackedAllowlist)
-      || policy.localValidation.untrackedAllowlist.some((item) => typeof item !== 'string' || !item.trim()))) {
+    if (
+      policy.localValidation.untrackedAllowlist != null &&
+      (!Array.isArray(policy.localValidation.untrackedAllowlist) ||
+        policy.localValidation.untrackedAllowlist.some((item) => typeof item !== 'string' || !item.trim()))
+    ) {
       errors.push('localValidation.untrackedAllowlist aceita apenas strings nao vazias');
     }
-    if (policy.localValidation.pytestBasetempPattern != null && typeof policy.localValidation.pytestBasetempPattern !== 'string') {
+    if (
+      policy.localValidation.pytestBasetempPattern != null &&
+      typeof policy.localValidation.pytestBasetempPattern !== 'string'
+    ) {
       errors.push('localValidation.pytestBasetempPattern precisa ser string');
     }
   }

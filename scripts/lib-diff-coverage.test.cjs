@@ -25,36 +25,24 @@ test('parseDiffLineNumbers extracts added line numbers per file', () => {
 });
 
 test('calculateDiffCoverage calculates percentage and passes/fails against threshold', () => {
-  const diff = [
-    '+++ b/src/util.js',
-    '@@ -1,2 +1,3 @@',
-    '+function add(x) {',
-    '+  return x + 1;',
-    '+}',
-  ].join('\n');
+  const diff = ['+++ b/src/util.js', '@@ -1,2 +1,3 @@', '+function add(x) {', '+  return x + 1;', '+}'].join(
+    '\n',
+  );
 
-  const lcovCovered = [
-    'SF:src/util.js',
-    'DA:1,1',
-    'DA:2,1',
-    'DA:3,1',
-    'end_of_record',
-  ].join('\n');
+  const lcovCovered = ['SF:src/util.js', 'DA:1,1', 'DA:2,1', 'DA:3,1', 'end_of_record'].join('\n');
 
   const resCovered = calculateDiffCoverage({ diffText: diff, lcovText: lcovCovered, minDiffCoverage: 80 });
   assert.equal(resCovered.pct, 100);
   assert.equal(resCovered.passed, true);
   assert.equal(resCovered.uncovered.length, 0);
 
-  const lcovUncovered = [
-    'SF:src/util.js',
-    'DA:1,1',
-    'DA:2,0',
-    'DA:3,1',
-    'end_of_record',
-  ].join('\n');
+  const lcovUncovered = ['SF:src/util.js', 'DA:1,1', 'DA:2,0', 'DA:3,1', 'end_of_record'].join('\n');
 
-  const resUncovered = calculateDiffCoverage({ diffText: diff, lcovText: lcovUncovered, minDiffCoverage: 80 });
+  const resUncovered = calculateDiffCoverage({
+    diffText: diff,
+    lcovText: lcovUncovered,
+    minDiffCoverage: 80,
+  });
   assert.equal(resUncovered.pct, 66.67);
   assert.equal(resUncovered.passed, false);
   assert.equal(resUncovered.uncovered.length, 1);

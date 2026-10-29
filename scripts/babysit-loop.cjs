@@ -3,7 +3,13 @@ const { buildSnapshot } = require('./pr-snapshot.cjs');
 const { diagnoseRun } = require('./ci-diagnose.cjs');
 
 function parseArgs(argv) {
-  const args = { pr: null, repo: process.env.GITHUB_REPOSITORY || null, maxCycles: 10, json: false, once: false };
+  const args = {
+    pr: null,
+    repo: process.env.GITHUB_REPOSITORY || null,
+    maxCycles: 10,
+    json: false,
+    once: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--pr') args.pr = Number(argv[++index]);
@@ -43,11 +49,12 @@ function decideLoopState(snapshot) {
     };
     const reason = reasonByType[blocker?.type] || blocker?.type || 'merge_not_ready';
     const action = blocker?.action || (snapshot.actions || [])[0] || null;
-    const next = action === 'wait_ci'
-      ? 'wait'
-      : ['escalate_manual', 'verify_review_threads_manual'].includes(action)
-        ? 'escalate'
-        : 'fix';
+    const next =
+      action === 'wait_ci'
+        ? 'wait'
+        : ['escalate_manual', 'verify_review_threads_manual'].includes(action)
+          ? 'escalate'
+          : 'fix';
     return { terminal: false, reason, next };
   }
   if ((snapshot.actions || []).includes('ready')) return { terminal: true, reason: 'ready', next: 'stop' };
@@ -68,9 +75,7 @@ function runBabysitCycle(options) {
   const snapshot = options.snapshotProvider
     ? options.snapshotProvider(options)
     : buildSnapshot({ pr: options.pr, repo: options.repo, cwd: options.cwd || process.cwd() });
-  const diagnosis = options.diagnoseProvider
-    ? options.diagnoseProvider(snapshot)
-    : diagnoseRun({ snapshot });
+  const diagnosis = options.diagnoseProvider ? options.diagnoseProvider(snapshot) : diagnoseRun({ snapshot });
   const allActions = unique([...(snapshot.actions || []), ...(diagnosis.actions || [])]);
   const actions = allActions.length > 1 ? allActions.filter((action) => action !== 'ready') : allActions;
   const loop = decideLoopState({ ...snapshot, actions });

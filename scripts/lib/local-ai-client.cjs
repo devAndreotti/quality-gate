@@ -94,9 +94,8 @@ function resolveAiSettings({ root, env = process.env }) {
   const local = readAiLocalConfig(root);
   const envModel = typeof env.QG_AI_MODEL === 'string' ? env.QG_AI_MODEL.trim() : '';
   const localModel = typeof local.model === 'string' ? local.model.trim() : '';
-  const apiKey = typeof env.QG_AI_API_KEY === 'string' && env.QG_AI_API_KEY.trim()
-    ? env.QG_AI_API_KEY.trim()
-    : null;
+  const apiKey =
+    typeof env.QG_AI_API_KEY === 'string' && env.QG_AI_API_KEY.trim() ? env.QG_AI_API_KEY.trim() : null;
   return {
     model: envModel || localModel || null,
     apiKey,
@@ -138,7 +137,9 @@ function requestJson(baseUrl, method, pathname, { body, apiKey, timeoutMs }) {
           reject(new AiClientError('invalid_json', `resposta invalida em ${pathname}`, { cause: err }));
         }
       });
-      res.on('error', (err) => reject(new AiClientError('unreachable', 'falha ao ler resposta', { cause: err })));
+      res.on('error', (err) =>
+        reject(new AiClientError('unreachable', 'falha ao ler resposta', { cause: err })),
+      );
     });
 
     req.on('timeout', () => req.destroy(new AiClientError('timeout', `timeout em ${pathname}`)));
@@ -162,9 +163,7 @@ async function listModels(provider, { apiKey = null, timeoutMs = LIST_TIMEOUT_MS
   if (!data || !Array.isArray(data.data)) {
     throw new AiClientError('invalid_response', 'resposta de /v1/models sem campo data');
   }
-  return data.data
-    .map((entry) => entry?.id)
-    .filter((id) => typeof id === 'string' && id.length > 0);
+  return data.data.map((entry) => entry?.id).filter((id) => typeof id === 'string' && id.length > 0);
 }
 
 /**

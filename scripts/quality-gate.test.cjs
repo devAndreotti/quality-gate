@@ -19,28 +19,42 @@ function tempProject() {
 
 function writeCoverage(project, pct = 82) {
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
-    total: {
-      lines: { pct },
-      statements: { pct },
-      functions: { pct },
-      branches: { pct },
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage-summary.json'),
+    JSON.stringify(
+      {
+        total: {
+          lines: { pct },
+          statements: { pct },
+          functions: { pct },
+          branches: { pct },
+        },
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 function writePythonCoverage(project, pct = 83.7) {
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage.json'), JSON.stringify({
-    meta: { format: 3, version: '7.6.0' },
-    totals: {
-      covered_lines: 837,
-      num_statements: 1000,
-      percent_covered: pct,
-      num_branches: 200,
-      covered_branches: 150,
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage.json'),
+    JSON.stringify(
+      {
+        meta: { format: 3, version: '7.6.0' },
+        totals: {
+          covered_lines: 837,
+          num_statements: 1000,
+          percent_covered: pct,
+          num_branches: 200,
+          covered_branches: 150,
+        },
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 test('parseArgs supports command and dry-run', () => {
@@ -114,10 +128,18 @@ test('check without baseline.json returns failure with init hint', () => {
 test('update --dry-run does not write baseline', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({ coverage: { lines: 1 } }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify({ coverage: { lines: 1 } }, null, 2),
+  );
   writeCoverage(project, 90);
 
-  const result = runQualityGate({ root: project, command: 'update', dryRun: true, now: '2026-05-24T00:00:00.000Z' });
+  const result = runQualityGate({
+    root: project,
+    command: 'update',
+    dryRun: true,
+    now: '2026-05-24T00:00:00.000Z',
+  });
 
   assert.equal(result.status, 'planned');
   assert.match(fs.readFileSync(path.join(project, 'scripts/baseline.json'), 'utf8'), /"lines": 1/);
@@ -159,14 +181,21 @@ test('init creates baseline from Python coverage JSON', () => {
 test('Python coverage does not fail on legacy statements/functions baseline', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: {
-      lines: 80,
-      statements: 95,
-      functions: 95,
-      branches: 70,
-    },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify(
+      {
+        coverage: {
+          lines: 80,
+          statements: 95,
+          functions: 95,
+          branches: 70,
+        },
+      },
+      null,
+      2,
+    ),
+  );
   writePythonCoverage(project, 83.7);
 
   const result = runQualityGate({ root: project, command: 'check' });
@@ -182,12 +211,26 @@ test('file size gate uses maxFileLines from policy', () => {
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
-  }, null, 2));
-  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), JSON.stringify({
-    ci: { maxFileLines: 2 },
-  }, null, 2));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify(
+      {
+        coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    path.join(project, '.quality-gate/policy.json'),
+    JSON.stringify(
+      {
+        ci: { maxFileLines: 2 },
+      },
+      null,
+      2,
+    ),
+  );
   fs.writeFileSync(path.join(project, 'src/large.js'), 'one\ntwo\nthree\n');
   writeCoverage(project, 90);
 
@@ -200,11 +243,10 @@ test('untracked allowlist ignores samples without hiding tracked modifications',
   assert.equal(isPathAllowedByPattern('samples/demo.json', 'samples/**'), true);
   assert.equal(isPathAllowedByPattern('src/app.js', 'samples/**'), false);
 
-  const filtered = filterGitStatusEntries([
-    '?? samples/demo.json',
-    ' M samples/tracked.json',
-    '?? scratch.txt',
-  ], ['samples/**']);
+  const filtered = filterGitStatusEntries(
+    ['?? samples/demo.json', ' M samples/tracked.json', '?? scratch.txt'],
+    ['samples/**'],
+  );
 
   assert.deepEqual(filtered, [' M samples/tracked.json', '?? scratch.txt']);
 });
@@ -228,17 +270,23 @@ test('QG-2: coverage metric null with positive baseline fails and names the metr
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
-    total: {
-      lines: { pct: 90 },
-      statements: { pct: 90 },
-      functions: { pct: 90 },
-      branches: { pct: null },
-    },
-  }));
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
-  }));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage-summary.json'),
+    JSON.stringify({
+      total: {
+        lines: { pct: 90 },
+        statements: { pct: 90 },
+        functions: { pct: 90 },
+        branches: { pct: null },
+      },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify({
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+    }),
+  );
 
   const result = runQualityGate({ root: project, command: 'check' });
   const failure = result.failures.find((item) => item.metric === 'branches');
@@ -253,17 +301,23 @@ test('QG-2: coverage metric null with zero or absent baseline stays not applicab
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'coverage/coverage-summary.json'), JSON.stringify({
-    total: {
-      lines: { pct: 90 },
-      statements: { pct: 90 },
-      functions: { pct: 90 },
-      branches: { pct: null },
-    },
-  }));
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: { lines: 80, statements: 80, functions: 80, branches: 0 },
-  }));
+  fs.writeFileSync(
+    path.join(project, 'coverage/coverage-summary.json'),
+    JSON.stringify({
+      total: {
+        lines: { pct: 90 },
+        statements: { pct: 90 },
+        functions: { pct: 90 },
+        branches: { pct: null },
+      },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify({
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 0 },
+    }),
+  );
 
   const result = runQualityGate({ root: project, command: 'check' });
   const branchesRow = result.rows.find((row) => row.metric === 'branches');
@@ -278,9 +332,12 @@ test('QG-4: lint row without baseline value appears with warn status', () => {
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(project, 'coverage'), { recursive: true });
   fs.writeFileSync(path.join(project, 'coverage/eslint-report.json'), JSON.stringify([{ errorCount: 2 }]));
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
-  }));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify({
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+    }),
+  );
   writeCoverage(project, 90);
 
   const result = runQualityGate({ root: project, command: 'check' });
@@ -296,9 +353,12 @@ test('QG-4: lint row without baseline value appears with warn status', () => {
 test('QG-5: report without coverage returns a warning and does not throw', () => {
   const project = tempProject();
   fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-  fs.writeFileSync(path.join(project, 'scripts/baseline.json'), JSON.stringify({
-    coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
-  }));
+  fs.writeFileSync(
+    path.join(project, 'scripts/baseline.json'),
+    JSON.stringify({
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+    }),
+  );
 
   let result;
   assert.doesNotThrow(() => {
