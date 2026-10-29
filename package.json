@@ -1,5 +1,6 @@
 {
   "name": "quality-gate-dev",
+  "version": "1.0.0",
   "private": true,
   "description": "Dev-only tooling for this repo's own build steps. Never copied into target projects by qg-init (see $folders in scripts/QualityGate.ps1) — target projects keep receiving loose files only, no package.json, no node_modules.",
   "scripts": {

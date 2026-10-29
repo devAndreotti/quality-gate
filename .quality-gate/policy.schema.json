@@ -205,6 +205,22 @@
             }
           },
           "additionalProperties": false
+        },
+        "prSize": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "maxChangedLines": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "blockOnFailure": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
