@@ -143,7 +143,7 @@ function collectFileSizes(root, maxFileLines = 300) {
 function collectAll(root) {
   const coverage = collectCoverage(root) || collectPythonCoverage(root);
   if (!coverage) {
-    throw new Error('coverage nao encontrado. Rode npm run test:coverage:ci ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
+    throw new Error('coverage nao encontrado. Rode node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info scripts/*.test.cjs ou uv run pytest --cov=src --cov-report=json:../coverage/coverage.json');
   }
   return {
     coverage,

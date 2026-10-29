@@ -32,6 +32,11 @@
       "enabled": false,
       "minScore": 0.85,
       "blockOnFailure": true
+    },
+    "diffCoverage": {
+      "enabled": true,
+      "minPercentage": 90,
+      "blockOnFailure": false
     }
   },
   "bootstrap": {
