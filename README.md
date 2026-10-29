@@ -215,6 +215,14 @@ quality-gate/
 
 ---
 
+## Teste do gate
+
+A versão em inglês deste documento está em [README.en.md](./README.en.md).
+
+O gate é exercitado em pull requests reais no repositório separado [quality-gate-lab](https://github.com/devAndreotti/quality-gate-lab), onde mudanças no próprio gate são validadas de ponta a ponta antes de chegarem ao repositório principal.
+
+---
+
 ## Contribuindo
 
 Contribuições são bem-vindas!
