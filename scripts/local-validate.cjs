@@ -342,7 +342,9 @@ function defaultExecutor(step) {
     maxBuffer: 30 * 1024 * 1024,
   });
   return {
-    exitCode: result.status ?? (result.error ? 1 : 0),
+    // status is null when the child was killed by a signal or never started;
+    // both must count as a failure, never as success.
+    exitCode: result.status ?? 1,
     stdout: result.stdout || '',
     stderr: result.stderr || result.error?.message || '',
   };
@@ -512,6 +514,7 @@ module.exports = {
   runAutoFix,
   buildSpawnInvocation,
   buildValidationPlan,
+  defaultExecutor,
   isCoverageFresh,
   parseArgs,
   runLocalValidation,

@@ -65,8 +65,50 @@ test('buildUpdatedBaseline ratchets upward only', () => {
   });
 
   assert.deepEqual(updated.coverage, { lines: 85, statements: 90, functions: 70, branches: 65 });
-  assert.equal(updated.lintErrors, 1);
+  // lintErrors and oversizedFiles only go down: 1 vs baseline 0 keeps 0, 0 vs baseline 2 becomes 0.
+  assert.equal(updated.lintErrors, 0);
   assert.equal(updated.oversizedFiles, 0);
+});
+
+test('buildUpdatedBaseline does not accept lint or oversized-file regressions', () => {
+  const updated = buildUpdatedBaseline({
+    current: {
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+      lintErrors: 7,
+      oversizedFiles: 4,
+    },
+    existing: {
+      coverage: { lines: 80, statements: 80, functions: 80, branches: 80 },
+      lintErrors: 0,
+      oversizedFiles: 1,
+    },
+    now: '2026-05-24T00:00:00.000Z',
+  });
+
+  assert.equal(updated.lintErrors, 0);
+  assert.equal(updated.oversizedFiles, 1);
+});
+
+test('buildUpdatedBaseline lowers lint and oversized-file counts when they improve', () => {
+  const updated = buildUpdatedBaseline({
+    current: { coverage: {}, lintErrors: 2, oversizedFiles: 0 },
+    existing: { coverage: {}, lintErrors: 5, oversizedFiles: 3 },
+    now: '2026-05-24T00:00:00.000Z',
+  });
+
+  assert.equal(updated.lintErrors, 2);
+  assert.equal(updated.oversizedFiles, 0);
+});
+
+test('check without baseline.json returns failure with init hint', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
+  writeCoverage(project, 90);
+
+  const result = runQualityGate({ root: project, command: 'check' });
+
+  assert.equal(result.status, 'failed');
+  assert.match(result.failures[0].message, /quality-gate\.js init/);
 });
 
 test('update --dry-run does not write baseline', () => {

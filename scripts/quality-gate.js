@@ -183,6 +183,12 @@ function compareMetrics(current, baseline) {
   return { rows, failures };
 }
 
+// Lint errors and oversized files may only go down: a regression is never accepted by update.
+function ratchetDown(current, existing) {
+  if (typeof current !== 'number') return existing;
+  return typeof existing === 'number' ? Math.min(current, existing) : current;
+}
+
 function buildUpdatedBaseline({ current, existing, now = new Date().toISOString() }) {
   const coverage = {};
   for (const key of ['lines', 'statements', 'functions', 'branches']) {
@@ -198,8 +204,8 @@ function buildUpdatedBaseline({ current, existing, now = new Date().toISOString(
   return {
     ...existing,
     coverage,
-    lintErrors: current.lintErrors ?? existing.lintErrors,
-    oversizedFiles: current.oversizedFiles ?? existing.oversizedFiles,
+    lintErrors: ratchetDown(current.lintErrors, existing.lintErrors),
+    oversizedFiles: ratchetDown(current.oversizedFiles, existing.oversizedFiles),
     updatedAt: now,
   };
 }
@@ -216,10 +222,20 @@ function runQualityGate(options = {}) {
   const dryRun = Boolean(options.dryRun);
   const now = options.now || new Date().toISOString();
   const current = collectAll(root);
-  const existing = readJSON(paths(root).baseline) || {};
+  const baselineFile = readJSON(paths(root).baseline);
+  const existing = baselineFile || {};
 
   if (command === 'check' || command === 'report') {
     const compared = compareMetrics(current, existing);
+    if (!baselineFile) {
+      compared.failures.unshift({
+        group: 'baseline',
+        metric: 'baseline.json ausente',
+        baseline: null,
+        current: null,
+        message: 'scripts/baseline.json nao encontrado. Rode "node scripts/quality-gate.js init" e commite o arquivo.',
+      });
+    }
     return {
       status: compared.failures.length > 0 ? 'failed' : 'passed',
       command,
@@ -270,6 +286,9 @@ function printReport(result) {
   // (main() abaixo). Essa linha final deixa isso visivel pra quem so olha o terminal.
   if (result.command === 'check') {
     if (result.status === 'failed') renderWorkflowAnnotations(result.failures);
+    for (const failure of result.failures || []) {
+      if (failure.message) console.log(`❌ ${failure.message}`);
+    }
     console.log('');
     console.log(result.status === 'failed'
       ? `❌ GATE FALHOU — ${(result.failures || []).length} métrica(s) regrediram (exit 1)`

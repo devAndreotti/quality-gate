@@ -5,8 +5,9 @@ const path = require('node:path');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
 
+// A metric with zero total is unmeasured, not fully covered: report null so the gate fails.
 function pct(covered, total) {
-  if (!total) return 100;
+  if (!total) return null;
   return Number(((covered / total) * 100).toFixed(2));
 }
 
@@ -54,6 +55,44 @@ function lcovToCoverageSummary(lcovText) {
   };
 }
 
+function parseLcovFiles(text, root = DEFAULT_ROOT) {
+  const files = new Set();
+  for (const line of String(text || '').split(/\r?\n/)) {
+    if (!line.startsWith('SF:')) continue;
+    let file = line.slice(3).trim();
+    if (path.isAbsolute(file)) file = path.relative(root, file);
+    files.add(file.replace(/\\/g, '/'));
+  }
+  return files;
+}
+
+function listProductionFiles(root = DEFAULT_ROOT) {
+  const scriptsRoot = path.join(root, 'scripts');
+  if (!fs.existsSync(scriptsRoot)) return [];
+  return fs.readdirSync(scriptsRoot)
+    .filter((name) => /\.(cjs|js)$/.test(name) && !/\.test\./.test(name))
+    .sort((left, right) => left.localeCompare(right))
+    .map((name) => `scripts/${name}`);
+}
+
+function evaluateCoverage({ lcovText, root = DEFAULT_ROOT, summary = lcovToCoverageSummary(lcovText) }) {
+  const failures = [];
+  for (const metric of ['lines', 'statements', 'functions', 'branches']) {
+    if (summary.total[metric].pct == null) {
+      failures.push({ metric, reason: 'not measured (total is 0)' });
+    }
+  }
+
+  const loaded = parseLcovFiles(lcovText, root);
+  for (const file of listProductionFiles(root)) {
+    if (!loaded.has(file)) {
+      failures.push({ file, reason: 'not covered: no coverage record in lcov' });
+    }
+  }
+
+  return { passed: failures.length === 0, failures };
+}
+
 function collectTestFiles(root = DEFAULT_ROOT) {
   const scriptsRoot = path.join(root, 'scripts');
   return fs.readdirSync(scriptsRoot)
@@ -72,15 +111,28 @@ function writeCoverageSummary(root = DEFAULT_ROOT) {
 }
 
 function main() {
-  writeCoverageSummary();
+  const lcovText = fs.readFileSync(path.join(DEFAULT_ROOT, 'coverage', 'lcov.info'), 'utf8');
+  const summary = writeCoverageSummary();
   console.log('coverage/coverage-summary.json atualizado');
+
+  const evaluation = evaluateCoverage({ lcovText, root: DEFAULT_ROOT, summary });
+  if (!evaluation.passed) {
+    for (const failure of evaluation.failures) {
+      const subject = failure.file ? `${failure.file}` : `metric ${failure.metric}`;
+      console.error(`❌ ${subject}: ${failure.reason}`);
+    }
+    process.exitCode = 1;
+  }
 }
 
 if (require.main === module) main();
 
 module.exports = {
   collectTestFiles,
+  evaluateCoverage,
+  listProductionFiles,
   lcovToCoverageSummary,
   parseLcov,
+  parseLcovFiles,
   writeCoverageSummary,
 };
