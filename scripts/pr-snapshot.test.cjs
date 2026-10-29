@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -395,4 +398,39 @@ test('buildSnapshot falls back to GitHub API when gh is unavailable', () => {
   assert.equal(snapshot.ci.overall, 'success');
   assert.deepEqual(snapshot.actions, ['verify_review_threads_manual', 'blocked_by_policy']);
   assert.equal(snapshot.latestRun.id, 321);
+});
+
+test('PR-1: invalid policy file is reported in errors and leaves requiredChecks unknown', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-snapshot-policy-'));
+  fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), '{ invalid json');
+  const ghJson = createGhJson({
+    checks: [{ name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' }],
+  });
+  const githubApi = createGithubApi({
+    '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: [], checks: [] },
+  });
+
+  const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi, cwd: project });
+
+  assert.equal(snapshot.requiredChecks, null);
+  assert.equal(snapshot.errors.length, 1);
+  assert.match(snapshot.errors[0], /policy\.json/);
+});
+
+test('PR-1: valid or absent policy keeps errors empty', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-snapshot-policy-ok-'));
+  fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.quality-gate/policy.json'), JSON.stringify({ ci: { requiredChecks: ['Lint'] } }));
+  const ghJson = createGhJson({
+    checks: [{ name: 'Lint', state: 'SUCCESS', bucket: 'pass', link: 'https://ci/lint' }],
+  });
+  const githubApi = createGithubApi({
+    '/repos/owner/repo/branches/main/protection/required_status_checks': { contexts: [], checks: [] },
+  });
+
+  const snapshot = buildSnapshot({ pr: 42, repo: 'owner/repo', ghJson, githubApi, cwd: project });
+
+  assert.deepEqual(snapshot.requiredChecks, ['Lint']);
+  assert.deepEqual(snapshot.errors, []);
 });
