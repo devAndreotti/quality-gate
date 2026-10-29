@@ -99,7 +99,10 @@ test('pre-commit hook fails on a staged file with a real lint error and passes a
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-eslint-hook-'));
   execFileSync('git', ['init', '-q'], { cwd: root });
   // Config local sem imports: so a regra no-undef, nada de rede nem dependencias.
-  fs.writeFileSync(path.join(root, 'eslint.config.js'), "module.exports = [{ rules: { 'no-undef': 'error' } }];\n");
+  fs.writeFileSync(
+    path.join(root, 'eslint.config.js'),
+    "module.exports = [{ rules: { 'no-undef': 'error' } }];\n",
+  );
   fs.mkdirSync(path.join(root, 'node_modules/.bin'), { recursive: true });
   fs.symlinkSync(realEslint, path.join(root, 'node_modules/.bin/eslint'));
   installHook({ root, hook: 'pre-commit' });
