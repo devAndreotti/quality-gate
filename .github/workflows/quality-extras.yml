@@ -1,0 +1,38 @@
+# Verificações extras do quality gate: duplicação de código e artefato do dashboard.
+name: Quality Extras
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: quality-extras-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Permissão mínima global: leitura.
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Duplicação de código (jscpd). Bloqueante: acima de ".jscpd.json > threshold" reprova.
+  # ───────────────────────────────────────────────────────────────────────────
+  duplication:
+    name: Duplicação (código novo)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      - name: jscpd (threshold em .jscpd.json)
+        run: npm run -s duplication

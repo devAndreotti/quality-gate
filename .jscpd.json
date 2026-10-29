@@ -1,0 +1,8 @@
+{
+  "threshold": 3,
+  "minLines": 15,
+  "minTokens": 80,
+  "reporters": ["console"],
+  "ignore": ["**/*-tui.mjs", "**/dashboard-src/**", "**/coverage/**", "**/node_modules/**", "**/*.test.cjs"],
+  "absolute": false
+}
