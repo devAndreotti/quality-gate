@@ -7,6 +7,7 @@ const test = require('node:test');
 const {
   buildSpawnInvocation,
   buildFixPlan,
+  defaultExecutor,
   buildValidationPlan,
   parseArgs,
   runAutoFix,
@@ -271,4 +272,15 @@ test('runAutoFix executes fix commands or plans dry-run', () => {
   const mockExecutor = () => ({ exitCode: 0, stdout: 'fixed', stderr: '' });
   const executed = runAutoFix({ projectRoot: root, dryRun: false, executor: mockExecutor });
   assert.equal(executed.actions[0].status, 'fixed');
+});
+
+test('defaultExecutor reports a child killed by a signal as failure', () => {
+  const result = defaultExecutor({
+    name: 'killed-child',
+    file: process.execPath,
+    args: ['-e', 'process.kill(process.pid, "SIGKILL")'],
+    cwd: tempProject(),
+  });
+
+  assert.equal(result.exitCode, 1);
 });
