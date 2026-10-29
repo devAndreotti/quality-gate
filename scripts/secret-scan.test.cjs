@@ -313,11 +313,25 @@ test('SS-8 quoted git headers resolve to the unescaped filename, including after
 // --history: linhas adicionadas de todo o historico (git log -p --all).
 // Repo temporario com commits sinteticos; a arvore de trabalho fica limpa.
 function gitIn(dir, args) {
-  return childProcess.execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return childProcess.execFileSync('git', args, {
+    cwd: dir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 function commitAll(dir, message) {
   gitIn(dir, ['add', '-A']);
-  gitIn(dir, ['-c', 'user.name=qg-test', '-c', 'user.email=qg-test@example.invalid', 'commit', '-q', '--allow-empty', '-m', message]);
+  gitIn(dir, [
+    '-c',
+    'user.name=qg-test',
+    '-c',
+    'user.email=qg-test@example.invalid',
+    'commit',
+    '-q',
+    '--allow-empty',
+    '-m',
+    message,
+  ]);
 }
 const TOKEN_ONES = GH + '1'.repeat(36);
 
@@ -352,7 +366,10 @@ test('--history reports nothing for a clean repo', () => {
 
 test('--history skips binary blobs', () => {
   const dir = makeRepoWithoutCommit();
-  fs.writeFileSync(path.join(dir, 'blob.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(TOKEN_ONES)]));
+  fs.writeFileSync(
+    path.join(dir, 'blob.bin'),
+    Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(TOKEN_ONES)]),
+  );
   commitAll(dir, 'binary');
   const res = runSecretScan({ root: dir, mode: 'history' });
   assert.equal(res.findingsCount, 0);
@@ -379,4 +396,70 @@ test('--history outside a git repository is an error, not a pass', () => {
 test('parseArgs maps --history to history mode', () => {
   assert.equal(parseArgs(['--history']).mode, 'history');
   assert.equal(parseArgs(['--all']).mode, 'all');
+});
+
+test('--history catches a token that exists only in a merge resolution', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'base\n');
+  commitAll(dir, 'base');
+  gitIn(dir, ['checkout', '-q', '-b', 'side']);
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'side\n');
+  commitAll(dir, 'side');
+  gitIn(dir, ['checkout', '-q', '-']);
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'main\n');
+  commitAll(dir, 'main');
+  assert.throws(() => gitIn(dir, ['merge', '-q', 'side']));
+  fs.writeFileSync(path.join(dir, 'a.txt'), `token = "${TOKEN_ONES}"\n`);
+  commitAll(dir, 'merge with secret in resolution');
+  const mergeSha = gitIn(dir, ['rev-parse', 'HEAD']).trim();
+
+  const res = runSecretScan({ root: dir, mode: 'history' });
+  assert.equal(res.status, 'failed');
+  assert.ok(res.findings.some((f) => f.commit === mergeSha && f.file === 'a.txt'));
+});
+
+function historyFindingOf(dir) {
+  const res = runSecretScan({ root: dir, mode: 'history', historyAllowPath: path.join(dir, 'allow.json') });
+  assert.equal(res.findings.length, 1);
+  return res.findings[0];
+}
+function allowFile(dir, entries) {
+  fs.writeFileSync(path.join(dir, 'allow.json'), JSON.stringify(entries));
+}
+
+test('--history allowlist covers only the exact commit, file, line and rule', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'fx.js'), `const a = 1;\nconst t = "${TOKEN_ONES}";\n`);
+  commitAll(dir, 'fixture');
+  const f = historyFindingOf(dir);
+  const base = { commit: f.commit, file: f.file, line: f.line, id: f.id, motivo: 'teste' };
+
+  allowFile(dir, [base]);
+  const ok = runSecretScan({ root: dir, mode: 'history', historyAllowPath: path.join(dir, 'allow.json') });
+  assert.equal(ok.status, 'passed');
+  assert.equal(ok.allowedCount, 1);
+  assert.deepEqual(ok.unusedAllowed, []);
+
+  for (const wrong of [
+    { line: f.line + 1 },
+    { id: 'openai_key' },
+    { file: 'other.js' },
+    { commit: '0'.repeat(40) },
+  ]) {
+    allowFile(dir, [{ ...base, ...wrong }]);
+    const r = runSecretScan({ root: dir, mode: 'history', historyAllowPath: path.join(dir, 'allow.json') });
+    assert.equal(r.status, 'failed', JSON.stringify(wrong));
+    assert.equal(r.allowedCount, 0);
+    assert.equal(r.unusedAllowed.length, 1);
+  }
+});
+
+test('--history rejects a malformed allowlist instead of ignoring it', () => {
+  const dir = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(dir, 'fx.js'), `const t = "${TOKEN_ONES}";\n`);
+  commitAll(dir, 'fixture');
+  fs.writeFileSync(path.join(dir, 'allow.json'), '{ nao json');
+  const r = runSecretScan({ root: dir, mode: 'history', historyAllowPath: path.join(dir, 'allow.json') });
+  assert.equal(r.status, 'error');
+  assert.match(r.error, /allowlist do historico invalida/);
 });
