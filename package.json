@@ -5,13 +5,15 @@
   "description": "Dev-only tooling for this repo's own build steps. Never copied into target projects by qg-init (see $folders in scripts/QualityGate.ps1) — target projects keep receiving loose files only, no package.json, no node_modules.",
   "scripts": {
     "build:tui": "node scripts/build-tui.mjs",
-    "lint": "eslint scripts test --no-error-on-unmatched-pattern"
+    "lint": "eslint scripts test --no-error-on-unmatched-pattern",
+    "duplication": "jscpd --config .jscpd.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "ink": "^7.1.1",
+    "jscpd": "^4.3.0",
     "react": "^19.2.0"
   },
   "optionalDependencies": {

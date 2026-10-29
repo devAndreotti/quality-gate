@@ -1,0 +1,47 @@
+# Proveniência SLSA para releases: roda só em tags de versão (v*) e manualmente.
+# Não roda em PRs nem em pushes comuns, para não gastar minutos a cada commit.
+name: Release Provenance
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    name: Atestado de proveniência (SLSA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Emitir o atestado assinado via OIDC e gravá-lo no repositório.
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      - name: SBOM (CycloneDX, sem devDependencies)
+        run: npm sbom --sbom-format cyclonedx --omit dev > sbom.cdx.json
+
+      # Tarball real do pacote publicado: é o artefato que o consumidor baixa.
+      - name: Empacotar (npm pack)
+        run: npm pack --ignore-scripts
+
+      - name: Atestar proveniência (tarball + SBOM)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            *.tgz
+            sbom.cdx.json
