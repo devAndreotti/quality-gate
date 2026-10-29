@@ -37,6 +37,11 @@
       "enabled": true,
       "minPercentage": 90,
       "blockOnFailure": false
+    },
+    "prSize": {
+      "enabled": false,
+      "maxChangedLines": 800,
+      "blockOnFailure": false
     }
   },
   "bootstrap": {

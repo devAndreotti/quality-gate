@@ -85,6 +85,13 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
+      # Tamanho do PR (ci.prSize). Desligado por padrão: imprime SKIPPED e sai 0.
+      - name: PR size — linhas alteradas
+        if: github.event_name == 'pull_request'
+        run: node scripts/pr-size.cjs --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
       # Lint real: ESLint 9 (eslint.config.js). Qualquer erro reprova o job.
       - name: ESLint
         run: npm run lint
