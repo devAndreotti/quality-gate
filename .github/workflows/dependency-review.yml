@@ -1,0 +1,33 @@
+name: Dependency Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Permissão mínima global: leitura.
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Necessário para a action comentar o resumo no PR.
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Revisar dependências do PR
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Única política: falhar em vulnerabilidades de severidade alta ou superior.
+          fail-on-severity: high
+          # Política de licenças: bloqueia licenças copyleft fortes (GPL-3.0, AGPL-3.0).
+          # Nenhuma outra política de licença (allow-licenses) é aplicada.
+          deny-licenses: GPL-3.0, AGPL-3.0
