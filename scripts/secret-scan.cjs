@@ -254,6 +254,17 @@ function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSy
 // --diff-merges=first-parent: sem isso, git log -p não mostra diff de merge e um segredo
 // introduzido na resolução de conflito passaria em silêncio.
 function scanGitHistory(cwd = process.cwd(), execFileSync = childProcess.execFileSync, options = {}) {
+  // Clone raso veria só a ponta e passaria em silêncio: falha fechada.
+  const shallow = String(
+    execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  ).trim();
+  if (shallow === 'true') {
+    throw new Error('historico raso (shallow clone): use fetch-depth: 0 para varrer o historico completo');
+  }
   const log = execFileSync(
     'git',
     [

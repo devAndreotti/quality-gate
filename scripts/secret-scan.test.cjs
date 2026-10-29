@@ -463,3 +463,19 @@ test('--history rejects a malformed allowlist instead of ignoring it', () => {
   assert.equal(r.status, 'error');
   assert.match(r.error, /allowlist do historico invalida/);
 });
+
+test('--history fails closed on a shallow clone instead of scanning only the tip', () => {
+  const origin = makeRepoWithoutCommit();
+  fs.writeFileSync(path.join(origin, 'a.js'), `const t = "${TOKEN_ONES}";\n`);
+  commitAll(origin, 'leak');
+  fs.writeFileSync(path.join(origin, 'a.js'), 'const t = 1;\n');
+  commitAll(origin, 'clean tip');
+  const shallow = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-sec-shallow-'));
+  fs.rmSync(shallow, { recursive: true, force: true });
+  childProcess.execFileSync('git', ['clone', '-q', '--depth', '1', `file://${origin}`, shallow], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const res = withGitCeiling(shallow, () => runSecretScan({ root: shallow, mode: 'history' }));
+  assert.equal(res.status, 'error');
+  assert.match(res.error, /historico raso/);
+});
