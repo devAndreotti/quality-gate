@@ -66,6 +66,39 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Achados de lint só nas linhas adicionadas pelo PR (advisory): dívida antiga não aparece aqui.
+  # scripts/new-code-findings.cjs lista os achados no $GITHUB_STEP_SUMMARY. continue-on-error mantém
+  # o job verde mesmo com achados; não é required check.
+  # ───────────────────────────────────────────────────────────────────────────
+  new-code-findings:
+    name: Achados de lint no código novo (advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Achados de lint no código novo (advisory)
+        run: |
+          set -o pipefail
+          {
+            echo '```text'
+            node scripts/new-code-findings.cjs --base origin/main
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Dashboard como artefato: HTML estático gerado por scripts/dashboard-publish.cjs.
   # Só em push na main; retenção de 14 dias. Também publica em GitHub Pages
   # (requer Pages habilitado com source "GitHub Actions" nas settings do repo).

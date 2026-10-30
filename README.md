@@ -560,6 +560,14 @@ Roda a suíte `scripts/*.test.cjs` N vezes (`--runs`, default 3, máximo 10) no 
 - Teste em quarentena aparece na seção "em quarentena" do resumo e nunca conta como falha.
 - **A quarentena só separa a apresentação do relatório. Ela nunca faz o CI ignorar falha real** e não altera nenhum gate.
 
+## Achados de lint só no código novo
+
+```bash
+node scripts/new-code-findings.cjs --base origin/main
+```
+
+Roda o ESLint nos `.js`/`.cjs`/`.mjs` alterados no PR e lista só os achados em linhas que o PR adicionou; achados antigos são contados, não listados. Opções: `--json`, `--strict` (sai com 1 se houver achado novo). Sem `--strict` é advisory. Erro de uso, de git ou do ESLint sai com 2. O job `Achados de lint no código novo (advisory)` em `quality-extras.yml` publica o resultado no sumário do PR e não é required check.
+
 ---
 
 ## Add to package.json
