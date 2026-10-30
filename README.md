@@ -568,6 +568,20 @@ node scripts/new-code-findings.cjs --base origin/main
 
 Roda o ESLint nos `.js`/`.cjs`/`.mjs` alterados no PR e lista só os achados em linhas que o PR adicionou; achados antigos são contados, não listados. Opções: `--json`, `--strict` (sai com 1 se houver achado novo). Sem `--strict` é advisory. Erro de uso, de git ou do ESLint sai com 2. O job `Achados de lint no código novo (advisory)` em `quality-extras.yml` publica o resultado no sumário do PR e não é required check.
 
+## Revisão com IA (opcional)
+
+```bash
+node scripts/pr-ai-review.cjs --base origin/main            # dry-run (padrão): imprime o que postaria
+node scripts/pr-ai-review.cjs --base origin/main --pr 123 --post   # posta review COMMENT inline
+```
+
+Lê `git diff --unified=0 base...HEAD` (limite de caracteres com `--max-chars`, padrão 60000; lockfiles e arquivos gerados ficam de fora), pede achados (bugs, segurança, regressão de teste) a um modelo local e só mantém os que apontam para linha **adicionada** do diff. Os demais são listados como descartados. JSON inválido do modelo é erro reportado, nunca "zero achados". Sem provedor ou modelo configurado, o status é `skipped` com o motivo, com exit 0.
+
+- **Privacidade:** só provedores locais. Ollama (`QG_OLLAMA_URL`) ou 9Router (`QG_9ROUTER_URL`), além de `QG_AI_MODEL`. O diff nunca vai para OpenAI, Anthropic, GitHub Copilot, CodeRabbit ou outro serviço externo.
+- `--post` exige `--pr`, a variável `GITHUB_TOKEN` e o flag explícito. Sem token, falha antes de chamar o modelo.
+- O workflow `ai-review.yml` roda só em `workflow_dispatch`, nunca em `pull_request`. Em runner hospedado pelo GitHub o provedor local não responde e o job vira `skipped`; use um runner self-hosted com acesso ao provedor.
+- **Advisory:** não é required check e não bloqueia merge. Pode gerar falso positivo; trate cada achado como sugestão a verificar.
+
 ---
 
 ## Add to package.json
