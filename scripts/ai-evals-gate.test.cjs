@@ -432,3 +432,25 @@ test('main returns exit code 2 for unknown arguments', async () => {
     process.stderr.write = original;
   }
 });
+
+test('scoreCase accepts JSON wrapped in one markdown code fence, as small local models emit', () => {
+  const testCase = { id: 'fence', input: 'x', expect: { jsonKeys: ['title', 'summary'] } };
+  const fenced = '```json\n{\n  "title": "A",\n  "summary": "B"\n}\n```';
+  const plain = '{"title": "A", "summary": "B"}';
+  assert.equal(scoreCase(testCase, fenced).passed, true);
+  assert.equal(scoreCase(testCase, plain).passed, true);
+});
+
+test('scoreCase still fails when the fenced content is not a JSON object with the keys', () => {
+  const testCase = { id: 'fence-bad', input: 'x', expect: { jsonKeys: ['title'] } };
+  assert.equal(scoreCase(testCase, '```json\nnão é json\n```').passed, false);
+  assert.equal(scoreCase(testCase, '```json\n{"other": 1}\n```').passed, false);
+  assert.equal(scoreCase(testCase, '```json\n[1, 2]\n```').passed, false);
+});
+
+test('scoreCase matches contains without caring about letter case, but still requires the word', () => {
+  const testCase = { id: 'greet', input: 'x', expect: { contains: ['hello'] } };
+  assert.equal(scoreCase(testCase, 'Hello there!').passed, true);
+  assert.equal(scoreCase(testCase, 'HELLO').passed, true);
+  assert.equal(scoreCase(testCase, 'Good morning').passed, false);
+});
