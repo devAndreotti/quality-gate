@@ -232,7 +232,7 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
           data += chunk;
         });
         res.on('end', () => {
-          let parsed = {};
+          let parsed;
           try {
             parsed = data ? JSON.parse(data) : {};
           } catch {
