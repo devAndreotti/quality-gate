@@ -540,6 +540,26 @@ node scripts/lockfile-new-deps.cjs --base origin/main --check-age
 
 Lista os pacotes adicionados, alterados ou removidos em `package-lock.json` em relação à base (default `origin/main`), com a idade da versão publicada (`npm view`). Opções: `--json`, `--max-age-days <n>` (default 7), `--check-age` (consulta o npm) e `--strict` (implica `--check-age`; sai com 1 se alguma dependência nova for mais nova que o limite). Sem `--strict` é advisory: sempre sai com 0. Se o npm não responder, a versão aparece como "idade não verificada" com o motivo. O job `Dependências novas no lockfile (advisory)` em `quality-extras.yml` roda o comando em PRs com `continue-on-error` e não é required check.
 
+## Testes flaky e quarentena (advisory)
+
+```bash
+node scripts/flaky-detect.cjs --runs 3 --json-out flaky-report/flaky-report.json
+node scripts/flaky-detect.cjs --check-quarantine
+```
+
+Roda a suíte `scripts/*.test.cjs` N vezes (`--runs`, default 3, máximo 10) no mesmo checkout e mostra, por teste, o resultado de cada rodada. Teste que falhou em uma rodada e passou em outra é **flaky**; teste que falhou em todas é **falha real**. O formato lido é o TAP do `node --test`. Sempre sai com 0 (advisory), exceto erro de uso ou nenhuma rodada executada (código 2). O workflow `flaky-detect.yml` roda em `workflow_dispatch` e semanalmente (nunca em `pull_request`) e publica o resumo e o JSON como artefato.
+
+**Quarentena:** `.quality-gate/flaky-quarantine.json` lista testes conhecidos como instáveis:
+
+```json
+[{ "test": "nome exato do teste", "reason": "race no mock do relógio", "expires": "2026-12-31" }]
+```
+
+- `test`, `reason` e `expires` (`YYYY-MM-DD`) são obrigatórios. Prazo obrigatório: sem `expires` válido a entrada é inválida.
+- Vencida = `expires` anterior à data de hoje (UTC). Entrada inválida ou vencida não é aplicada: a falha volta a aparecer no relatório e vira erro de validação. `--check-quarantine` sai com 1 se houver erro.
+- Teste em quarentena aparece na seção "em quarentena" do resumo e nunca conta como falha.
+- **A quarentena só separa a apresentação do relatório. Ela nunca faz o CI ignorar falha real** e não altera nenhum gate.
+
 ---
 
 ## Add to package.json
