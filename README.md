@@ -518,6 +518,14 @@ node scripts\dependabot-consolidate.cjs --repo OWNER/REPO --dry-run --json
 
 The helper lists open Dependabot PRs, touched files, probable conflicts, and whether to consolidate or merge independently.
 
+## Dependências novas no lockfile
+
+```bash
+node scripts/lockfile-new-deps.cjs --base origin/main --check-age
+```
+
+Lista os pacotes adicionados, alterados ou removidos em `package-lock.json` em relação à base (default `origin/main`), com a idade da versão publicada (`npm view`). Opções: `--json`, `--max-age-days <n>` (default 7), `--check-age` (consulta o npm) e `--strict` (implica `--check-age`; sai com 1 se alguma dependência nova for mais nova que o limite). Sem `--strict` é advisory: sempre sai com 0. Se o npm não responder, a versão aparece como "idade não verificada" com o motivo. O job `Dependências novas no lockfile (advisory)` em `quality-extras.yml` roda o comando em PRs com `continue-on-error` e não é required check.
+
 ---
 
 ## Add to package.json
