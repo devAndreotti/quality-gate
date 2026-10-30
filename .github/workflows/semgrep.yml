@@ -1,0 +1,64 @@
+# Semgrep SAST com regras próprias (.semgrep/quality-gate.yml).
+# ADVISORY: não é required check e não bloqueia merge (continue-on-error no job).
+# Não usa `semgrep ci`, `--config auto`, login nem token: só regras do repositório,
+# sem telemetria (--metrics=off). Versão do Semgrep fixada abaixo; atualizar de forma explícita.
+name: Semgrep
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancela rodadas anteriores só em PRs; em main cada execução roda até o fim.
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Permissão mínima global: leitura.
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: Semgrep (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Advisory: falha aqui não derruba o workflow nem bloqueia merge.
+    continue-on-error: true
+    permissions:
+      contents: read
+      # Única permissão extra: publicar SARIF em Code scanning (categoria "semgrep").
+      security-events: write
+    env:
+      SEMGREP_VERSION: '1.182.1'
+      SEMGREP_SEND_METRICS: 'off'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Instalar Semgrep (versão fixa)
+        run: pipx install "semgrep==${SEMGREP_VERSION}"
+
+      - name: Testar regras (casos ruleid/ok)
+        run: |
+          set -e
+          for f in .semgrep/tests/*.js; do
+            semgrep --test --metrics=off --config .semgrep/quality-gate.yml "$f"
+          done
+
+      - name: Scan com regras próprias (SARIF)
+        run: >-
+          semgrep scan
+          --config .semgrep/quality-gate.yml
+          --metrics=off
+          --sarif
+          --sarif-output=semgrep.sarif
+          --error
+
+      - name: Publicar SARIF em Code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          sarif_file: semgrep.sarif
+          # Categoria distinta do CodeQL para não sobrescrever os alertas dele.
+          category: semgrep

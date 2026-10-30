@@ -223,6 +223,20 @@ O gate é exercitado em pull requests reais no repositório separado [quality-ga
 
 ---
 
+## SAST local com Semgrep
+
+O repositório tem um scan Semgrep com regras próprias em [`.semgrep/quality-gate.yml`](./.semgrep/quality-gate.yml) (execução do `child_process` com comando dinâmico, `eval`/`new Function` e caminhos de `fs` vindos de `process.argv`). O workflow [`semgrep.yml`](./.github/workflows/semgrep.yml) roda em PRs e na main como **advisory**: não é required check e não bloqueia merge; o resultado vai para Code scanning com categoria `semgrep`.
+
+Para rodar localmente (sem login e sem telemetria):
+
+```bash
+pipx run semgrep==1.182.1 scan --config .semgrep/quality-gate.yml --metrics=off
+```
+
+Os casos de teste das regras ficam em `.semgrep/tests/`. Para validá-los: `for f in .semgrep/tests/*.js; do pipx run semgrep==1.182.1 --test --metrics=off --config .semgrep/quality-gate.yml "$f"; done`.
+
+---
+
 ## Contribuindo
 
 Contribuições são bem-vindas!
