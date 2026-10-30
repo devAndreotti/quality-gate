@@ -184,6 +184,15 @@ function configureSonarProperties({ projectRoot, owner, repo, sonarOrg, dryRun }
   return { status: dryRun ? 'planned' : 'updated', detail: 'sonar-project.properties configured' };
 }
 
+// Corpo vazio vira {}; JSON inválido vira { raw } para não perder a resposta na mensagem de erro.
+function parseApiBody(data) {
+  try {
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return { raw: data };
+  }
+}
+
 function formatGitHubApiError(statusCode, parsed, apiPath) {
   const message = sanitizeForLog(parsed?.message || parsed?.raw || 'request failed');
   const errors =
@@ -232,12 +241,7 @@ function ghAPI(method, apiPath, body = null, { token = process.env.GITHUB_TOKEN,
           data += chunk;
         });
         res.on('end', () => {
-          let parsed = {};
-          try {
-            parsed = data ? JSON.parse(data) : {};
-          } catch {
-            parsed = { raw: data };
-          }
+          const parsed = parseApiBody(data);
           if (res.statusCode >= 400) {
             const error = new Error(formatGitHubApiError(res.statusCode, parsed, normalizedApiPath));
             error.statusCode = res.statusCode;
@@ -506,6 +510,8 @@ module.exports = {
   configureSonarProperties,
   detectRepoFromRemote,
   formatGitHubApiError,
+  ghAPI,
+  parseApiBody,
   parseArgs,
   runSetup,
 };

@@ -274,7 +274,7 @@ async function runAiEvalsGate({ root = process.cwd(), changedFiles = [], env = p
       outcomes.push({ id: testCase.id, passed: false, checks: [{ name: 'budget_output_chars', ok: false }] });
       continue;
     }
-    let content = '';
+    let content;
     try {
       content = await chat(
         provider,

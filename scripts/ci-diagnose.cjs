@@ -32,7 +32,9 @@ function queryGhOrApi({ ghJson, githubApi, args, apiPath }) {
   } catch (error) {
     const fallback = githubApi(apiPath);
     if (fallback == null) {
-      throw new Error(`gh query failed and API fallback returned no data: ${error.message}`);
+      throw new Error(`gh query failed and API fallback returned no data: ${error.message}`, {
+        cause: error,
+      });
     }
     return fallback;
   }
@@ -278,7 +280,7 @@ function diagnoseRun(options) {
     reportsRoot: options.reportsRoot,
   });
   const findings = failedJobs.map((job) => {
-    let log = '';
+    let log;
     try {
       log = ghText(['run', 'view', String(runId), '--job', String(job.id), '--log']);
     } catch (error) {

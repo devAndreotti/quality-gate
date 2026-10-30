@@ -192,7 +192,9 @@ function readDiff({ base, head, cwd, execFileSync }) {
       maxBuffer: 64 * 1024 * 1024,
     });
   } catch (error) {
-    throw new Error(`não foi possível calcular o diff ${base}...${head}: ${error.message.split('\n')[0]}`);
+    throw new Error(`não foi possível calcular o diff ${base}...${head}: ${error.message.split('\n')[0]}`, {
+      cause: error,
+    });
   }
 }
 
