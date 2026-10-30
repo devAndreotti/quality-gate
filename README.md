@@ -540,6 +540,14 @@ node scripts/lockfile-new-deps.cjs --base origin/main --check-age
 
 Lista os pacotes adicionados, alterados ou removidos em `package-lock.json` em relação à base (default `origin/main`), com a idade da versão publicada (`npm view`). Opções: `--json`, `--max-age-days <n>` (default 7), `--check-age` (consulta o npm) e `--strict` (implica `--check-age`; sai com 1 se alguma dependência nova for mais nova que o limite). Sem `--strict` é advisory: sempre sai com 0. Se o npm não responder, a versão aparece como "idade não verificada" com o motivo. O job `Dependências novas no lockfile (advisory)` em `quality-extras.yml` roda o comando em PRs com `continue-on-error` e não é required check.
 
+## Achados de lint só no código novo
+
+```bash
+node scripts/new-code-findings.cjs --base origin/main
+```
+
+Roda o ESLint nos `.js`/`.cjs`/`.mjs` alterados no PR e lista só os achados em linhas que o PR adicionou; achados antigos são contados, não listados. Opções: `--json`, `--strict` (sai com 1 se houver achado novo). Sem `--strict` é advisory. Erro de uso, de git ou do ESLint sai com 2. O job `Achados de lint no código novo (advisory)` em `quality-extras.yml` publica o resultado no sumário do PR e não é required check.
+
 ---
 
 ## Add to package.json
