@@ -38,6 +38,34 @@ jobs:
         run: npm run -s duplication
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Dependências novas no lockfile (advisory): lista pacotes adicionados/alterados e a idade
+  # da versão publicada. NÃO é required check: continue-on-error mantém o job verde mesmo com achados.
+  # ───────────────────────────────────────────────────────────────────────────
+  lockfile-new-deps:
+    name: Dependências novas no lockfile (advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+
+      - name: Listar dependências novas (advisory)
+        run: |
+          set -o pipefail
+          {
+            echo '```text'
+            node scripts/lockfile-new-deps.cjs --base origin/main --check-age
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Dashboard como artefato: HTML estático gerado por scripts/dashboard-publish.cjs.
   # Só em push na main; retenção de 14 dias. Também publica em GitHub Pages
   # (requer Pages habilitado com source "GitHub Actions" nas settings do repo).
