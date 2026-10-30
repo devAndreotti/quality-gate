@@ -50,6 +50,12 @@ const PROVIDER_PREFIX = /^(?:sk|rk)_(?:live|test)_/;
 const SUPPRESS_PATTERN = /(?:\/\/|#|\/\*)\s*(?:nosecret|NOSONAR)\b\s*(?:\*\/)?\s*$/;
 // SS-4: arquivos acima deste limite são pulados e registrados como skipped.
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
+// --history: teto da lista de achados no resultado (o total continua exato) e de linhas impressas.
+const HISTORY_MAX_FINDINGS = 500;
+const TEXT_MAX_FINDINGS = 100;
+const HISTORY_MAX_BUFFER = 256 * 1024 * 1024;
+// Cabeçalho "commit <sha>" do git log; dentro de hunk toda linha começa com +, - , espaço ou \.
+const COMMIT_HEADER = /^commit ([0-9a-f]{40}|[0-9a-f]{64})\b/;
 
 // Exclusão só por padrão explícito (--ignore). Test/spec/fixtures NÃO são isentos:
 // segredos reais costumam vazar justamente nesses arquivos.
@@ -171,8 +177,17 @@ function scanUnifiedDiff(diff, ignorePatterns = []) {
   let currentFile = null;
   let currentLine = 0;
   let inPreamble = false;
+  let currentCommit = null;
 
   for (const line of diff.split(/\r?\n/)) {
+    // Saída de "git log -p": cada commit começa com "commit <sha>" (só existe no --history).
+    const commitMatch = line.match(COMMIT_HEADER);
+    if (commitMatch) {
+      currentCommit = commitMatch[1];
+      currentFile = null;
+      inPreamble = false;
+      continue;
+    }
     // Cabeçalhos só existem no preâmbulo de cada arquivo (entre "diff --git" e "@@").
     // Dentro de hunk, uma linha adicionada "++x" é conteúdo e deve ser escaneada.
     if (line.startsWith('diff --git ')) {
@@ -196,7 +211,12 @@ function scanUnifiedDiff(diff, ignorePatterns = []) {
       const text = line.slice(1);
       const lineFindings = scanText(text);
       for (const f of lineFindings) {
-        findings.push({ ...f, file: currentFile, line: currentLine });
+        findings.push({
+          ...f,
+          file: currentFile,
+          line: currentLine,
+          ...(currentCommit && { commit: currentCommit }),
+        });
       }
       currentLine++;
     } else if (!line.startsWith('-') && !line.startsWith('\\')) {
@@ -228,12 +248,95 @@ function scanGitDiff(cwd = process.cwd(), execFileSync = childProcess.execFileSy
   return findings;
 }
 
+// --history: varre as linhas adicionadas de todos os commits (git log -p --all).
+// Argumentos vão como array (sem shell). Blobs binarios saem como "Binary files ... differ",
+// sem linhas "+", entao nao sao escaneados. Falha de git propaga erro.
+// --diff-merges=first-parent: sem isso, git log -p não mostra diff de merge e um segredo
+// introduzido na resolução de conflito passaria em silêncio.
+function scanGitHistory(cwd = process.cwd(), execFileSync = childProcess.execFileSync, options = {}) {
+  // Clone raso veria só a ponta e passaria em silêncio: falha fechada.
+  const shallow = String(
+    execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  ).trim();
+  if (shallow === 'true') {
+    throw new Error('historico raso (shallow clone): use fetch-depth: 0 para varrer o historico completo');
+  }
+  const log = execFileSync(
+    'git',
+    [
+      'log',
+      '-p',
+      '--all',
+      '--diff-merges=first-parent',
+      '--no-color',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--no-show-signature',
+    ],
+    {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: HISTORY_MAX_BUFFER,
+    },
+  );
+  return scanUnifiedDiff(log, options.ignore || []);
+}
+
+// Allowlist do histórico: exceções EXATAS (commit + arquivo + linha + regra), porque o histórico é imutável.
+// Um segredo novo, mesmo do mesmo tipo e arquivo, tem outro commit ou outra linha e continua falhando.
+// Formato: [{ "commit": "<sha>", "file": "<caminho>", "line": <n>, "id": "<regra>", "motivo": "<texto>" }]
+function loadHistoryAllowlist(allowPath) {
+  if (!fs.existsSync(allowPath)) return [];
+  let entries;
+  try {
+    entries = JSON.parse(fs.readFileSync(allowPath, 'utf8'));
+  } catch (err) {
+    throw new Error(`allowlist do historico invalida (${allowPath}): ${err.message}`);
+  }
+  if (!Array.isArray(entries)) throw new Error(`allowlist do historico deve ser um array (${allowPath})`);
+  for (const e of entries) {
+    if (
+      !e ||
+      !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(e.commit || '') ||
+      typeof e.file !== 'string' ||
+      !Number.isInteger(e.line) ||
+      typeof e.id !== 'string'
+    ) {
+      throw new Error(`entrada invalida na allowlist do historico (${allowPath}): ${JSON.stringify(e)}`);
+    }
+  }
+  return entries;
+}
+
+function applyHistoryAllowlist(findings, allowlist) {
+  const key = (x) => `${x.commit}\u0000${x.file}\u0000${x.line}\u0000${x.id}`;
+  const allowKeys = new Set(allowlist.map(key));
+  const used = new Set();
+  const allowed = [];
+  const kept = [];
+  for (const f of findings) {
+    const k = key(f);
+    if (allowKeys.has(k)) {
+      used.add(k);
+      allowed.push(f);
+    } else kept.push(f);
+  }
+  const unusedAllowed = allowlist.filter((e) => !used.has(key(e)));
+  return { findings: kept, allowed, unusedAllowed };
+}
+
 function parseArgs(argv = process.argv.slice(2)) {
   const args = { mode: 'all', root: process.cwd(), json: false, ignore: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--diff') args.mode = 'diff';
     else if (arg === '--all') args.mode = 'all';
+    else if (arg === '--history') args.mode = 'history';
     else if (arg === '--json') args.json = true;
     else if (arg === '--root' || arg === '--project') args.root = argv[++i];
     else if (arg.startsWith('--root=')) args.root = arg.slice('--root='.length);
@@ -250,11 +353,22 @@ function runSecretScan(options = {}) {
   const skipped = [];
   const scanOptions = { ...options, skipped };
   let findings;
+  let allowed = [];
+  let unusedAllowed = [];
   try {
-    findings =
-      mode === 'diff'
-        ? scanGitDiff(root, options.execFileSync || childProcess.execFileSync, scanOptions)
-        : scanDirectory(root, [], scanOptions);
+    const execFileSync = options.execFileSync || childProcess.execFileSync;
+    if (mode === 'diff') findings = scanGitDiff(root, execFileSync, scanOptions);
+    else if (mode === 'history') {
+      const allowPath =
+        options.historyAllowPath || path.join(root, '.quality-gate', 'secret-history-allow.json');
+      const applied = applyHistoryAllowlist(
+        scanGitHistory(root, execFileSync, scanOptions),
+        loadHistoryAllowlist(allowPath),
+      );
+      findings = applied.findings;
+      allowed = applied.allowed;
+      unusedAllowed = applied.unusedAllowed;
+    } else findings = scanDirectory(root, [], scanOptions);
   } catch (err) {
     const message = String((err && err.message) || err).split(/\r?\n/)[0];
     return {
@@ -271,12 +385,20 @@ function runSecretScan(options = {}) {
   let status = 'passed';
   if (findings.length > 0) status = 'failed';
   else if (skipped.length > 0) status = 'passed-with-skips';
+  // Limite de saída: o total é exato; a lista é cortada no histórico (JSON e texto).
+  const findingsCount = findings.length;
+  const findingsTruncated = mode === 'history' && findingsCount > HISTORY_MAX_FINDINGS;
+  if (findingsTruncated) findings = findings.slice(0, HISTORY_MAX_FINDINGS);
   return {
     status,
     mode,
     root,
-    findingsCount: findings.length,
+    findingsCount,
+    findingsTruncated,
     findings,
+    allowedCount: allowed.length,
+    allowed,
+    unusedAllowed,
     skippedCount: skipped.length,
     skipped,
   };
@@ -290,11 +412,24 @@ function main() {
   } else {
     console.log(`\nSecret Scan (${result.mode}): ${result.status.toUpperCase()}`);
     if (result.status === 'error') console.log(`  erro: ${result.error}`);
-    for (const f of result.findings) {
-      console.log(`  ❌ ${f.name} em ${f.file}:${f.line} (${f.preview})`);
+    for (const f of result.findings.slice(0, TEXT_MAX_FINDINGS)) {
+      const where = f.commit ? ` commit ${f.commit.slice(0, 12)}` : '';
+      console.log(`  ❌ ${f.name} em ${f.file}:${f.line}${where} (${f.preview})`);
+    }
+    if (result.findingsCount > TEXT_MAX_FINDINGS) {
+      console.log(
+        `  ... mais ${result.findingsCount - TEXT_MAX_FINDINGS} achado(s) omitido(s) na saída (use --json)`,
+      );
     }
     for (const s of result.skipped) {
       console.log(`  ⚠️  nao escaneado: ${s.file} (${s.reason})`);
+    }
+    if (result.allowedCount)
+      console.log(`  ℹ️  ${result.allowedCount} achado(s) do historico cobertos pela allowlist`);
+    for (const u of result.unusedAllowed || []) {
+      console.log(
+        `  ⚠️  entrada da allowlist sem achado correspondente (remover): ${u.commit.slice(0, 12)} ${u.file}:${u.line} ${u.id}`,
+      );
     }
   }
   if (result.status === 'error') process.exitCode = 2;
@@ -304,6 +439,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  HISTORY_MAX_FINDINGS,
   SECRET_PATTERNS,
   isPlaceholder,
   parseArgs,
@@ -311,6 +447,7 @@ module.exports = {
   scanDirectory,
   scanFile,
   scanGitDiff,
+  scanGitHistory,
   scanText,
   shouldIgnore,
 };

@@ -1,9 +1,10 @@
-# Proveniência SLSA para releases: roda só em tags de versão (v*) e manualmente.
-# Não roda em PRs nem em pushes comuns, para não gastar minutos a cada commit.
+# Proveniência SLSA: roda em tags de versão (v*), em push na main e manualmente.
+# Não roda em PRs. O atestado da main cobre o SBOM e o tarball de cada commit.
 name: Release Provenance
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
