@@ -10,9 +10,57 @@ const {
   configureSonarProperties,
   detectRepoFromRemote,
   formatGitHubApiError,
+  ghAPI,
+  parseApiBody,
   parseArgs,
   runSetup,
 } = require('./setup.js');
+
+test('parseApiBody: empty body is {}, JSON is parsed, invalid JSON keeps the raw text', () => {
+  assert.deepEqual(parseApiBody(''), {});
+  assert.deepEqual(parseApiBody('{"message":"ok"}'), { message: 'ok' });
+  assert.deepEqual(parseApiBody('<html>502</html>'), { raw: '<html>502</html>' });
+});
+
+// Troca https.request por um fake que entrega a resposta ao callback: exercita o caminho real de ghAPI.
+async function ghAPIWithFakeResponse(statusCode, bodyText) {
+  const https = require('node:https');
+  const { EventEmitter } = require('node:events');
+  const original = https.request;
+  https.request = (_opts, onResponse) => {
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = () => {};
+    req.end = () => {
+      const res = new EventEmitter();
+      res.statusCode = statusCode;
+      onResponse(res);
+      res.emit('data', bodyText);
+      res.emit('end');
+    };
+    return req;
+  };
+  try {
+    return await ghAPI('GET', '/repos/devAndreotti/quality-gate', null, { token: 'test-token' });
+  } finally {
+    https.request = original;
+  }
+}
+
+test('ghAPI resolves the parsed JSON body on success', async () => {
+  const r = await ghAPIWithFakeResponse(200, '{"full_name":"devAndreotti/quality-gate"}');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { full_name: 'devAndreotti/quality-gate' });
+});
+
+test('ghAPI rejects with the raw text when the error body is not JSON', async () => {
+  await assert.rejects(ghAPIWithFakeResponse(502, '<html>bad gateway</html>'), (err) => {
+    assert.equal(err.statusCode, 502);
+    assert.deepEqual(err.response, { raw: '<html>bad gateway</html>' });
+    return true;
+  });
+});
 
 function tempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qg-setup-'));
