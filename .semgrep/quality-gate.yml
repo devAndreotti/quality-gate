@@ -1,0 +1,83 @@
+# Regras SAST próprias do quality-gate (advisory: ver .github/workflows/semgrep.yml).
+# Não é cópia de regras de terceiros (p/* ou semgrep-rules): cada regra abaixo
+# foi escrita para os padrões de risco que este repositório de scripts Node.js
+# realmente tem. Casos de teste: .semgrep/tests/.
+#
+# Rodar localmente (sem login, sem telemetria):
+#   pipx run semgrep==1.182.1 scan --config .semgrep/quality-gate.yml --metrics=off
+# Testar as regras (um arquivo de teste por regra; ver .github/workflows/semgrep.yml):
+#   for f in .semgrep/tests/*.js; do pipx run semgrep==1.182.1 --test --metrics=off --config .semgrep/quality-gate.yml "$f"; done
+rules:
+  - id: qg-js-child-process-dynamic-command
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      child_process.exec/execSync recebe comando montado com template string ou
+      concatenação com variável. Se a variável vier de entrada externa (argv, env,
+      arquivo, API), isso vira injeção de shell. Prefira execFile/spawn com
+      array de argumentos e sem shell.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+    paths:
+      exclude:
+        - .semgrep/tests/
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec($CMD, ...)
+          - pattern: $CP.execSync($CMD, ...)
+          - pattern: exec($CMD, ...)
+          - pattern: execSync($CMD, ...)
+      - metavariable-regex:
+          metavariable: $CP
+          regex: ^(cp|child_process|childProcess)$
+      - metavariable-pattern:
+          metavariable: $CMD
+          pattern-either:
+            - pattern: '`...${...}...`'
+            - pattern: '"..." + $X'
+            - pattern: '$X + "..."'
+
+  - id: qg-js-eval-dynamic-code
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      eval() e new Function() executam código em tempo de execução. Com string
+      derivada de dados, é execução de código arbitrário. Use parsing explícito
+      (JSON.parse) ou dispatch por tabela.
+    metadata:
+      category: security
+      cwe: "CWE-95: Eval Injection"
+    paths:
+      exclude:
+        - .semgrep/tests/
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: qg-js-argv-fs-path
+    languages: [javascript]
+    severity: WARNING
+    message: >-
+      Caminho de leitura/escrita em fs.*Sync vem de process.argv. Em scripts de
+      build/CI isso permite ler ou sobrescrever arquivos fora do repositório
+      (path traversal). Valide contra um diretório base (path.resolve + prefixo)
+      antes de usar.
+    metadata:
+      category: security
+      cwe: "CWE-22: Path Traversal"
+    paths:
+      include:
+        - scripts/
+    mode: taint
+    pattern-sources:
+      - pattern: process.argv
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $FS.readFileSync($P, ...)
+              - pattern: $FS.writeFileSync($P, ...)
+          - metavariable-regex:
+              metavariable: $FS
+              regex: ^(fs|fsp|fsPromises)$
+          - focus-metavariable: $P

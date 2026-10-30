@@ -33,6 +33,8 @@ test('isGatedSource accepts production JS and excludes tests and build output', 
   assert.equal(isGatedSource('scripts/foo.test.cjs'), false);
   assert.equal(isGatedSource('dist/bundle.js'), false);
   assert.equal(isGatedSource('README.md'), false);
+  assert.equal(isGatedSource('.semgrep/tests/rule.js'), false);
+  assert.equal(isGatedSource('scripts/semgrep-helper.cjs'), true);
 });
 
 test('evaluateDiffCoverage passes when every new executable line is covered', () => {

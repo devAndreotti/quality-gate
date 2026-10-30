@@ -101,7 +101,9 @@ function calculateDiffCoverage({ diffText, lcovText, minDiffCoverage = 80 }) {
 
 // Arquivos de código de produção que entram no gate. Testes e artefatos ficam de fora.
 const GATED_SOURCE_PATTERN = /\.(?:c|m)?js$|\.(?:ts|tsx|jsx)$/;
-const EXCLUDED_PATH_PATTERN = /(?:^|\/)(?:node_modules|coverage|dist|build)\/|\.(?:test|spec)\.[a-zA-Z0-9]+$/;
+// .semgrep/ guarda amostras vulneráveis de propósito (fixtures de regra), não código de produção.
+const EXCLUDED_PATH_PATTERN =
+  /(?:^|\/)(?:node_modules|coverage|dist|build|\.semgrep)\/|\.(?:test|spec)\.[a-zA-Z0-9]+$/;
 
 function isGatedSource(file) {
   return GATED_SOURCE_PATTERN.test(file) && !EXCLUDED_PATH_PATTERN.test(file);
