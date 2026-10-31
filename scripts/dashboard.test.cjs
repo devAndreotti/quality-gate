@@ -155,3 +155,88 @@ test('render shows snapshot status label, PR header and merge blockers', () => {
   assert.match(advisory, /Status\s+advisory/);
   assert.match(advisory, /#\? /, 'missing PR number falls back to ?');
 });
+
+const { collectChecks, parseRepoSlug, summarizeChecks } = require('./dashboard.cjs');
+
+test('parseRepoSlug reads owner/repo from ssh and https GitHub remotes and rejects others', () => {
+  assert.equal(parseRepoSlug('git@github.com:devAndreotti/quality-gate.git'), 'devAndreotti/quality-gate');
+  assert.equal(parseRepoSlug('https://github.com/devAndreotti/quality-gate'), 'devAndreotti/quality-gate');
+  assert.equal(parseRepoSlug('https://gitlab.com/a/b.git'), null);
+  assert.equal(parseRepoSlug(null), null);
+});
+
+test('summarizeChecks counts ok, failures, running and other conclusions', () => {
+  assert.deepEqual(
+    summarizeChecks([
+      { status: 'completed', conclusion: 'success' },
+      { status: 'completed', conclusion: 'failure' },
+      { status: 'in_progress', conclusion: null },
+      { status: 'completed', conclusion: 'skipped' },
+      { status: 'completed', conclusion: 'timed_out' },
+    ]),
+    { ok: 1, fail: 2, running: 1, other: 1 },
+  );
+});
+
+test('collectChecks keeps the last result per check name and reads the main commit', () => {
+  const calls = [];
+  const exec = (cmd, args) => {
+    calls.push([cmd, args]);
+    if (cmd === 'git') return 'abc1234';
+    return [
+      'Lint\tcompleted\tfailure\thttps://github.com/x/y/runs/1',
+      'Lint\tcompleted\tsuccess\thttps://github.com/x/y/runs/2',
+      'CodeQL\tcompleted\tsuccess\t',
+    ].join('\n');
+  };
+  const r = collectChecks('/tmp/none', 'git@github.com:devAndreotti/quality-gate.git', exec);
+  assert.equal(r.sha, 'abc1234');
+  assert.equal(r.checks.length, 2);
+  assert.equal(r.checks.find((c) => c.name === 'Lint').conclusion, 'success');
+  assert.ok(
+    calls.some(
+      ([cmd, args]) =>
+        cmd === 'gh' && args.join(' ').includes('repos/devAndreotti/quality-gate/commits/abc1234/check-runs'),
+    ),
+  );
+});
+
+test('collectChecks fails closed with a clear error when gh is unavailable or the remote is not GitHub', () => {
+  const noGh = collectChecks('/tmp/none', 'git@github.com:a/b.git', (cmd) => (cmd === 'git' ? 'abc' : null));
+  assert.match(noGh.error, /gh indisponível/);
+  const notGithub = collectChecks('/tmp/none', 'https://gitlab.com/a/b.git', () => 'x');
+  assert.match(notGithub.error, /remoto GitHub não identificado/);
+});
+
+test('render lists each check with its status icon, and shows the error when checks fail to load', () => {
+  const base = {
+    branch: 'main',
+    remote: null,
+    tokenEnv: 'nao',
+    ratchet: null,
+    snapshot: null,
+    snapshotAge: null,
+    now: new Date(),
+  };
+  const ok = render('/tmp/none', {
+    ...base,
+    checks: {
+      sha: 'abc1234def',
+      checks: [
+        { name: 'Lint', status: 'completed', conclusion: 'success' },
+        { name: 'CodeQL', status: 'completed', conclusion: 'failure' },
+        { name: 'Scorecard', status: 'in_progress', conclusion: null },
+        { name: 'Dashboard', status: 'completed', conclusion: 'skipped' },
+      ],
+    },
+  });
+  assert.match(ok, /commit abc1234 · 4 checks/);
+  assert.match(ok, /✅ Lint/);
+  assert.match(ok, /❌ CodeQL/);
+  assert.match(ok, /⏳ Scorecard/);
+  assert.match(ok, /⚪ Dashboard/);
+  const failed = render('/tmp/none', { ...base, checks: { error: 'gh indisponível' } });
+  assert.match(failed, /gh indisponível/);
+  const empty = render('/tmp/none', { ...base, checks: { sha: 'abc1234', checks: [] } });
+  assert.match(empty, /nenhum check reportado ainda/);
+});

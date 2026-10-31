@@ -82,6 +82,42 @@ function renderSnapshot(snapshot, root) {
   );
 }
 
+function renderChecks(checks) {
+  if (!checks) return '<p class="muted">Checks indisponíveis.</p>';
+  if (checks.error) return `<p class="warn">${escapeHtml(checks.error)}</p>`;
+  const counts = checks.counts || {};
+  const summary =
+    `<p>Commit <code>${escapeHtml(String(checks.sha).slice(0, 7))}</code> do main · ` +
+    `<span class="ok">${counts.ok ?? 0} ok</span> · <span class="fail">${counts.fail ?? 0} falha</span> · ` +
+    `<span class="muted">${counts.running ?? 0} em andamento</span> · ${counts.other ?? 0} outros</p>`;
+  if (!checks.checks?.length) return summary + '<p class="muted">Nenhum check reportado ainda.</p>';
+  const rows = checks.checks
+    .map((check) => {
+      let cls = 'other';
+      let label = check.conclusion || 'desconhecido';
+      if (check.status !== 'completed') {
+        cls = 'running';
+        label = 'em andamento';
+      } else if (check.conclusion === 'success') {
+        cls = 'ok';
+        label = 'ok';
+      } else if (['failure', 'timed_out', 'startup_failure', 'action_required'].includes(check.conclusion)) {
+        cls = 'fail';
+        label = 'falha';
+      }
+      const name =
+        check.url && /^https:\/\/github\.com\//.test(check.url)
+          ? `<a href="${escapeHtml(check.url)}">${escapeHtml(check.name)}</a>`
+          : escapeHtml(check.name);
+      return `<tr class="${cls}"><td>${name}</td><td>${escapeHtml(label)}</td></tr>`;
+    })
+    .join('\n');
+  return (
+    summary +
+    `<table><thead><tr><th>Check</th><th>Último resultado</th></tr></thead><tbody>\n${rows}\n</tbody></table>`
+  );
+}
+
 function buildHtml(state, root) {
   const generatedAt = state.now instanceof Date ? state.now.toISOString() : new Date().toISOString();
   const repoName = path.basename(root);
@@ -100,6 +136,9 @@ function buildHtml(state, root) {
   table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
   th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #8884; }
   tr.ok td:last-child { color: var(--ok); }
+  tr.running td:last-child { color: var(--warn); }
+  .ok { color: var(--ok); }
+  .fail { color: var(--fail); }
   tr.fail td:last-child { color: var(--fail); }
   .muted { color: var(--muted); }
   .warn { color: var(--warn); }
@@ -114,6 +153,9 @@ function buildHtml(state, root) {
   <li>Branch: ${escapeHtml(state.branch || 'desconhecida')}</li>
   <li>Token de API: ${escapeHtml(state.tokenEnv)}</li>
 </ul>
+
+<h2>Checagens (último commit do main)</h2>
+${renderChecks(state.checks)}
 
 <h2>Ratchet</h2>
 ${renderRatchet(state.ratchet, root)}
@@ -157,4 +199,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { buildHtml, publishDashboard, scrubPaths };
+module.exports = { buildHtml, publishDashboard, renderChecks, scrubPaths };
