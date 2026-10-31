@@ -111,6 +111,7 @@ jobs:
     # Permissões extras só para este job; o padrão global segue em contents: read.
     permissions:
       contents: read
+      checks: read
       pages: write
       id-token: write
     environment:
@@ -124,6 +125,8 @@ jobs:
           node-version: 22
 
       - name: Gerar dashboard/index.html
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/dashboard-publish.cjs
 
       - name: Publicar artefato

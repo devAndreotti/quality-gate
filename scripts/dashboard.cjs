@@ -36,6 +36,52 @@ function readJSON(filePath) {
   }
 }
 
+function parseRepoSlug(remote) {
+  const match = String(remote || '').match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+// Conta os checks do commit: sucesso, falha, em andamento e outros (cancelado, pulado).
+function summarizeChecks(checks) {
+  const counts = { ok: 0, fail: 0, running: 0, other: 0 };
+  for (const check of checks || []) {
+    if (check.status !== 'completed') counts.running += 1;
+    else if (check.conclusion === 'success') counts.ok += 1;
+    else if (['failure', 'timed_out', 'startup_failure', 'action_required'].includes(check.conclusion))
+      counts.fail += 1;
+    else counts.other += 1;
+  }
+  return counts;
+}
+
+// Último resultado de cada check do commit mais recente do origin/main, via gh api.
+// Nunca lança: sem gh, sem login ou sem remoto GitHub, devolve { error }.
+function collectChecks(root, remote, exec = sh) {
+  const slug = parseRepoSlug(remote);
+  if (!slug) return { error: 'remoto GitHub não identificado' };
+  const sha = exec('git', ['rev-parse', 'origin/main'], root);
+  if (!sha) return { error: 'origin/main não encontrado (rode git fetch)' };
+  const raw = exec(
+    'gh',
+    [
+      'api',
+      `repos/${slug}/commits/${sha}/check-runs?per_page=100`,
+      '--paginate',
+      '--jq',
+      '.check_runs[] | [.name, .status, (.conclusion // ""), .html_url] | @tsv',
+    ],
+    root,
+  );
+  if (raw === null) return { error: 'gh indisponível ou sem autenticação (gh auth login)', sha };
+  const byName = new Map();
+  for (const line of raw.split('\n').filter(Boolean)) {
+    const [name, status, conclusion, url] = line.split('\t');
+    byName.set(name, { name, status, conclusion: conclusion || null, url: url || null });
+  }
+  const checks = [...byName.values()];
+  return { sha, checks, counts: summarizeChecks(checks) };
+}
+
 function collectState(root) {
   const branch = sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], root);
   const remote = sh('git', ['remote', 'get-url', 'origin'], root);
@@ -61,7 +107,8 @@ function collectState(root) {
     snapshotAge = fs.statSync(snapshotPath).mtime;
   }
 
-  return { branch, remote, tokenEnv, ratchet, snapshot, snapshotAge, now: new Date() };
+  const checks = collectChecks(root, remote);
+  return { branch, remote, tokenEnv, ratchet, snapshot, snapshotAge, checks, now: new Date() };
 }
 
 function formatAge(date) {
@@ -98,6 +145,25 @@ function render(root, state) {
     if (!state.ratchet.rows?.length) lines.push('    (sem metricas coletadas ainda)');
   } else {
     lines.push('    scripts/quality-gate.js nao encontrado neste projeto');
+  }
+  lines.push('');
+
+  lines.push(renderSection('Checagens (ultimo commit do main)', '◎'));
+  if (state.checks?.error) {
+    lines.push(`    ⚠️  ${state.checks.error}`);
+  } else if (state.checks) {
+    const icon = (check) => {
+      if (check.status !== 'completed') return '⏳';
+      if (check.conclusion === 'success') return '✅';
+      if (['failure', 'timed_out', 'startup_failure', 'action_required'].includes(check.conclusion))
+        return '❌';
+      return '⚪';
+    };
+    lines.push(`    commit ${String(state.checks.sha).slice(0, 7)} · ${state.checks.checks.length} checks`);
+    for (const check of state.checks.checks) {
+      lines.push(`    ${icon(check)} ${check.name}`);
+    }
+    if (!state.checks.checks.length) lines.push('    (nenhum check reportado ainda)');
   }
   lines.push('');
 
@@ -165,4 +231,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { collectState, render, formatAge };
+module.exports = { collectChecks, collectState, parseRepoSlug, render, formatAge, summarizeChecks };
