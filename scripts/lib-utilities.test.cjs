@@ -35,6 +35,75 @@ test('console-ui measures display width and pads strings correctly', () => {
   assert.match(section, /CHECKS/);
 });
 
+test('console-ui displayWidth: caracteres logo antes e depois de cada faixa de emoji', () => {
+  const width = (codePoint) => displayWidth(String.fromCodePoint(codePoint));
+
+  // Pictogramas U+1F300..U+1FAFF (largura 2).
+  assert.equal(width(0x1f2ff), 1);
+  assert.equal(width(0x1f300), 2);
+  assert.equal(width(0x1faff), 2);
+  assert.equal(width(0x1fb00), 1);
+
+  // Dingbats U+2600..U+27BF (largura 2).
+  assert.equal(width(0x25ff), 1);
+  assert.equal(width(0x2600), 2);
+  assert.equal(width(0x27bf), 2);
+  assert.equal(width(0x27c0), 1);
+
+  // Setas e simbolos diversos U+2B00..U+2BFF (largura 2).
+  assert.equal(width(0x2aff), 1);
+  assert.equal(width(0x2b00), 2);
+  assert.equal(width(0x2bff), 2);
+  assert.equal(width(0x2c00), 1);
+});
+
+test('console-ui displayWidth: variation selector U+FE0F tem largura zero', () => {
+  assert.equal(displayWidth('️'), 0);
+  assert.equal(displayWidth('a️b'), 2);
+  assert.equal(displayWidth('⚠️'), 2);
+  assert.equal(padEnd('⚠️', 4), '⚠️  ');
+});
+
+test('console-ui renderTable, renderHeaderBox e renderSection geram saida exata', () => {
+  assert.equal(
+    renderTable(['A', 'B'], [['1', '2']]),
+    ['┌───┬───┐', '│ A │ B │', '├───┼───┤', '│ 1 │ 2 │', '└───┴───┘'].join('\n'),
+  );
+
+  assert.equal(
+    renderHeaderBox('Titulo', { width: 20 }),
+    ['  ╭' + '─'.repeat(20) + '╮', '  │ ◆ Titulo' + ' '.repeat(11) + '│', '  ╰' + '─'.repeat(20) + '╯'].join(
+      '\n',
+    ),
+  );
+  assert.equal(
+    renderHeaderBox('Titulo', { width: 20, right: 'OK' }),
+    ['  ╭' + '─'.repeat(20) + '╮', '  │ ◆ Titulo' + ' '.repeat(9) + 'OK│', '  ╰' + '─'.repeat(20) + '╯'].join(
+      '\n',
+    ),
+  );
+  assert.equal(renderHeaderBox('X').split('\n')[0], '  ╭' + '─'.repeat(60) + '╮');
+
+  // Titulo maior que a caixa nao pode quebrar o preenchimento (sem espacos negativos).
+  const longBox = renderHeaderBox('um titulo bem longo', { width: 10 });
+  assert.ok(longBox.includes('um titulo bem longo'));
+  assert.equal(longBox.split('\n').length, 3);
+
+  assert.equal(renderSection('resumo'), '  ◆ RESUMO\n  ' + '─'.repeat(60));
+  assert.equal(renderSection('resumo', '!'), '  ! RESUMO\n  ' + '─'.repeat(60));
+});
+
+test('console-ui renderTable usa a largura real de emoji no cabecalho e nas linhas', () => {
+  const table = renderTable(['A'], [['🚀']]);
+  const [top, header, , row] = table.split('\n');
+  assert.equal(top, '┌────┐');
+  assert.equal(header, '│ A  │');
+  assert.equal(row, '│ 🚀 │');
+
+  const empty = renderTable(['AB'], []);
+  assert.equal(empty.split('\n')[0], '┌────┐');
+});
+
 test('github lib parses remote URLs and splits repo correctly', () => {
   assert.equal(repoFromRemoteUrl('git@github.com:owner/repo.git'), 'owner/repo');
   assert.equal(repoFromRemoteUrl('https://github.com/owner/my-app'), 'owner/my-app');
@@ -157,4 +226,15 @@ test('policy lib validates policies, catches schema errors and handles state', (
   const statePath = writeState(root, state);
   assert.ok(fs.existsSync(statePath));
   assert.equal(JSON.parse(fs.readFileSync(statePath, 'utf8')).policyHash, hash1);
+});
+
+test('stryker pilot config fica restrito aos dois arquivos e nunca quebra o build', async () => {
+  const { pathToFileURL } = require('node:url');
+  const configPath = path.join(__dirname, '..', 'stryker.pilot.config.mjs');
+  const { default: config } = await import(pathToFileURL(configPath).href);
+
+  assert.deepEqual(config.mutate, ['scripts/lib/diff-coverage.cjs', 'scripts/lib/console-ui.cjs']);
+  assert.equal(config.thresholds.break, null);
+  assert.equal(config.testRunner, 'command');
+  assert.equal(config.coverageAnalysis, 'off');
 });
