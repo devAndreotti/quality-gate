@@ -1,0 +1,140 @@
+# Revisão de PR com modelo local (opcional, advisory).
+# NÃO é required check, NÃO roda em pull_request e nunca altera branch protection.
+# Só roda sob demanda (workflow_dispatch). continue-on-error mantém o workflow verde mesmo com achados.
+#
+# PROVEDOR: o modelo precisa estar num endereço local (Ollama em QG_OLLAMA_URL ou 9Router em
+# QG_9ROUTER_URL, definidos como variáveis do repositório). Esse endereço só é alcançável a partir de
+# um runner self-hosted na mesma rede. Em runner hospedado pelo GitHub (ubuntu-latest, padrão deste
+# input) o provedor não responde e o script sai com status "skipped" e exit 0. Para revisão real,
+# informe no input "runner" um label de runner self-hosted com acesso ao provedor.
+#
+# PRIVACIDADE: só provedores locais. O diff nunca é enviado a serviço externo (OpenAI, Anthropic,
+# Copilot, CodeRabbit etc.).
+#
+# Dois jobs com permissões separadas: review (dry-run, só leitura) e review-post (grava comentários
+# inline, exige pull-requests: write). Só um deles roda por execução, conforme o input "post".
+
+name: AI review
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Label do runner (self-hosted para alcançar o provedor local)'
+        required: false
+        default: 'ubuntu-latest'
+        type: string
+      base:
+        description: 'Ref base do diff'
+        required: false
+        default: 'origin/main'
+        type: string
+      pr:
+        description: 'Número do PR (obrigatório quando post = true)'
+        required: false
+        default: ''
+        type: string
+      post:
+        description: 'Postar comentários inline no PR (padrão: só dry-run, sem falar com o GitHub)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ai-review-${{ github.ref }}
+  cancel-in-progress: false
+
+# Permissão mínima global: leitura.
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Revisão com IA (dry-run, advisory)
+    if: ${{ !inputs.post }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    # Advisory: falha ou achado aqui não derruba o workflow nem bloqueia merge.
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      BASE: ${{ inputs.base }}
+      QG_OLLAMA_URL: ${{ vars.QG_OLLAMA_URL }}
+      QG_9ROUTER_URL: ${{ vars.QG_9ROUTER_URL }}
+      QG_AI_MODEL: ${{ vars.QG_AI_MODEL }}
+      QG_AI_API_KEY: ${{ secrets.QG_AI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      # Dry-run: imprime o que postaria. Não usa GITHUB_TOKEN nem fala com a API do GitHub.
+      - name: Revisar diff (dry-run)
+        run: |
+          set +e
+          node scripts/pr-ai-review.cjs --base "$BASE" --dry-run > ai-review.json 2> ai-review.err
+          code=$?
+          cat ai-review.err
+          {
+            echo '```json'
+            cat ai-review.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+  review-post:
+    name: Revisão com IA (postar, advisory)
+    if: ${{ inputs.post }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    # Advisory: falha aqui não derruba o workflow nem bloqueia merge.
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      BASE: ${{ inputs.base }}
+      PR: ${{ inputs.pr }}
+      GITHUB_TOKEN: ${{ github.token }}
+      QG_OLLAMA_URL: ${{ vars.QG_OLLAMA_URL }}
+      QG_9ROUTER_URL: ${{ vars.QG_9ROUTER_URL }}
+      QG_AI_MODEL: ${{ vars.QG_AI_MODEL }}
+      QG_AI_API_KEY: ${{ secrets.QG_AI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalação determinística
+        run: npm ci --ignore-scripts
+
+      - name: Revisar diff e postar comentários
+        run: |
+          set +e
+          node scripts/pr-ai-review.cjs --base "$BASE" --pr "$PR" --post > ai-review.json 2> ai-review.err
+          code=$?
+          cat ai-review.err
+          {
+            echo '```json'
+            cat ai-review.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
