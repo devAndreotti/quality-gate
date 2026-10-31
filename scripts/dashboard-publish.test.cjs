@@ -55,3 +55,26 @@ test('CLI aceita --root e --out e grava o arquivo no caminho pedido', (t) => {
   execFileSync(process.execPath, [SCRIPT, '--root', root, '--out', out], { stdio: 'ignore' });
   assert.ok(fs.existsSync(out));
 });
+
+test('renderChecks shows counts, a row per check with status, and escapes names', () => {
+  const { renderChecks } = require('./dashboard-publish.cjs');
+  const html = renderChecks({
+    sha: 'abc1234567',
+    counts: { ok: 1, fail: 1, running: 0, other: 0 },
+    checks: [
+      { name: 'Lint', status: 'completed', conclusion: 'success', url: 'https://github.com/a/b/runs/1' },
+      { name: '<script>x</script>', status: 'completed', conclusion: 'failure', url: 'javascript:alert(1)' },
+    ],
+  });
+  assert.match(html, /abc1234/);
+  assert.match(html, /<tr class="ok">/);
+  assert.match(html, /<tr class="fail">/);
+  assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>x/);
+  assert.doesNotMatch(html, /href="javascript:/);
+});
+
+test('renderChecks shows the error message when checks could not be collected', () => {
+  const { renderChecks } = require('./dashboard-publish.cjs');
+  assert.match(renderChecks({ error: 'gh indisponível' }), /gh indisponível/);
+});
