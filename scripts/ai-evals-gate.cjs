@@ -176,9 +176,18 @@ function loadBaseline(root) {
   return baseline.passRate;
 }
 
+// Modelos pequenos costumam embrulhar o JSON em cerca de markdown (```json ... ```).
+// Tolera uma única cerca; o conteúdo continua precisando ser um objeto JSON válido.
+function stripSingleCodeFence(text) {
+  const match = String(text)
+    .trim()
+    .match(/^```(?:json)?\s*\n([\s\S]*?)\n?```$/i);
+  return match ? match[1] : text;
+}
+
 function parseJsonObject(text) {
   try {
-    const value = JSON.parse(text);
+    const value = JSON.parse(stripSingleCodeFence(text));
     return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -204,7 +213,11 @@ function scoreCase(testCase, content) {
     }
   }
   for (const needle of testCase.expect.contains || []) {
-    checks.push({ name: `contains:${needle}`, ok: text.includes(needle) });
+    // Presença da palavra, sem diferenciar maiúsculas ("Hello" atende "hello").
+    checks.push({
+      name: `contains:${needle}`,
+      ok: text.toLowerCase().includes(String(needle).toLowerCase()),
+    });
   }
   return {
     id: testCase.id,
