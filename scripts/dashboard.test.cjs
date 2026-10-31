@@ -207,3 +207,36 @@ test('collectChecks fails closed with a clear error when gh is unavailable or th
   const notGithub = collectChecks('/tmp/none', 'https://gitlab.com/a/b.git', () => 'x');
   assert.match(notGithub.error, /remoto GitHub não identificado/);
 });
+
+test('render lists each check with its status icon, and shows the error when checks fail to load', () => {
+  const base = {
+    branch: 'main',
+    remote: null,
+    tokenEnv: 'nao',
+    ratchet: null,
+    snapshot: null,
+    snapshotAge: null,
+    now: new Date(),
+  };
+  const ok = render('/tmp/none', {
+    ...base,
+    checks: {
+      sha: 'abc1234def',
+      checks: [
+        { name: 'Lint', status: 'completed', conclusion: 'success' },
+        { name: 'CodeQL', status: 'completed', conclusion: 'failure' },
+        { name: 'Scorecard', status: 'in_progress', conclusion: null },
+        { name: 'Dashboard', status: 'completed', conclusion: 'skipped' },
+      ],
+    },
+  });
+  assert.match(ok, /commit abc1234 · 4 checks/);
+  assert.match(ok, /✅ Lint/);
+  assert.match(ok, /❌ CodeQL/);
+  assert.match(ok, /⏳ Scorecard/);
+  assert.match(ok, /⚪ Dashboard/);
+  const failed = render('/tmp/none', { ...base, checks: { error: 'gh indisponível' } });
+  assert.match(failed, /gh indisponível/);
+  const empty = render('/tmp/none', { ...base, checks: { sha: 'abc1234', checks: [] } });
+  assert.match(empty, /nenhum check reportado ainda/);
+});
