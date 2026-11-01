@@ -252,6 +252,7 @@ function main(argv, deps = {}) {
 }
 
 module.exports = {
+  defaultExec,
   collectRepo,
   countAlerts,
   defaultHistoryPath,

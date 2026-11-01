@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {
+  defaultExec,
   collectRepo,
   countAlerts,
   defaultHistoryPath,
@@ -298,4 +299,8 @@ test('main collects, writes history and dashboard, and honours --json and --stri
   const strict = main(['--catalog', catalog, '--history', history, '--strict', '--json'], { exec, now: NOW });
   assert.equal(strict.code, 1);
   assert.equal(JSON.parse(strict.out)[0].status, 'falha');
+});
+
+test('defaultExec runs a command and returns its trimmed output, without touching the network', () => {
+  assert.equal(defaultExec(process.execPath, ['-e', 'process.stdout.write("  ok  ")']), 'ok');
 });
