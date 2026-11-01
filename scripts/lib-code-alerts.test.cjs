@@ -5,7 +5,7 @@ const {
   normalizeSeverity,
   parseAlertLines,
   summarizeAlerts,
-} = require('./code-alerts.cjs');
+} = require('./lib/code-alerts.cjs');
 
 test('normalizeSeverity prefers security level and maps code-quality levels', () => {
   assert.equal(normalizeSeverity('CRITICAL', ''), 'critical');
