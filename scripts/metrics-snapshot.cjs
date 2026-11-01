@@ -7,6 +7,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { appendSnapshot, makeSnapshot, readSnapshots, series } = require('./lib/metrics-history.cjs');
+const { renderTrendSvg } = require('./lib/svg-trend.cjs');
 
 function readCoverage(root) {
   try {
@@ -36,6 +37,12 @@ function main(argv, deps = {}) {
   const root = deps.root || process.cwd();
   const outIdx = argv.indexOf('--out');
   const out = outIdx >= 0 ? argv[outIdx + 1] : path.join(root, '.quality-gate', 'metrics.jsonl');
+  if (argv.includes('--svg')) {
+    const file = argv[argv.indexOf('--svg') + 1];
+    const svg = renderTrendSvg(series(readSnapshots(out), 'coverage'), { title: 'Cobertura de linhas' });
+    fs.writeFileSync(file, svg, 'utf8');
+    return { code: 0, out: `gráfico gravado: ${file}` };
+  }
   if (argv.includes('--summary')) {
     const rows = series(readSnapshots(out), 'coverage');
     return {

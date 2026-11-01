@@ -51,3 +51,12 @@ test('without a git repo the commit is recorded as desconhecido', () => {
   main(['--out', out], { root, now: new Date('2026-11-01T00:00:00Z') });
   assert.equal(JSON.parse(fs.readFileSync(out, 'utf8').trim()).commit, 'desconhecido');
 });
+
+test('--svg writes a chart of the coverage series', () => {
+  const root = repoWith({ coverage: { lines: 90 } });
+  const out = path.join(root, 'h.jsonl');
+  const svgFile = path.join(root, 'cov.svg');
+  main(['--out', out], { root, commit: 'a', now: new Date('2026-11-01T00:00:00Z') });
+  assert.match(main(['--svg', svgFile, '--out', out], { root }).out, /gráfico gravado/);
+  assert.match(fs.readFileSync(svgFile, 'utf8'), /^<svg /);
+});
