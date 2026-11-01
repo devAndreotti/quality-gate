@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { appendSnapshot, makeSnapshot, readSnapshots, series } = require('./metrics-history.cjs');
+const { appendSnapshot, makeSnapshot, readSnapshots, series } = require('./lib/metrics-history.cjs');
 
 function tmpFile() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'qg-hist-')), 'metrics.jsonl');
