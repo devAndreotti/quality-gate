@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { escapeXml, renderTrendSvg } = require('./svg-trend.cjs');
+const { escapeXml, renderTrendSvg } = require('./lib/svg-trend.cjs');
 
 const series = [
   { date: '2026-11-01', value: 90 },
