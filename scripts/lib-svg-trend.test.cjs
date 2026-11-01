@@ -51,6 +51,6 @@ test('renderTrendSvg escapes the title and the dates', () => {
     ],
     { title: '<script>' },
   );
-  assert.doesNotMatch(svg, /<script>/);
+  assert.equal(svg.includes('<script>'), false);
   assert.match(svg, /&lt;x&gt;/);
 });
