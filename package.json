@@ -21,7 +21,7 @@
     "jscpd": "^4.3.0",
     "react": "^19.2.0",
     "prettier": "^3.9.10",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "optionalDependencies": {
     "oxc-parser": "0.155.0"
