@@ -9,3 +9,5 @@ node_modules/
 /reports/
 /.stryker-tmp/
 .quality-gate/fleet-github.json
+
+.quality-gate/metrics.jsonl
