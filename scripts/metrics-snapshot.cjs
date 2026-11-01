@@ -43,9 +43,7 @@ function main(argv, deps = {}) {
       out: rows.map((r) => `${r.date}  cobertura ${r.value}%`).join('\n') || 'sem snapshots',
     };
   }
-  const commit =
-    deps.commit ??
-    childProcess.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const commit = deps.commit ?? readCommit(root);
   const now = deps.now || new Date();
   const snap = makeSnapshot({ date: now.toISOString(), commit, coverage: readCoverage(root) });
   const { added } = appendSnapshot(out, snap);
