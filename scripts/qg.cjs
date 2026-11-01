@@ -10,6 +10,7 @@
 //   commits     valida mensagens de commit (commit-lint.cjs)
 //   fleet       estado de vários repos do GitHub (fleet-github.cjs)
 //   doctor      auditoria do pacote (doctor.cjs)
+//   status      resumo de cobertura, code scanning e Dependabot (qg-status.cjs)
 //   version     versão do pacote
 //   help        esta ajuda
 // Exit: o do script chamado; 2 para comando desconhecido.
@@ -27,6 +28,7 @@ const COMMANDS = {
   commits: { script: 'commit-lint.cjs', args: [] },
   fleet: { script: 'fleet-github.cjs', args: [] },
   doctor: { script: 'doctor.cjs', args: [] },
+  status: { script: 'qg-status.cjs', args: [] },
 };
 
 const HELP = [
@@ -43,6 +45,7 @@ const HELP = [
     commits: 'mensagens de commit (Conventional Commits)',
     fleet: 'estado de vários repos do GitHub',
     doctor: 'auditoria do pacote',
+    status: 'resumo: cobertura, code scanning e Dependabot (--json)',
     version: 'versão do pacote',
     help: 'esta ajuda',
   }).map(([name, desc]) => `  ${name.padEnd(10)} ${desc}`),

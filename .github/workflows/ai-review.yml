@@ -1,15 +1,18 @@
-# Revisão de PR com modelo local (opcional, advisory).
+# Revisão de PR com modelo local (opcional, advisory). Só roda sob demanda (workflow_dispatch).
 # NÃO é required check, NÃO roda em pull_request e nunca altera branch protection.
-# Só roda sob demanda (workflow_dispatch). continue-on-error mantém o workflow verde mesmo com achados.
+# continue-on-error mantém o workflow verde mesmo com achados.
 #
-# PROVEDOR: o modelo precisa estar num endereço local (Ollama em QG_OLLAMA_URL ou 9Router em
-# QG_9ROUTER_URL, definidos como variáveis do repositório). Esse endereço só é alcançável a partir de
-# um runner self-hosted na mesma rede. Em runner hospedado pelo GitHub (ubuntu-latest, padrão deste
-# input) o provedor não responde e o script sai com status "skipped" e exit 0. Para revisão real,
-# informe no input "runner" um label de runner self-hosted com acesso ao provedor.
-#
-# PRIVACIDADE: só provedores locais. O diff nunca é enviado a serviço externo (OpenAI, Anthropic,
-# Copilot, CodeRabbit etc.).
+# MODELO DE SEGURANÇA (leia antes de mudar):
+# - O código executado (scripts, npm ci) vem SEMPRE de `main` (ref fixa). O PR entra só como dado:
+#   o diff é calculado com git diff base...head, sem executar nada do branch do PR.
+# - Os secrets e a URL do provedor vêm do environment `ai-review`. Esse environment deve ter:
+#   required reviewers (aprovação manual a cada execução) e deployment branches = somente `main`.
+#   Sem isso, qualquer branch com escrita poderia ler a chave. Configurar em Settings > Environments.
+# - Opt-in por rótulo: o PR precisa ter o rótulo `ai-review`, senão o job para antes do provedor.
+# - Runner padrão é ubuntu-latest, que não alcança o provedor local (o job sai como skipped).
+#   Para revisão real, informe um label de runner self-hosted dedicado e efêmero (ver docs/PLANO-PAINEL-CLI.md).
+# - PRIVACIDADE: o diff vai só ao provedor configurado em QG_9ROUTER_URL ou QG_OLLAMA_URL. Se o 9Router
+#   encaminhar para um modelo em nuvem, o diff sai da máquina; isso é decisão de política, não do workflow.
 #
 # Dois jobs com permissões separadas: review (dry-run, só leitura) e review-post (grava comentários
 # inline, exige pull-requests: write). Só um deles roda por execução, conforme o input "post".
@@ -20,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: 'Label do runner (self-hosted para alcançar o provedor local)'
+        description: 'Label do runner (self-hosted dedicado para alcançar o provedor local)'
         required: false
         default: 'ubuntu-latest'
         type: string
@@ -30,9 +33,8 @@ on:
         default: 'origin/main'
         type: string
       pr:
-        description: 'Número do PR (obrigatório quando post = true)'
-        required: false
-        default: ''
+        description: 'Número do PR a revisar (obrigatório; precisa ter o rótulo ai-review)'
+        required: true
         type: string
       post:
         description: 'Postar comentários inline no PR (padrão: só dry-run, sem falar com o GitHub)'
@@ -41,7 +43,7 @@ on:
         type: boolean
 
 concurrency:
-  group: ai-review-${{ github.ref }}
+  group: ai-review-${{ inputs.pr }}
   cancel-in-progress: false
 
 # Permissão mínima global: leitura.
@@ -53,22 +55,29 @@ jobs:
     name: Revisão com IA (dry-run, advisory)
     if: ${{ !inputs.post }}
     runs-on: ${{ inputs.runner }}
+    environment: ai-review
     timeout-minutes: 15
     # Advisory: falha ou achado aqui não derruba o workflow nem bloqueia merge.
     continue-on-error: true
     permissions:
       contents: read
+      pull-requests: read
     env:
       BASE: ${{ inputs.base }}
+      PR: ${{ inputs.pr }}
+      GH_TOKEN: ${{ github.token }}
       QG_OLLAMA_URL: ${{ vars.QG_OLLAMA_URL }}
       QG_9ROUTER_URL: ${{ vars.QG_9ROUTER_URL }}
       QG_AI_MODEL: ${{ vars.QG_AI_MODEL }}
       QG_AI_API_KEY: ${{ secrets.QG_AI_API_KEY }}
     steps:
-      - name: Checkout
+      # Ferramentas vêm de main, nunca do branch do PR.
+      - name: Checkout (main)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -76,14 +85,25 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Instalação determinística
+      - name: Instalação determinística (lockfile de main)
         run: npm ci --ignore-scripts
 
-      # Dry-run: imprime o que postaria. Não usa GITHUB_TOKEN nem fala com a API do GitHub.
+      - name: Exigir rótulo ai-review
+        run: |
+          labels=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '[.labels[].name] | join(",")')
+          case ",$labels," in
+            *,ai-review,*) echo "rótulo ai-review presente" ;;
+            *) echo "PR #$PR sem o rótulo ai-review: revisão não executada" >&2; exit 1 ;;
+          esac
+
+      - name: Buscar o head do PR como dado
+        run: git fetch --no-tags origin "pull/${PR}/head:refs/qg/pr-${PR}"
+
+      # Dry-run: imprime o que postaria. Não usa GITHUB_TOKEN para escrita nem fala com a API de escrita.
       - name: Revisar diff (dry-run)
         run: |
           set +e
-          node scripts/pr-ai-review.cjs --base "$BASE" --dry-run > ai-review.json 2> ai-review.err
+          node scripts/pr-ai-review.cjs --base "$BASE" --head "refs/qg/pr-${PR}" --dry-run > ai-review.json 2> ai-review.err
           code=$?
           cat ai-review.err
           {
@@ -97,6 +117,7 @@ jobs:
     name: Revisão com IA (postar, advisory)
     if: ${{ inputs.post }}
     runs-on: ${{ inputs.runner }}
+    environment: ai-review
     timeout-minutes: 15
     # Advisory: falha aqui não derruba o workflow nem bloqueia merge.
     continue-on-error: true
@@ -112,10 +133,12 @@ jobs:
       QG_AI_MODEL: ${{ vars.QG_AI_MODEL }}
       QG_AI_API_KEY: ${{ secrets.QG_AI_API_KEY }}
     steps:
-      - name: Checkout
+      - name: Checkout (main)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -123,13 +146,24 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Instalação determinística
+      - name: Instalação determinística (lockfile de main)
         run: npm ci --ignore-scripts
+
+      - name: Exigir rótulo ai-review
+        run: |
+          labels=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}" --jq '[.labels[].name] | join(",")')
+          case ",$labels," in
+            *,ai-review,*) echo "rótulo ai-review presente" ;;
+            *) echo "PR #$PR sem o rótulo ai-review: revisão não executada" >&2; exit 1 ;;
+          esac
+
+      - name: Buscar o head do PR como dado
+        run: git fetch --no-tags origin "pull/${PR}/head:refs/qg/pr-${PR}"
 
       - name: Revisar diff e postar comentários
         run: |
           set +e
-          node scripts/pr-ai-review.cjs --base "$BASE" --pr "$PR" --post > ai-review.json 2> ai-review.err
+          node scripts/pr-ai-review.cjs --base "$BASE" --head "refs/qg/pr-${PR}" --pr "$PR" --post > ai-review.json 2> ai-review.err
           code=$?
           cat ai-review.err
           {
