@@ -1,8 +1,5 @@
 {
   "owner": "seu-usuario-ou-org",
   "ignoreWorkflows": ["Dependabot Updates"],
-  "repos": [
-    { "name": "meu-app", "coverage": "scripts/baseline.json" },
-    "outra-api"
-  ]
+  "repos": [{ "name": "meu-app", "coverage": "scripts/baseline.json" }, "outra-api"]
 }
