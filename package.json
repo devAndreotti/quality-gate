@@ -25,5 +25,8 @@
   },
   "optionalDependencies": {
     "oxc-parser": "0.155.0"
+  },
+  "overrides": {
+    "qs": ">=6.16.1"
   }
 }
