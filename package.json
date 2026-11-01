@@ -28,5 +28,8 @@
   },
   "overrides": {
     "qs": ">=6.16.1"
+  },
+  "bin": {
+    "qg": "scripts/qg.cjs"
   }
 }
