@@ -8,3 +8,4 @@ node_modules/
 # Piloto Stryker (experimento local)
 /reports/
 /.stryker-tmp/
+.quality-gate/fleet-github.json
