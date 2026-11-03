@@ -1,5 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -99,4 +100,147 @@ test('render shows n/d for unavailable items and per-tool counts when present', 
     dependabotOpen: 0,
   });
   assert.match(withTools, /3 abertos \(semgrep: 2, codeql: 1\)/);
+});
+
+test('repoSlug requires the whole remote to be owner/repo', () => {
+  assert.equal(repoSlug('https://github.com/devAndreotti/quality-gate.git'), 'devAndreotti/quality-gate');
+  assert.equal(repoSlug('https://github.com/o/r/tree/main'), null);
+});
+
+test('readCoverage returns null when line coverage is not a number', () => {
+  assert.equal(readCoverage(tempRepo({ coverage: { lines: '90' } })), null);
+  assert.equal(readCoverage(tempRepo({ coverage: {} })), null);
+});
+
+test('readRemote asks git for origin and the slug drives the gh calls', () => {
+  const root = tempRepo({ coverage: { lines: 50 } });
+  const calls = [];
+  const gh = fakeGh({ 'code-scanning': '', dependabot: '1' });
+  const exec = (file, args) => {
+    calls.push([file, args]);
+    return file === 'git' ? 'https://github.com/o/r.git' : gh(file, args);
+  };
+  const r = main(['--json'], { root, exec });
+  assert.equal(r.code, 0);
+  assert.deepEqual(calls[0], ['git', ['-C', root, 'remote', 'get-url', 'origin']]);
+  assert.equal(JSON.parse(r.out).repo, 'o/r');
+});
+
+test('main exits 2 when git cannot read the origin remote', () => {
+  const r = main([], {
+    root: tempRepo(),
+    exec: () => {
+      throw new Error('not a git repository');
+    },
+  });
+  assert.equal(r.code, 2);
+  assert.match(r.out, /remoto GitHub não encontrado/);
+});
+
+test('gh is called with the exact dependabot arguments', () => {
+  const calls = [];
+  buildStatus({
+    root: tempRepo(),
+    remote: 'https://github.com/o/r.git',
+    exec: (file, args) => {
+      calls.push([file, args]);
+      return '';
+    },
+  });
+  const dependabot = calls.find(([, args]) => args.some((a) => a.includes('dependabot')));
+  assert.deepEqual(dependabot, [
+    'gh',
+    ['api', '--paginate', 'repos/o/r/dependabot/alerts?state=open&per_page=100', '--jq', 'length'],
+  ]);
+});
+
+test('dependabot count sums every page, including multi-digit ones', () => {
+  const s = buildStatus({
+    root: tempRepo(),
+    remote: 'https://github.com/o/r.git',
+    exec: fakeGh({ 'code-scanning': '', dependabot: '10\n5' }),
+  });
+  assert.equal(s.dependabotOpen, 15);
+});
+
+test('render prints one line per field and shows nenhum when no tool has alerts', () => {
+  const lines = render({
+    repo: 'o/r',
+    coverage: { lines: 91.25 },
+    codeScanning: { total: 0, byTool: {} },
+    dependabotOpen: 2,
+  }).split('\n');
+  assert.deepEqual(lines, [
+    'repo: o/r',
+    'cobertura (linhas): 91.3%',
+    'code scanning: 0 abertos (nenhum)',
+    'dependabot: 2 abertos',
+  ]);
+});
+
+test(
+  'qg status CLI reads origin and the gh output from the command line',
+  {
+    skip: process.platform === 'win32',
+  },
+  () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-status-cli-'));
+    childProcess.execFileSync('git', ['init', '-q'], { cwd: root });
+    childProcess.execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/o/r.git'], {
+      cwd: root,
+    });
+    fs.mkdirSync(path.join(root, 'scripts'));
+    fs.writeFileSync(
+      path.join(root, 'scripts', 'baseline.json'),
+      JSON.stringify({ coverage: { lines: 90 } }),
+    );
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-status-bin-'));
+    const gh = path.join(bin, 'gh');
+    fs.writeFileSync(
+      gh,
+      [
+        '#!/bin/sh',
+        'case "$*" in',
+        "  *code-scanning*) printf 'semgrep\\thigh\\t\\tr1\\t1\\t2026-01-01T00:00:00Z\\n' ;;",
+        "  *dependabot*) printf '2\\n3\\n' ;;",
+        'esac',
+        '',
+      ].join('\n'),
+    );
+    fs.chmodSync(gh, 0o755);
+    const script = path.join(__dirname, 'qg-status.cjs');
+    const r = childProcess.spawnSync(process.execPath, [script, '--json'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+    });
+    assert.equal(r.status, 0);
+    const json = JSON.parse(r.stdout);
+    assert.equal(json.repo, 'o/r');
+    assert.equal(json.coverage.lines, 90);
+    assert.equal(json.codeScanning.total, 1);
+    assert.equal(json.dependabotOpen, 5);
+  },
+);
+
+test('qg status CLI exits 2 outside a GitHub remote and prints the error', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qg-status-nogit-'));
+  const script = path.join(__dirname, 'qg-status.cjs');
+  const r = childProcess.spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  assert.match(r.stdout, /qg status: remoto GitHub não encontrado/);
+});
+
+test('repoSlug ignores surrounding whitespace such as a trailing newline', () => {
+  assert.equal(repoSlug('git@github.com:o/r.git\n'), 'o/r');
+});
+
+test('requiring the module prints nothing and sets no exit code', () => {
+  const script = path.join(__dirname, 'qg-status.cjs');
+  const r = childProcess.spawnSync(process.execPath, ['-e', `require(${JSON.stringify(script)})`], {
+    cwd: tempRepo(),
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
 });
