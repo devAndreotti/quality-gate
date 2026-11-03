@@ -60,3 +60,44 @@ test('series sorts by date and drops missing values', () => {
     { date: '2026-11-03', value: 92 },
   ]);
 });
+
+test('makeSnapshot keeps numeric metrics, zero included, and nulls non-numeric ones', () => {
+  const s = makeSnapshot({
+    date: '2026-11-01',
+    commit: 'a',
+    coverage: 0,
+    codeScanningOpen: 5,
+    dependabotOpen: 3,
+  });
+  assert.equal(s.coverage, 0);
+  assert.equal(s.codeScanningOpen, 5);
+  assert.equal(s.dependabotOpen, 3);
+  const t = makeSnapshot({ date: '2026-11-01', coverage: '90', codeScanningOpen: '5' });
+  assert.equal(t.coverage, null);
+  assert.equal(t.codeScanningOpen, null);
+});
+
+test('makeSnapshot leaves the commit empty when it is unknown', () => {
+  assert.equal(makeSnapshot({ date: '2026-11-01' }).commit, '');
+});
+
+test('readSnapshots ignores null, strings, arrays and non-string dates', () => {
+  const file = tmpFile();
+  fs.writeFileSync(file, 'null\n"texto"\n[1]\n{"date":20261101}\n{"date":"2026-11-01","commit":"ok"}\n');
+  const rows = readSnapshots(file);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].commit, 'ok');
+});
+
+test('appendSnapshot treats the same commit on another day as a new snapshot', () => {
+  const file = tmpFile();
+  assert.equal(
+    appendSnapshot(file, makeSnapshot({ date: '2026-11-01', commit: 'a', coverage: 90 })).added,
+    true,
+  );
+  assert.equal(
+    appendSnapshot(file, makeSnapshot({ date: '2026-11-02', commit: 'a', coverage: 90 })).added,
+    true,
+  );
+  assert.equal(readSnapshots(file).length, 2);
+});

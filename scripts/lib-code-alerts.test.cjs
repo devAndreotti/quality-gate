@@ -82,3 +82,71 @@ test('summarizeAlerts groups by tool, counts severities and keeps the 10 oldest'
 test('summarizeAlerts returns null when alerts are unavailable', () => {
   assert.equal(summarizeAlerts(null), null);
 });
+
+test('parseAlertLines keeps rule and createdAt empty when those columns are missing', () => {
+  const [row] = parseAlertLines('semgrep\thigh');
+  assert.equal(row.rule, '');
+  assert.equal(row.createdAt, '');
+  assert.equal(row.number, 0);
+});
+
+test('fetchCodeScanningAlerts sends the exact gh api arguments and a tsv jq filter', () => {
+  const calls = [];
+  fetchCodeScanningAlerts('o/r', (file, args) => {
+    calls.push({ file, args });
+    return '';
+  });
+  assert.equal(calls[0].file, 'gh');
+  assert.equal(calls[0].args[0], 'api');
+  assert.equal(calls[0].args[1], '--paginate');
+  assert.equal(calls[0].args[2], 'repos/o/r/code-scanning/alerts?state=open&per_page=100');
+  assert.equal(calls[0].args[3], '--jq');
+  assert.match(calls[0].args[4], /@tsv$/);
+  assert.match(calls[0].args[4], /\.rule\.id/);
+  assert.match(calls[0].args[4], /security_severity_level/);
+});
+
+test('fetchCodeScanningAlerts returns an empty list when there are no open alerts', () => {
+  assert.deepEqual(
+    fetchCodeScanningAlerts('o/r', () => ''),
+    [],
+  );
+});
+
+test('summarizeAlerts counts every occurrence of a severity within a tool', () => {
+  const alerts = Array.from({ length: 6 }, (_, i) => ({
+    tool: 'semgrep',
+    severity: i % 2 ? 'high' : 'low',
+    rule: 'r',
+    number: i,
+    createdAt: '2026-01-01T00:00:00Z',
+  }));
+  assert.deepEqual(summarizeAlerts(alerts).byTool.semgrep.bySeverity, { low: 3, high: 3 });
+});
+
+test('summarizeAlerts keeps the 10 oldest by date even when input is not sorted', () => {
+  const alerts = Array.from({ length: 12 }, (_, i) => ({
+    tool: 'semgrep',
+    severity: 'low',
+    rule: 'r',
+    number: i,
+    createdAt: `2026-01-${String(12 - i).padStart(2, '0')}T00:00:00Z`,
+  }));
+  const oldest = summarizeAlerts(alerts).byTool.semgrep.oldest.map((a) => a.number);
+  assert.deepEqual(oldest, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+});
+
+test('summarizeAlerts returns zero total and no tools for an empty list', () => {
+  assert.deepEqual(summarizeAlerts([]), { total: 0, byTool: {} });
+});
+
+test('summarizeAlerts lists only real alerts in a small group', () => {
+  const alert = {
+    tool: 'codeql',
+    severity: 'low',
+    rule: 'r',
+    number: 1,
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+  assert.deepEqual(summarizeAlerts([alert]).byTool.codeql.oldest, [alert]);
+});

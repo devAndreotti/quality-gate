@@ -54,3 +54,58 @@ test('renderTrendSvg escapes the title and the dates', () => {
   assert.equal(svg.includes('<script>'), false);
   assert.match(svg, /&lt;x&gt;/);
 });
+
+test('renderTrendSvg places points, axis and labels at exact coordinates', () => {
+  const svg = renderTrendSvg(series, { title: 'Cobertura', unit: '%' });
+  assert.match(svg, /<polyline points="48\.0,173\.7 332\.0,66\.2 616\.0,30\.3" /);
+  assert.match(svg, /<line x1="48" y1="188" x2="616" y2="188" /);
+  assert.match(svg, /<text x="42" y="16\.0" font-size="11" fill="#64748b" text-anchor="end">92\.2%<\/text>/);
+  assert.match(svg, /<text x="42" y="188\.0" font-size="11" fill="#64748b" text-anchor="end">89\.8%<\/text>/);
+  assert.match(
+    svg,
+    /<text x="48" y="210" font-size="11" fill="#64748b" text-anchor="start">2026-11-01<\/text>/,
+  );
+  assert.match(
+    svg,
+    /<text x="616" y="210" font-size="11" fill="#64748b" text-anchor="end">2026-11-03<\/text>/,
+  );
+});
+
+test('renderTrendSvg pads the domain by 10% of the span on each side', () => {
+  const svg = renderTrendSvg([
+    { date: '2026-11-01', value: 10 },
+    { date: '2026-11-02', value: 20 },
+  ]);
+  assert.match(svg, />21\.0%<\/text>/);
+  assert.match(svg, />9\.0%<\/text>/);
+});
+
+test('renderTrendSvg widens a flat series by one unit on each side', () => {
+  const svg = renderTrendSvg([
+    { date: '2026-11-01', value: 80 },
+    { date: '2026-11-02', value: 80 },
+  ]);
+  assert.match(svg, />81\.2%<\/text>/);
+  assert.match(svg, />78\.8%<\/text>/);
+});
+
+test('renderTrendSvg uses Tendência and % as defaults', () => {
+  const svg = renderTrendSvg(series);
+  assert.match(svg, /aria-label="Tendência"/);
+  assert.match(svg, /<title>Tendência<\/title>/);
+  assert.match(svg, /<title>2026-11-01: 90%<\/title>/);
+});
+
+test('renderTrendSvg writes no stray text between dots or labels', () => {
+  const svg = renderTrendSvg(series);
+  assert.doesNotMatch(svg, /<\/circle>[^<]/);
+  assert.doesNotMatch(svg, /<\/text>[^<]/);
+});
+
+test('renderTrendSvg puts the no-data message at the vertical middle, start-anchored', () => {
+  const svg = renderTrendSvg([]);
+  assert.match(
+    svg,
+    /<text x="48" y="110" font-size="11" fill="#64748b" text-anchor="start">sem dados suficientes para a tendência<\/text>/,
+  );
+});
