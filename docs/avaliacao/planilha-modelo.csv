@@ -1,0 +1,3 @@
+pr,ferramenta,achado_id,arquivo,linha,descricao_curta,classificacao,avaliador,observacao
+# classificacao: real | nao_real | incerto
+# uma linha por achado emitido; PR sem achado da ferramenta: uma linha com achado_id vazio e classificacao vazia
