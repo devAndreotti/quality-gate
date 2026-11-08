@@ -1,0 +1,14 @@
+{
+  "versao": 1,
+  "prereg_data": "2026-11-05",
+  "casos": [
+    {"pr": "seed-01", "tipo": "defeito", "cwe": "CWE-78", "arquivo": "eval-seeded/seed01.cjs", "linha": 3, "descricao": "comando shell montado com argv por template string"},
+    {"pr": "seed-02", "tipo": "defeito", "cwe": "CWE-95", "arquivo": "eval-seeded/seed02.cjs", "linha": 3, "descricao": "eval de entrada externa"},
+    {"pr": "seed-03", "tipo": "defeito", "cwe": "CWE-22", "arquivo": "eval-seeded/seed03.cjs", "linha": 3, "descricao": "leitura de arquivo com caminho vindo de argv, sem validação"},
+    {"pr": "seed-04", "tipo": "defeito", "cwe": "CWE-798", "arquivo": "eval-seeded/seed04.cjs", "linha": 2, "descricao": "credencial fixa no código (valor de exemplo inválido)"},
+    {"pr": "seed-05", "tipo": "defeito", "cwe": "CWE-338", "arquivo": "eval-seeded/seed05.cjs", "linha": 3, "descricao": "token de segurança gerado com Math.random"},
+    {"pr": "seed-06", "tipo": "controle", "arquivo": "eval-seeded/seed06.cjs", "descricao": "função pura com teste, sem defeito"},
+    {"pr": "seed-07", "tipo": "controle", "arquivo": "eval-seeded/seed07.cjs", "descricao": "leitura de arquivo com caminho fixo, sem defeito"},
+    {"pr": "seed-08", "tipo": "controle", "arquivo": "eval-seeded/seed08.cjs", "descricao": "token gerado com crypto.randomBytes, sem defeito"}
+  ]
+}
