@@ -6,12 +6,9 @@ Só a branch `main` recebe correções de segurança.
 
 ## Como reportar uma vulnerabilidade
 
-Não abra issue pública com detalhes de vulnerabilidade. Use o relato privado do GitHub:
+O relato privado do GitHub não está habilitado neste repositório, então **não há canal privado no momento**. Para não expor detalhes publicamente, abra uma issue mencionando apenas que tem um relato de segurança e peça um contato, sem incluir a reprodução. Descreva o problema em uma issue pública somente depois que ele estiver corrigido.
 
-- Aba **Security** do repositório > **Report a vulnerability**, ou
-- direto: https://github.com/devAndreotti/quality-gate/security/advisories/new
-
-Inclua: o que é, como reproduzir (comando ou passos mínimos), versão ou commit afetado e o impacto que você observou.
+Inclua, quando possível: o que é, como reproduzir (comando ou passos mínimos), versão ou commit afetado e o impacto observado.
 
 Para bugs comuns, dúvidas ou sugestões que não são de segurança, use as issues normais.
 
