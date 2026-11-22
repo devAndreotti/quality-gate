@@ -220,7 +220,7 @@ jobs:
       # Bloqueia o merge se o quality gate do Sonar falhar
       - name: SonarCloud quality gate check
         if: steps.sonar-config.outputs.enabled == 'true'
-        uses: sonarsource/sonarqube-quality-gate-action@3cfda8eca512232cb42bd40fd01567cba471db39 # master
+        uses: sonarsource/sonarqube-quality-gate-action@ad79b13d38cce47457fb4059994f2d79e1dc625a # master
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
