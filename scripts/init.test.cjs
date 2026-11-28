@@ -162,6 +162,26 @@ test('runInit instala no modo company e o doctor não acusa arquivo faltando', (
   assert.equal(files.level, 'ok', files.detail);
 });
 
+test('runInit completa policy incompleta sem perder o que o projeto definiu', () => {
+  const root = yarnProject();
+  write(
+    root,
+    '.quality-gate/policy.json',
+    JSON.stringify({
+      schemaVersion: 1,
+      profile: 'strict-node',
+      ci: { requiredChecks: ['x'], coverageRatchet: true, maxFileLines: 250 },
+      bootstrap: { license: { enabled: false } },
+    }),
+  );
+  runInit({ project: root, templateRoot: TEMPLATE_ROOT, skipBaseline: true });
+  const { loadPolicy } = require('./lib/policy.cjs');
+  const policy = loadPolicy(root);
+  assert.equal(policy.ci.maxFileLines, 250);
+  assert.equal(policy.dockerImageDoctor.enabled, 'never');
+  assert.equal(policy.bootstrap.funding.buyMeACoffee, 'disabled');
+});
+
 test('runInit de novo reaproveita as opções gravadas na policy', () => {
   const root = yarnProject();
   runInit({

@@ -167,6 +167,37 @@ function writeVersion(templateRoot, projectRoot, dryRun) {
   return commit ? `${version} (${commit})` : version;
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+// O que o projeto já definiu ganha; o template só preenche o que falta.
+function mergeDefaults(current, defaults) {
+  const merged = { ...defaults };
+  for (const [key, value] of Object.entries(current)) {
+    merged[key] =
+      isPlainObject(value) && isPlainObject(defaults[key]) ? mergeDefaults(value, defaults[key]) : value;
+  }
+  return merged;
+}
+
+// Policy existente e incompleta (escrita à mão, ou de versão antiga) não passa no validador.
+function completePolicy(templateRoot, projectRoot, dryRun) {
+  const current = readPolicy(projectRoot);
+  if (!current || dryRun) {
+    return;
+  }
+  const { buildProjectPolicy } = require('./bootstrap-repo.cjs');
+  const template = JSON.parse(
+    fs.readFileSync(path.join(templateRoot, '.quality-gate', 'policy.json'), 'utf8'),
+  );
+  const merged = mergeDefaults(current, buildProjectPolicy(template, projectRoot));
+  fs.writeFileSync(
+    path.join(projectRoot, '.quality-gate', 'policy.json'),
+    `${JSON.stringify(merged, null, 2)}\n`,
+  );
+}
+
 // Modo company: nada de README, LICENSE, FUNDING ou dependabot do bootstrap pessoal.
 function applyCompanyPolicy(projectRoot, install, dryRun) {
   const policyPath = path.join(projectRoot, '.quality-gate', 'policy.json');
@@ -174,6 +205,8 @@ function applyCompanyPolicy(projectRoot, install, dryRun) {
   for (const key of ['license', 'funding', 'dependabot', 'readme']) {
     policy.bootstrap[key].enabled = false;
   }
+  // O validador exige o campo; o valor do template é a conta pessoal do mantenedor.
+  policy.bootstrap.funding.buyMeACoffee = 'disabled';
   policy.github.copilotReview = false;
   policy.install = install;
   if (!dryRun) {
@@ -252,6 +285,7 @@ function runInit(options = {}) {
   });
   steps.push({ step: 'Versão', detail: writeVersion(templateRoot, projectRoot, dryRun) });
 
+  completePolicy(templateRoot, projectRoot, dryRun);
   const configured = configureProject({
     projectRoot,
     templateRoot,
