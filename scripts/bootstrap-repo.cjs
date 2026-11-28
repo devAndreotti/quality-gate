@@ -71,13 +71,9 @@ function readJsonIfExists(filePath) {
 
 function detectRemote(projectRoot) {
   try {
-    const remote = childProcess
-      .execSync('git remote get-url origin', {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-      .trim();
+    // git do PATH, comando fixo, como no resto do gate (lib/github.cjs).
+    const options = { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+    const remote = String(childProcess.execSync('git remote get-url origin', options)).trim(); // NOSONAR
     const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
     if (match) return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
   } catch {

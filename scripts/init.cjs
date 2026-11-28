@@ -151,12 +151,10 @@ function writeVersion(templateRoot, projectRoot, dryRun) {
   const version = fs.readFileSync(path.join(templateRoot, 'VERSION'), 'utf8').trim();
   let commit = null;
   try {
-    commit = String(
-      childProcess.execFileSync('git', ['-C', templateRoot, 'rev-parse', '--short', 'HEAD'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }),
-    ).trim();
+    // git do PATH, como no resto do gate (lib/github.cjs): ferramenta de dev, binário fixo.
+    const args = ['-C', templateRoot, 'rev-parse', '--short', 'HEAD'];
+    const options = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+    commit = String(childProcess.execFileSync('git', args, options)).trim(); // NOSONAR
   } catch {
     // Template fora de um checkout git: grava só a versão.
   }
