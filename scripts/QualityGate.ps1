@@ -26,7 +26,13 @@ param(
     [switch]$DryRun,
     [switch]$Yes,
     [switch]$Force,
-    [string]$Repo
+    [string]$Repo,
+
+    # Modo company (scripts/init.cjs): sem Sonar, sem extras pessoais, sem GitHub e sem commit
+    [switch]$Company,
+    [string]$RunsOn,
+    [string]$Branches,
+    [string]$SecretIgnore
 )
 
 $ErrorActionPreference = 'Stop'
@@ -147,6 +153,7 @@ function Show-Help {
         [pscustomobject]@{ Command = '-SkipBaseline'; Description = 'pula a captura do baseline inicial' }
         [pscustomobject]@{ Command = '-SkipCommit'; Description = 'pula o commit automático no git' }
         [pscustomobject]@{ Command = '-SkipGitHub'; Description = 'pula branch protection e ruleset remoto' }
+        [pscustomobject]@{ Command = '-Company'; Description = 'modo empresa: só gate, sem Sonar/extras (-RunsOn, -Branches, -SecretIgnore)' }
         [pscustomobject]@{ Command = '-DryRun'; Description = 'executa em modo demonstração' }
         [pscustomobject]@{ Command = '-Yes'; Description = 'confirma etapas com padrão seguro' }
         [pscustomobject]@{ Command = '-Force'; Description = 'permite instalar em stack não Node' }
@@ -789,6 +796,11 @@ function Invoke-Init {
         foreach ($file in $rootFiles) {
             $src = Join-Path $TemplateRoot $file
             $dst = Join-Path $ProjectRoot $file
+            # O CHANGELOG do projeto é dele: só copia o do gate quando não existe nenhum.
+            if ($file -eq 'CHANGELOG.md' -and (Test-Path $dst)) {
+                Write-InitItem "CHANGELOG.md do projeto mantido." 'DarkGray'
+                continue
+            }
             if (Test-Path $src) {
                 if ($DryRun) {
                     Write-DryRunPlan "Copiaria $file para $dst"
@@ -848,7 +860,7 @@ function Invoke-Init {
         $configJs = if ($DryRun) { Join-Path $TemplateRoot "scripts\configure-project.cjs" } else { Join-Path $ProjectRoot "scripts\configure-project.cjs" }
         if (Test-Path $configJs) {
             Write-InitItem "Configurando perfil $($projectProfile.Name)..."
-            $configArgs = @("--project", $ProjectRoot, "--profile", $projectProfile.Name)
+            $configArgs = @("--project", $ProjectRoot, "--profile", $projectProfile.Name, "--template-root", $TemplateRoot)
             if (-not $Sonar) {
                 $configArgs += "--skip-sonar"
             }
@@ -1044,6 +1056,18 @@ function Invoke-Init {
     Write-InitSummary
     Write-Host '    ✓ Setup do Quality Gate finalizado.' -ForegroundColor Green
     return
+}
+
+if ($Init -and $Company) {
+    $initArgs = @((Join-Path $TemplateRoot 'scripts\init.cjs'), '--project', $ProjectRoot)
+    if ($RunsOn) { $initArgs += @('--runs-on', $RunsOn) }
+    if ($Branches) { $initArgs += @('--branches', $Branches) }
+    if ($SecretIgnore) { $initArgs += @('--secret-ignore', $SecretIgnore) }
+    if ($SkipBaseline) { $initArgs += '--skip-baseline' }
+    if ($DryRun) { $initArgs += '--dry-run' }
+    if ($Force) { $initArgs += '--force' }
+    & node @initArgs
+    exit $LASTEXITCODE
 }
 
 if ($Init) {

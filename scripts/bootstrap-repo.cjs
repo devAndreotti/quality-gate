@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadPolicy } = require('./lib/policy.cjs');
+const { surfaceCommands } = require('./lib/package-manager.cjs');
 const { WORKFLOW_MARKER_PREFIX, renderQualityGateWorkflow } = require('./lib/workflow.cjs');
 
 const DEFAULT_ROOT = path.resolve(__dirname, '..');
@@ -70,13 +71,9 @@ function readJsonIfExists(filePath) {
 
 function detectRemote(projectRoot) {
   try {
-    const remote = childProcess
-      .execSync('git remote get-url origin', {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      })
-      .trim();
+    // git do PATH, comando fixo, como no resto do gate (lib/github.cjs).
+    const options = { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+    const remote = String(childProcess.execSync('git remote get-url origin', options)).trim(); // NOSONAR
     const match = remote.match(/github\.com[:/]([^/]+)\/(.+?)(?:\.git)?$/);
     if (match) return { owner: match[1], repo: match[2].replace(/\.git$/, '') };
   } catch {
@@ -263,13 +260,7 @@ function detectSurfaces(projectRoot) {
       type: 'node',
       root: '.',
       required: true,
-      commands: {
-        install: 'npm ci',
-        test: 'npm run test --if-present',
-        lint: 'npm run lint --if-present',
-        build: 'npm run build --if-present',
-        audit: 'npm audit --audit-level=moderate',
-      },
+      commands: surfaceCommands(projectRoot),
     });
   }
 
@@ -287,13 +278,7 @@ function detectSurfaces(projectRoot) {
           type: 'node',
           root: relRoot,
           required: true,
-          commands: {
-            install: 'npm ci',
-            test: 'npm run test --if-present',
-            lint: 'npm run lint --if-present',
-            build: 'npm run build --if-present',
-            audit: 'npm audit --audit-level=moderate',
-          },
+          commands: surfaceCommands(subDir),
         });
       } else if (fs.existsSync(path.join(subDir, 'pyproject.toml'))) {
         addSurface({

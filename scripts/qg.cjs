@@ -2,6 +2,7 @@
 // qg — entrada única do Quality Gate. Só despacha para os scripts existentes, repassando os argumentos.
 //
 // Uso: qg <comando> [argumentos]
+//   init        instala ou atualiza o gate num projeto, modo company (init.cjs)
 //   dashboard   painel no terminal (dashboard.cjs)
 //   pr          validação local, perfil PR (local-validate.cjs --profile pr)
 //   secrets     varredura de segredos (secret-scan.cjs; ex.: qg secrets --all | --diff | --history)
@@ -20,6 +21,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const COMMANDS = {
+  init: { script: 'init.cjs', args: [] },
   dashboard: { script: 'dashboard.cjs', args: [] },
   pr: { script: 'local-validate.cjs', args: ['--profile', 'pr'] },
   secrets: { script: 'secret-scan.cjs', args: [] },
@@ -37,6 +39,7 @@ const HELP = [
   'Uso: qg <comando> [argumentos]',
   '',
   ...Object.entries({
+    init: 'instala/atualiza num projeto (rode do checkout do gate, dentro do projeto)',
     dashboard: 'painel no terminal',
     pr: 'validação local, perfil PR',
     secrets: 'segredos (--all, --diff, --history)',
@@ -51,12 +54,16 @@ const HELP = [
   }).map(([name, desc]) => `  ${name.padEnd(10)} ${desc}`),
 ].join('\n');
 
+// Checkout do gate: VERSION na raiz. Projeto instalado pelo init: .quality-gate/VERSION.
 function version(root) {
-  try {
-    return fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
-  } catch {
-    return 'desconhecida';
+  for (const file of ['VERSION', '.quality-gate/VERSION']) {
+    try {
+      return fs.readFileSync(path.join(root, file), 'utf8').split(/\r?\n/)[0].trim();
+    } catch {
+      continue;
+    }
   }
+  return 'desconhecida';
 }
 
 // Decide o que fazer sem executar nada: { code, out } ou { run: {script, args} }.

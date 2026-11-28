@@ -405,6 +405,39 @@
         }
       },
       "additionalProperties": false
+    },
+    "install": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "full",
+            "company"
+          ]
+        },
+        "runsOn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "secretScanIgnore": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
