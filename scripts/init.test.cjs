@@ -329,6 +329,10 @@ test('main do init e do configure-project imprimem resumo ou JSON', () => {
   assert.match(workflow, /runs-on: z$/m);
 });
 
+test('oneLine escapa CR/LF para não forjar linha de log', () => {
+  assert.equal(init.oneLine('a\nqg init: ok\r'), 'a\\nqg init: ok\\r');
+});
+
 test('doctor trata policy ilegível como instalação completa; readPackageScripts tolera JSON inválido', () => {
   const root = tempDir();
   write(root, '.quality-gate/policy.json', '{ quebrado');

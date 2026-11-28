@@ -315,11 +315,16 @@ function runInit(options = {}) {
   return { projectRoot, templateRoot, dryRun, profile: profile.name, install, steps };
 }
 
+// Caminho e mensagem vêm do argv: CR/LF escapado impede linha de log forjada.
+function oneLine(text) {
+  return String(text).replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+}
+
 function printResult(result) {
   console.log(`\nQuality Gate init (company)${result.dryRun ? ' — dry-run, nada gravado' : ''}`);
-  console.log(`Projeto: ${result.projectRoot} (${result.profile})`);
+  console.log(`Projeto: ${oneLine(result.projectRoot)} (${result.profile})`);
   for (const step of result.steps) {
-    console.log(`  ${step.step.padEnd(18)} ${step.detail}`);
+    console.log(`  ${step.step.padEnd(18)} ${oneLine(step.detail)}`);
   }
   console.log('\nPróximo: revise o diff (git status), rode `node scripts/qg.cjs doctor` e commite.');
 }
@@ -339,9 +344,9 @@ if (require.main === module) {
   try {
     main();
   } catch (error) {
-    console.error(`qg init: ${error.message}`);
+    console.error(`qg init: ${oneLine(error.message)}`);
     process.exitCode = 1;
   }
 }
 
-module.exports = { main, parseArgs, runInit, templateFiles };
+module.exports = { main, oneLine, parseArgs, runInit, templateFiles };
