@@ -59,6 +59,8 @@ function runDiffCoverageGate(options = {}) {
       diffText = exec('git', ['diff', '--unified=0', `${options.base || 'origin/main'}...HEAD`], {
         cwd: root,
         encoding: 'utf8',
+        // O padrão de 1 MB estoura em PR que adiciona arquivo grande (ex.: bundle da TUI).
+        maxBuffer: 256 * 1024 * 1024,
       });
     } catch (err) {
       return {

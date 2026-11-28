@@ -346,3 +346,16 @@ test('defaultExecutor reports a child killed by a signal as failure', () => {
 
   assert.equal(result.exitCode, 1);
 });
+
+test('buildValidationPlan passa ao secret-scan as exclusoes gravadas pelo qg init', () => {
+  const project = tempProject();
+  fs.mkdirSync(path.join(project, '.quality-gate'), { recursive: true });
+  fs.writeFileSync(
+    path.join(project, '.quality-gate/policy.json'),
+    JSON.stringify({ install: { mode: 'company', secretScanIgnore: ['.agents/'] } }),
+  );
+  const plan = buildValidationPlan({ projectRoot: project, now: '2026-11-28T00:00:00.000Z', pid: 1 });
+  const scan = plan.commands.find((command) => command.name === 'secret-scan');
+  assert.deepEqual(scan.args.slice(1), ['--all', '--ignore', '.agents/']);
+  assert.equal(scan.commandLine, 'node scripts/secret-scan.cjs --all --ignore .agents/');
+});

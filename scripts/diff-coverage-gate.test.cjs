@@ -176,9 +176,10 @@ test('runDiffCoverageGate reads the diff from git when no diffText is given', ()
     config: ENABLED,
     base: 'origin/main',
     lcovText: lcovFor('scripts/a.cjs', { 1: 1 }),
-    execFileSync: (cmd, args) => {
+    execFileSync: (cmd, args, opts) => {
       assert.equal(cmd, 'git');
       assert.deepEqual(args, ['diff', '--unified=0', 'origin/main...HEAD']);
+      assert.ok(opts.maxBuffer > 1024 * 1024, 'diff grande nao pode estourar o buffer padrao de 1 MB');
       return diff;
     },
   });
