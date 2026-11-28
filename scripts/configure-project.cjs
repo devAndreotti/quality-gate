@@ -287,6 +287,7 @@ if (require.main === module) {
 module.exports = {
   configureProject,
   detectProjectProfile,
+  main,
   nodeSonarProperties,
   nodeWorkflow,
   parseArgs,

@@ -5,11 +5,30 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { detectPackageManager, shellCommands, surfaceCommands } = require('./lib/package-manager.cjs');
+const {
+  detectPackageManager,
+  readPackageScripts,
+  shellCommands,
+  surfaceCommands,
+} = require('./lib/package-manager.cjs');
 const { nodeWorkflow } = require('./lib/workflow-templates.cjs');
-const { configureProject } = require('./configure-project.cjs');
-const { analyzeQualityGate } = require('./doctor.cjs');
-const { parseArgs, runInit } = require('./init.cjs');
+const configure = require('./configure-project.cjs');
+const { configureProject } = configure;
+const { analyzeQualityGate, requiredFiles } = require('./doctor.cjs');
+const init = require('./init.cjs');
+const { parseArgs, runInit } = init;
+
+// Silencia o console.log dos main() durante o teste.
+function quiet(fn) {
+  const original = console.log;
+  const lines = [];
+  console.log = (...args) => lines.push(args.join(' '));
+  try {
+    return { value: fn(), out: lines.join('\n') };
+  } finally {
+    console.log = original;
+  }
+}
 
 const TEMPLATE_ROOT = path.resolve(__dirname, '..');
 
@@ -183,4 +202,119 @@ test('parseArgs aceita listas separadas por vírgula e recusa argumento desconhe
   assert.deepEqual(args.runsOn, ['self-hosted', 'csms-core']);
   assert.deepEqual(args.branches, ['dev', 'main']);
   assert.throws(() => parseArgs(['--sonar']), /desconhecido/);
+  const all = parseArgs([
+    '--project',
+    'x',
+    '--mode',
+    'company',
+    '--secret-ignore',
+    'a/,b/',
+    '--skip-baseline',
+    '--force',
+    '--dry-run',
+    '--json',
+  ]);
+  assert.deepEqual(
+    [all.project, all.mode, all.secretScanIgnore, all.skipBaseline, all.force, all.dryRun, all.json],
+    ['x', 'company', ['a/', 'b/'], true, true, true, true],
+  );
+});
+
+test('runInit recusa modo full, pasta sem git e stack sem suporte', () => {
+  const root = yarnProject();
+  assert.throws(() => runInit({ project: root, templateRoot: TEMPLATE_ROOT, mode: 'full' }), /qg-init/);
+  const noGit = tempDir();
+  write(noGit, 'package.json', '{}');
+  assert.throws(() => runInit({ project: noGit, templateRoot: TEMPLATE_ROOT }), /repositório git/);
+  const rust = tempDir();
+  childProcess.execFileSync('git', ['init', '-q'], { cwd: rust });
+  write(rust, 'Cargo.toml', '[package]\n');
+  assert.throws(() => runInit({ project: rust, templateRoot: TEMPLATE_ROOT }), /rust não suportada/);
+});
+
+test('templateFiles cai para a varredura de pastas sem git, e VERSION sai sem commit', () => {
+  const files = init.templateFiles(TEMPLATE_ROOT, () => {
+    throw new Error('sem git');
+  });
+  assert.ok(files.includes('scripts/quality-gate.js'));
+  assert.ok(!files.some((file) => file.endsWith('.test.cjs')));
+
+  const template = tempDir();
+  write(template, 'VERSION', '9.9.9\n');
+  write(
+    template,
+    '.quality-gate/policy.json',
+    fs.readFileSync(path.join(TEMPLATE_ROOT, '.quality-gate/policy.json')),
+  );
+  write(template, 'scripts/quality-gate.js', '// gate\n');
+  const root = yarnProject();
+  const result = runInit({ project: root, templateRoot: template, dryRun: false });
+  assert.match(fs.readFileSync(path.join(root, '.quality-gate/VERSION'), 'utf8'), /^9\.9\.9\n$/);
+  assert.match(result.steps.at(-1).detail, /sem coverage|gerado/);
+});
+
+test('baseline: dry-run avisa, e com coverage o init grava baseline.json', () => {
+  const root = yarnProject();
+  assert.equal(
+    runInit({ project: root, templateRoot: TEMPLATE_ROOT, dryRun: true }).steps.at(-1).detail,
+    'seria gerado',
+  );
+  // Template mínimo: o quality-gate.js real rodando no projeto temporário entraria no lcov
+  // como arquivo do repo e derrubaria a cobertura do ratchet.
+  const template = tempDir();
+  write(template, 'VERSION', '1.0.0\n');
+  write(
+    template,
+    '.quality-gate/policy.json',
+    fs.readFileSync(path.join(TEMPLATE_ROOT, '.quality-gate/policy.json')),
+  );
+  write(template, 'scripts/quality-gate.js', "require('fs').writeFileSync('scripts/baseline.json', '{}');\n");
+  const result = runInit({ project: root, templateRoot: template });
+  assert.equal(result.steps.at(-1).detail, 'gerado');
+  assert.ok(fs.existsSync(path.join(root, 'scripts/baseline.json')));
+
+  const failing = tempDir();
+  fs.cpSync(template, failing, { recursive: true });
+  write(failing, 'scripts/quality-gate.js', 'process.exit(1);\n');
+  const other = yarnProject();
+  assert.match(runInit({ project: other, templateRoot: failing }).steps.at(-1).detail, /sem coverage/);
+});
+
+test('main do init e do configure-project imprimem resumo ou JSON', () => {
+  const root = yarnProject();
+  const text = quiet(() => init.main(['--project', root, '--skip-baseline', '--runs-on', 'self-hosted,x']));
+  assert.match(text.out, /Quality Gate init \(company\)/);
+  const json = quiet(() => init.main(['--project', root, '--skip-baseline', '--json']));
+  assert.equal(JSON.parse(json.out).install.mode, 'company');
+
+  const parsed = configure.parseArgs([
+    '--template-root',
+    TEMPLATE_ROOT,
+    '--runs-on',
+    'self-hosted,y',
+    '--branches',
+    'dev',
+    '--secret-scan',
+    '--secret-ignore',
+    '.agents/',
+  ]);
+  assert.deepEqual(parsed.runsOn, ['self-hosted', 'y']);
+  assert.equal(parsed.secretScan, true);
+  assert.deepEqual(parsed.secretScanIgnore, ['.agents/']);
+  const out = quiet(() =>
+    configure.main(['--project', root, '--profile', 'node', '--skip-sonar', '--runs-on', 'z']),
+  );
+  assert.match(out.out, /node workflow \(yarn\)/);
+  const workflow = fs.readFileSync(path.join(root, '.github/workflows/quality-gate.yml'), 'utf8');
+  assert.match(workflow, /runs-on: z$/m);
+});
+
+test('doctor trata policy ilegível como instalação completa; readPackageScripts tolera JSON inválido', () => {
+  const root = tempDir();
+  write(root, '.quality-gate/policy.json', '{ quebrado');
+  assert.equal(analyzeQualityGate({ root }).mode, 'full');
+  assert.ok(requiredFiles('company').includes('.quality-gate/VERSION'));
+  assert.ok(!requiredFiles('company').includes('.github/FUNDING.yml'));
+  write(root, 'package.json', '{ quebrado');
+  assert.deepEqual(readPackageScripts(root), {});
 });

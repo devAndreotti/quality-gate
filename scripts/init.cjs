@@ -310,4 +310,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parseArgs, runInit, templateFiles };
+module.exports = { main, parseArgs, runInit, templateFiles };
