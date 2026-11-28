@@ -16,15 +16,15 @@
     "@eslint/js": "^10.0.1",
     "@stryker-mutator/core": "10.1.1",
     "esbuild": "^0.28.2",
-    "eslint": "^10.14.0",
+    "eslint": "^10.16.0",
     "ink": "^8.0.0",
-    "jscpd": "^5.4.2",
+    "jscpd": "^5.4.3",
+    "prettier": "^3.10.1",
     "react": "^19.2.0",
-    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   },
   "optionalDependencies": {
-    "oxc-parser": "0.157.0"
+    "oxc-parser": "0.159.0"
   },
   "overrides": {
     "qs": ">=6.16.1",
