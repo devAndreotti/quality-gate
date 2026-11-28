@@ -2,6 +2,7 @@
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { NODE_COMMANDS, detectPackageManager } = require('./lib/package-manager.cjs');
 
 function parseArgs(argv) {
   const args = {
@@ -46,41 +47,6 @@ function detectNodeSurfaces(projectRoot) {
   }
   return surfaces;
 }
-
-// Gerenciador de pacotes pelo lockfile: `npm ci`/`npm audit` exigem
-// package-lock e falham num repo yarn/pnpm. Yarn 2+ (Berry) tem .yarnrc.yml.
-function detectPackageManager(root) {
-  if (exists(path.join(root, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (exists(path.join(root, 'yarn.lock'))) return exists(path.join(root, '.yarnrc.yml')) ? 'yarn' : 'yarn1';
-  return 'npm';
-}
-
-const NODE_COMMANDS = {
-  npm: {
-    bin: 'npm',
-    install: ['ci'],
-    run: (script) => ['run', script, '--if-present'],
-    audit: ['audit', '--audit-level=moderate'],
-  },
-  pnpm: {
-    bin: 'pnpm',
-    install: ['install', '--frozen-lockfile'],
-    run: (script) => ['run', '--if-present', script],
-    audit: ['audit', '--audit-level', 'moderate'],
-  },
-  yarn: {
-    bin: 'yarn',
-    install: ['install', '--immutable'],
-    run: (script) => ['run', script],
-    audit: ['npm', 'audit', '--all', '--recursive', '--severity', 'moderate'],
-  },
-  yarn1: {
-    bin: 'yarn',
-    install: ['install', '--frozen-lockfile'],
-    run: (script) => ['run', script],
-    audit: ['audit', '--level', 'moderate'],
-  },
-};
 
 function packageScripts(root) {
   try {

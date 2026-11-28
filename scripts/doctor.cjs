@@ -78,14 +78,44 @@ function hasEsmSyntax(text) {
   return /^\s*import\s.+from\s+['"].+['"];?/m.test(text) || /^\s*import\s*\(/m.test(text);
 }
 
-function checkRequiredFiles(root) {
-  const missing = REQUIRED_FILES.filter((file) => !exists(root, file));
+// Modo company (qg init --mode company) não instala os extras pessoais nem o Sonar,
+// e guarda a versão em .quality-gate/VERSION para não pisar arquivos do projeto.
+const COMPANY_SKIPPED = new Set([
+  'VERSION',
+  'CHANGELOG.md',
+  '.github/copilot-instructions.md',
+  '.github/dependabot.yml',
+  '.github/FUNDING.yml',
+  'sonar-project.properties',
+  '.codex/skills/babysit-pr/SKILL.md',
+  '.codex/skills/babysit-pr/references/pr-watcher.md',
+  '.codex/skills/babysit-pr/references/fix-playbook.md',
+]);
+
+function installMode(root) {
+  try {
+    return JSON.parse(readText(root, POLICY_PATH)).install?.mode || 'full';
+  } catch {
+    return 'full';
+  }
+}
+
+function requiredFiles(mode) {
+  if (mode !== 'company') {
+    return REQUIRED_FILES;
+  }
+  return [...REQUIRED_FILES.filter((file) => !COMPANY_SKIPPED.has(file)), '.quality-gate/VERSION'];
+}
+
+function checkRequiredFiles(root, mode = 'full') {
+  const files = requiredFiles(mode);
+  const missing = files.filter((file) => !exists(root, file));
   return {
     level: missing.length ? 'fail' : 'ok',
     name: 'Arquivos obrigatorios',
     detail: missing.length
       ? `faltando: ${missing.join(', ')}`
-      : `${REQUIRED_FILES.length} arquivos encontrados`,
+      : `${files.length} arquivos encontrados (${mode})`,
   };
 }
 
@@ -210,7 +240,10 @@ function checkPolicyBranchProtection(root, policy) {
   };
 }
 
-function checkSkillSize(root) {
+function checkSkillSize(root, mode = 'full') {
+  if (mode === 'company') {
+    return { level: 'ok', name: 'SKILL.md <= 500 linhas', detail: 'skill não instalada no modo company' };
+  }
   const skill = readText(root, '.codex/skills/babysit-pr/SKILL.md');
   const lines = lineCount(skill);
   return {
@@ -345,8 +378,9 @@ function analyzeQualityGate(options = {}) {
   const root = options.root || DEFAULT_ROOT;
   const checks = [];
   let policy = null;
+  const mode = installMode(root);
 
-  checks.push(checkRequiredFiles(root));
+  checks.push(checkRequiredFiles(root, mode));
 
   const policyCheck = safeCheck('Policy machine-readable', () => checkPolicy(root));
   checks.push(policyCheck);
@@ -364,7 +398,7 @@ function analyzeQualityGate(options = {}) {
     );
   }
   checks.push(
-    safeCheck('SKILL.md <= 500 linhas', () => checkSkillSize(root)),
+    safeCheck('SKILL.md <= 500 linhas', () => checkSkillSize(root, mode)),
     safeCheck('SonarCloud configurado', () => checkSonarConfigured(root, policy)),
     safeCheck('baseline.json real', () => checkBaseline(root)),
     safeCheck('Modo de modulo Node', () => checkModuleMode(root)),
@@ -381,7 +415,7 @@ function analyzeQualityGate(options = {}) {
     fail: checks.filter((check) => check.level === 'fail').length,
   };
 
-  return { root, checks, summary, policy };
+  return { root, mode, checks, summary, policy };
 }
 
 function statusIcon(level) {
@@ -451,6 +485,7 @@ if (require.main === module) {
 module.exports = {
   analyzeQualityGate,
   checkProjectSurfaces,
+  requiredFiles,
   checkWorkflowSurfaces,
   detectProjectSurfaces,
   findMissingRequiredContexts,

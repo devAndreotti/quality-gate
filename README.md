@@ -122,6 +122,22 @@ Ou utilizando o fluxo de aliases em PowerShell com o perfil PowerShell local:
 qg-init -Yes -Repo OWNER/REPO -SkipBaseline -SkipCommit
 ```
 
+#### Modo company (repo de empresa, sem PowerShell)
+
+Instala só o gate: `scripts/`, `.quality-gate/` e o workflow `quality-gate.yml`. Não instala Sonar,
+os outros workflows, `FUNDING.yml`, Dependabot nem `.codex`. Também não commita e não chama o GitHub.
+O gerenciador de pacotes vem do lockfile (npm, pnpm, Yarn 1 ou Yarn 2+), e a versão do Node vem do `.nvmrc`.
+
+```bash
+# de dentro do repo alvo, chamando o checkout do quality-gate
+node <quality-gate>/scripts/qg.cjs init --runs-on self-hosted,<label> --branches dev,main --secret-ignore .agents/
+node scripts/qg.cjs doctor
+```
+
+Rodar o `init` de novo atualiza os scripts e reaproveita as opções gravadas em `policy.install`.
+Se o projeto já tiver um arquivo com o mesmo nome de um script do gate, o init para e lista os conflitos (`--force` sobrescreve).
+No PowerShell: `qg-init -Company -RunsOn self-hosted,<label> -Branches dev,main`.
+
 ### 2. Variáveis de ambiente
 
 | Variável | Descrição | Exemplo |
