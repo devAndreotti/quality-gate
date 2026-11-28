@@ -210,8 +210,8 @@ const ACTIONS = {
   setupNode: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
   uploadArtifact: 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7',
   downloadArtifact: 'actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8',
-  sonarScan: 'SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8',
-  sonarGate: 'sonarsource/sonarqube-quality-gate-action@3cfda8eca512232cb42bd40fd01567cba471db39 # master',
+  sonarScan: 'SonarSource/sonarqube-scan-action@59202af334b4ba7b5db01b701b8e79f8b3bef0f4 # v8',
+  sonarGate: 'sonarsource/sonarqube-quality-gate-action@ad79b13d38cce47457fb4059994f2d79e1dc625a # master',
 };
 
 const LOCKFILES = { npm: 'package-lock.json', pnpm: 'pnpm-lock.yaml', yarn: 'yarn.lock', yarn1: 'yarn.lock' };
