@@ -48,6 +48,18 @@ function detectNodeSurfaces(projectRoot) {
   return surfaces;
 }
 
+// Exclusões do secret scan gravadas pelo qg init (policy.install), as mesmas do workflow.
+function secretScanIgnore(projectRoot) {
+  try {
+    const policy = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, '.quality-gate', 'policy.json'), 'utf8'),
+    );
+    return policy.install?.secretScanIgnore || [];
+  } catch {
+    return [];
+  }
+}
+
 function packageScripts(root) {
   try {
     return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).scripts || {};
@@ -237,11 +249,12 @@ function buildValidationPlan(options = {}) {
     commands.push(step('node:audit', tool.audit, 'audit'));
   }
 
+  const secretArgs = ['--all', ...secretScanIgnore(projectRoot).flatMap((pattern) => ['--ignore', pattern])];
   commands.push(
-    command('secret-scan', projectRoot, 'node scripts/secret-scan.cjs --all', {
+    command('secret-scan', projectRoot, `node scripts/secret-scan.cjs ${secretArgs.join(' ')}`, {
       artifact: path.join(reportsRoot, 'secret-scan.log'),
       file: process.execPath,
-      args: [path.join(scriptsRoot, 'secret-scan.cjs'), '--all'],
+      args: [path.join(scriptsRoot, 'secret-scan.cjs'), ...secretArgs],
       requiresFile: path.join(scriptsRoot, 'secret-scan.cjs'),
     }),
     // Repo de empresa não recebe o qg-init: sem baseline/cobertura nem os
